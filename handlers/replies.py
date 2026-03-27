@@ -1,5 +1,5 @@
 import time
-from handlers.chat_responses.responses_handler import chat_responses
+from handlers.chat_responses.chat_handler import chat_responses
 from handlers.tops.tops_handler import top_commands
 from modules.country.handlers.country_handler import create_country_command, my_country
 from modules.bank.handlers.bank_handler import bank_commands
