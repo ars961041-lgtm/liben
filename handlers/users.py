@@ -224,32 +224,36 @@ def get_top_users_text(group_id):
 # CACHE SYSTEM
 # =========================
 
+
 USER_CACHE = {}
 CACHE_TTL = 600  # 10 minutes
 
 def get_cached_user(user_id):
+    """
+    Get cached user data including profile photos and bio.
+    Refresh the file_id if cache expired or sending fails.
+    """
     if user_id in USER_CACHE:
         data, timestamp = USER_CACHE[user_id]
-
         if time.time() - timestamp < CACHE_TTL:
             return data
+        USER_CACHE.pop(user_id, None)  # Remove expired cache
 
-        # Remove old cache
-        USER_CACHE.pop(user_id, None)
+    try:
+        photos = bot.get_user_profile_photos(user_id)
+        user_info = bot.get_chat(user_id)
 
-    photos = bot.get_user_profile_photos(user_id)
-    user_info = bot.get_chat(user_id)
+        data = {
+            "photos": photos,
+            "photo_count": photos.total_count,
+            "bio": getattr(user_info, "bio", None)
+        }
 
-    data = {
-        "photos": photos,
-        "photo_count": photos.total_count,
-        "bio": getattr(user_info, "bio", None)
-    }
-
-    USER_CACHE[user_id] = (data, time.time())
-
-    return data
-
+        USER_CACHE[user_id] = (data, time.time())
+        return data
+    except Exception:
+        # إذا فشل الجلب بالكامل، أرجع بيانات فارغة
+        return {"photos": None, "photo_count": 0, "bio": None}
 
 # =========================
 # LEVEL SYSTEM
@@ -385,16 +389,15 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
 # =========================
 
 def send_profile(message):
-    try:
-        user_id = message.from_user.id
-        chat_id = message.chat.id
+    user_id = message.from_user.id
+    chat_id = message.chat.id
 
-        user_data = get_user_data(user_id, message)
-        group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
+    user_data = get_cached_user(user_id)
+    group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
+    caption = build_profile(user_id, chat_id, user_data, group_stats)
 
-        caption = build_profile(user_id, chat_id, user_data, group_stats)
-
-        if user_data["photo_count"] > 0:
+    if user_data["photo_count"] > 0 and user_data["photos"]:
+        try:
             bot.send_photo(
                 chat_id,
                 user_data["photos"].photos[0][-1].file_id,
@@ -403,8 +406,22 @@ def send_profile(message):
                 reply_to_message_id=message.message_id,
                 has_spoiler=True
             )
-        else:
-            send_reply(message, caption)
-
-    except Exception as e:
-        send_error_reply(message, send_error("send_profile", e))
+        except Exception as e:
+            # إذا فشل الملف (مثل FILE_REFERENCE_EXPIRED)، اجلب file_id جديد وجرب إرسال الصورة مرة ثانية
+            try:
+                new_data = get_cached_user(user_id)  # تجديد cache
+                if new_data["photo_count"] > 0 and new_data["photos"]:
+                    bot.send_photo(
+                        chat_id,
+                        new_data["photos"].photos[0][-1].file_id,
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_to_message_id=message.message_id,
+                        has_spoiler=True
+                    )
+                else:
+                    send_reply(message, caption)  # لا توجد صور
+            except Exception:
+                send_reply(message, caption)  # fallback للنص فقط
+    else:
+        send_reply(message, caption)
