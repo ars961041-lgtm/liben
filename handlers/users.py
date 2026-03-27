@@ -83,8 +83,6 @@ def send_user_info(message):
       caption += f"🏅 الترتيب بين المتفاعلين: {rank}\n"
     if username:
       caption += f"🔗 اليوزر: @{username}\n"
-    if photo_count:
-      caption += f"🖼️ عدد صور البروفايل: {photo_count}\n"
     if bio:
       caption += f"📝 البايو: {bio}\n"
 
@@ -224,36 +222,35 @@ def get_top_users_text(group_id):
 # CACHE SYSTEM
 # =========================
 
-
 USER_CACHE = {}
-CACHE_TTL = 600  # 10 minutes
+CACHE_TTL = 120  # 2 minutes
 
 def get_cached_user(user_id):
-    """
-    Get cached user data including profile photos and bio.
-    Refresh the file_id if cache expired or sending fails.
-    """
+
     if user_id in USER_CACHE:
         data, timestamp = USER_CACHE[user_id]
+
         if time.time() - timestamp < CACHE_TTL:
             return data
-        USER_CACHE.pop(user_id, None)  # Remove expired cache
 
-    try:
-        photos = bot.get_user_profile_photos(user_id)
-        user_info = bot.get_chat(user_id)
+        USER_CACHE.pop(user_id, None)
 
-        data = {
-            "photos": photos,
-            "photo_count": photos.total_count,
-            "bio": getattr(user_info, "bio", None)
-        }
+    photos = bot.get_user_profile_photos(user_id)
+    user_info = bot.get_chat(user_id)
 
-        USER_CACHE[user_id] = (data, time.time())
-        return data
-    except Exception:
-        # إذا فشل الجلب بالكامل، أرجع بيانات فارغة
-        return {"photos": None, "photo_count": 0, "bio": None}
+    photo_id = None
+    if photos.total_count > 0:
+        photo_id = photos.photos[0][-1].file_id
+
+    data = {
+        "photo_id": photo_id,
+        "photo_count": photos.total_count,
+        "bio": getattr(user_info, "bio", None)
+    }
+
+    USER_CACHE[user_id] = (data, time.time())
+
+    return data
 
 # =========================
 # LEVEL SYSTEM
@@ -303,8 +300,7 @@ def get_user_data(user_id, message):
     return {
         "full_name": full_name,
         "username": username,
-        "photos": cached["photos"],
-        "photo_count": cached["photo_count"],
+        "photo_id": cached["photo_id"],
         "bio": cached["bio"] or "لم يتم تعيينه",
     }
 
@@ -373,9 +369,6 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
             for ach in achievements:
                 caption += f"{ach}\n"
 
-    if user_data["photo_count"]:
-        caption += f"\n🖼️ عدد صور البروفايل: {user_data['photo_count']}"
-
     if user_data["bio"]:
         caption += f"\n📝 البايو: {user_data['bio']}"
 
@@ -387,41 +380,54 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
 # =========================
 # MAIN PROFILE SENDER
 # =========================
-
 def send_profile(message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
+    try:
+        user_id = message.from_user.id
+        chat_id = message.chat.id
 
-    user_data = get_cached_user(user_id)
-    group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
-    caption = build_profile(user_id, chat_id, user_data, group_stats)
+        user_data = get_user_data(user_id, message)
+        group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
 
-    if user_data["photo_count"] > 0 and user_data["photos"]:
-        try:
-            bot.send_photo(
-                chat_id,
-                user_data["photos"].photos[0][-1].file_id,
-                caption=caption,
-                parse_mode="HTML",
-                reply_to_message_id=message.message_id,
-                has_spoiler=True
-            )
-        except Exception as e:
-            # إذا فشل الملف (مثل FILE_REFERENCE_EXPIRED)، اجلب file_id جديد وجرب إرسال الصورة مرة ثانية
+        caption = build_profile(user_id, chat_id, user_data, group_stats)
+
+        if user_data["photo_id"]:
+            file_id = user_data["photo_id"]
+
             try:
-                new_data = get_cached_user(user_id)  # تجديد cache
-                if new_data["photo_count"] > 0 and new_data["photos"]:
+                bot.send_photo(
+                    chat_id,
+                    file_id,
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_to_message_id=message.message_id,
+                    has_spoiler=True
+                )
+
+            except Exception as e:
+
+                if "FILE_REFERENCE_EXPIRED" in str(e):
+
+                    # حذف الكاش
+                    USER_CACHE.pop(user_id, None)
+
+                    # إعادة تحميل البيانات
+                    cached = get_cached_user(user_id)
+                    file_id = cached["photo_id"]
+
                     bot.send_photo(
                         chat_id,
-                        new_data["photos"].photos[0][-1].file_id,
+                        file_id,
                         caption=caption,
                         parse_mode="HTML",
                         reply_to_message_id=message.message_id,
                         has_spoiler=True
                     )
+
                 else:
-                    send_reply(message, caption)  # لا توجد صور
-            except Exception:
-                send_reply(message, caption)  # fallback للنص فقط
-    else:
-        send_reply(message, caption)
+                    raise
+
+        else:
+            send_reply(message, caption)
+
+    except Exception as e:
+        send_error_reply(message, send_error("send_profile", e))

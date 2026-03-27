@@ -49,8 +49,6 @@ def start_bot():
 if __name__ == "__main__":
     print("✅ Bot is running...")
 
-    keep_alive()  # 🔥 مهم لـ Render
-
     create_all_tables()
 
     start_bot()  # 🔥 تشغيل البوت بشكل آمن

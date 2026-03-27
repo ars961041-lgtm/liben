@@ -2,11 +2,11 @@
 # Bank Cooldowns (بالثواني)
 # ============================================
 
-SALARY_COOLDOWN_SEC = 3600          # ساعة
+SALARY_COOLDOWN_SEC = 600          # 10 دقائق
 DAILY_COOLDOWN_SEC = 86400          # 24 ساعة
 SMALL_TASK_COOLDOWN_SEC = 1800      # 30 دقيقة
 LIGHT_RISK_COOLDOWN_SEC = 1200      # 20 دقيقة
-INVEST_COOLDOWN_SEC = 1800          # 30 دقيقة
+INVEST_COOLDOWN_SEC = 1200          # 20 دقيقة
 
 
 # ============================================
