@@ -3,7 +3,7 @@ import time
 import threading
 import sqlite3
 
-TOK = os.environ.get("BOT_TOKEN")
+TOKEN = os.environ.get("BOT_TOKEN")
 
 DB_PATH = 'database/group_responses.db'
 
