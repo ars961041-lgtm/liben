@@ -251,27 +251,3 @@ def invest(user_id, amount):
     )
 
     return True, text
-# -------------------------------
-# Top richest
-# -------------------------------
-def get_top_richest(limit=30):
-    from database.db_queries import get_top_bank_balances
-    rows = get_top_bank_balances(limit)
-    return rows
-
-def format_top_richest(user_id, username=None, limit=10):
-
-    rows = get_top_richest(limit)
-
-    if not rows:
-        return "لا يوجد بيانات بعد"
-
-    text = "🏆 أغنى اللاعبين:\n\n"
-
-    for i, row in enumerate(rows, 1):
-        uid = row["user_id"]
-        balance = row["balance"]
-
-        text += f"{i}. {uid} — {balance:.2f} Liben\n"
-
-    return text

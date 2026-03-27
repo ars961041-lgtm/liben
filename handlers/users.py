@@ -9,6 +9,7 @@ from database.db_queries import (
 )
 from core.bot import bot
 from telebot import types
+from database.db_queries.groups_queries import get_group_stats
 from handlers.utils.cache import get_cache, set_cache
 from utils.helpers import limit_text, send_reply, send_error, get_error_icons, is_group, send_error_reply
 import random
@@ -51,59 +52,6 @@ def track_group_members(msg):
 
   except Exception as e:
     send_reply(msg, send_error("track_group_members", e))
-
-def send_user_info(message):
-
-  if not is_group(message):
-      send_account_info(message)
-      return
-
-  try:      
-    group_id = message.chat.id
-    user_id = message.from_user.id
-    full_name = message.from_user.first_name + (" " + message.from_user.last_name if message.from_user.last_name else "")
-
-    msg_count = get_user_msgs(user_id, group_id)
-    photos = bot.get_user_profile_photos(user_id)
-    photo_count = photos.total_count
-    user_info = bot.get_chat(user_id)
-
-    bio = user_info.bio if hasattr(user_info, "bio") and user_info.bio else None
-    username = message.from_user.username
-
-    members = get_top_group_members(group_id, limit=1000)
-    total_group_msgs = get_group_total_messages(group_id) or 1
-
-    # ترتيب العضو
-    rank = next((i + 1 for i, (uid, _) in enumerate(members) if uid == user_id), None)
-    percentage = (msg_count / total_group_msgs) * 100
-
-    caption = f"{lines[4]}<b>\n👤 الاسم: {full_name}\n🆔 الآيدي: <code>{user_id}</code>\n"
-    caption += f"💬 عدد الرسائل: {msg_count}\n📈 نسبة التفاعل: {percentage:.2f}٪\n"
-    if rank:
-      caption += f"🏅 الترتيب بين المتفاعلين: {rank}\n"
-    if username:
-      caption += f"🔗 اليوزر: @{username}\n"
-    if bio:
-      caption += f"📝 البايو: {bio}\n"
-
-    caption += f"</b>{right_arrows[2]} {lines[4]}"
-
-    # إرسال صورة إن وجدت، وإلا إرسال النص فقط
-    if photo_count > 0:
-      bot.send_photo(
-        message.chat.id,
-        photos.photos[0][-1].file_id,
-        caption=caption,
-        parse_mode='HTML',
-        reply_to_message_id=message.message_id,
-        has_spoiler=True
-      )
-    else:
-      send_reply(message, caption)
-  except Exception as e:
-    send_error_reply(message, send_error(f"send_user_info", e))
-
 
 def send_account_info(message):
     """Display current user account info and stats."""
@@ -191,40 +139,6 @@ def send_welcome(message):
     send_reply(message, welcome_text)
 
 # =========================
-# CACHE SYSTEM
-# =========================
-
-USER_CACHE = {}
-CACHE_TTL = 120  # 2 minutes
-
-def get_cached_user(user_id):
-
-    if user_id in USER_CACHE:
-        data, timestamp = USER_CACHE[user_id]
-
-        if time.time() - timestamp < CACHE_TTL:
-            return data
-
-        USER_CACHE.pop(user_id, None)
-
-    photos = bot.get_user_profile_photos(user_id)
-    user_info = bot.get_chat(user_id)
-
-    photo_id = None
-    if photos.total_count > 0:
-        photo_id = photos.photos[0][-1].file_id
-
-    data = {
-        "photo_id": photo_id,
-        "photo_count": photos.total_count,
-        "bio": getattr(user_info, "bio", None)
-    }
-
-    USER_CACHE[user_id] = (data, time.time())
-
-    return data
-
-# =========================
 # LEVEL SYSTEM
 # =========================
 
@@ -254,87 +168,92 @@ def get_achievements(msg_count):
     return achievements
 
 
-# =========================
-# USER DATA
-# =========================
-
 def get_user_data(user_id, message):
 
     full_name = message.from_user.first_name + (
         " " + message.from_user.last_name if message.from_user.last_name else ""
     )
 
-    username = message.from_user.username or "لا يوجد"
+    username = message.from_user.username or None
 
-    cached = get_user_cached_data(user_id)
+    photos = bot.get_user_profile_photos(user_id)
+
+    photo_id = None
+    if photos.total_count > 0:
+        photo_id = photos.photos[0][-1].file_id
+
+    bio = None
+    try:
+        user = bot.get_chat(user_id)
+        bio = getattr(user, "bio", None)
+    except:
+        pass
 
     return {
         "full_name": full_name,
         "username": username,
-        "photo_id": cached["photo_id"],
-        "photo_count": cached["photo_count"],
-        "bio": cached["bio"] or "لم يتم تعيينه",
+        "photo_id": photo_id,
+        "photo_count": photos.total_count,
+        "bio": bio or "لم يتم تعيينه",
     }
-    
-# =========================
-# GROUP STATS
-# =========================
+ 
+def get_user_data(user_id, message):
 
-def get_group_stats(user_id, group_id):
-    msg_count = get_user_msgs(user_id, group_id)
+    full_name = message.from_user.first_name + (
+        " " + message.from_user.last_name if message.from_user.last_name else ""
+    )
 
-    conn = get_db_conn()
-    cursor = conn.cursor()
+    username = message.from_user.username or None
 
-    cursor.execute("""
-        SELECT user_id, message_count
-        FROM group_members
-        WHERE group_id = ?
-        ORDER BY message_count DESC
-    """, (group_id,))
+    photos = bot.get_user_profile_photos(user_id)
 
-    members = cursor.fetchall()
+    photo_id = None
+    if photos.total_count > 0:
+        photo_id = photos.photos[0][-1].file_id
 
-    cursor.execute("""
-        SELECT SUM(message_count)
-        FROM group_members
-        WHERE group_id = ?
-    """, (group_id,))
-
-    total_msgs = cursor.fetchone()[0] or 1
-
-    rank = next((i + 1 for i, (uid, _) in enumerate(members) if uid == user_id), None)
-    percentage = (msg_count / total_msgs) * 100
+    bio = None
+    try:
+        user = bot.get_chat(user_id)
+        bio = getattr(user, "bio", None)
+    except:
+        pass
 
     return {
-        "msg_count": msg_count,
-        "rank": rank,
-        "percentage": percentage
+        "full_name": full_name,
+        "username": username,
+        "photo_id": photo_id,
+        "photo_count": photos.total_count,
+        "bio": bio or "لم يتم تعيينه",
     }
 
-
-# =========================
-# PROFILE BUILDER
-# =========================
-
 def build_profile(user_id, group_id, user_data, group_stats=None):
-    caption = f"""{lines[4]}<b>\n\n👤 الاسم: {user_data['full_name']}\n🆔 الآيدي: <code>{user_id}</code>\n🔗 اليوزر: @{user_data['username']}\n\n"""
+
+    caption = f"""{lines[4]}<b>
+
+👤 الاسم: {user_data['full_name']}
+🆔 الآيدي: <code>{user_id}</code>
+"""
+
+    if user_data["username"]:
+        caption += f"🔗 اليوزر: @{user_data['username']}\n"
+
+    caption += "\n"
 
     if group_stats:
+
         level, next_level = calculate_level(group_stats["msg_count"])
         achievements = get_achievements(group_stats["msg_count"])
 
         msg_count = group_stats["msg_count"]
 
-        caption += f"""
-        📊 النشاط
-        📊 الرسائل: {msg_count} / {next_level}
-        📈 التفاعل: {group_stats['percentage']:.2f}٪
-        🏅 الترتيب: {group_stats['rank']}
+        caption += f"""📊 النشاط
+📨 الرسائل: {msg_count} / {next_level}
+📈 التفاعل: {group_stats['percentage']:.2f}٪
+🏅 الترتيب: {group_stats['rank']}
 
-        ⭐ المستوى: {level}
-        """
-        
+⭐ المستوى: {level}
+"""
+
         if achievements:
             caption += "\n🏆 الإنجازات\n"
             for ach in achievements:
@@ -343,90 +262,38 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
     if user_data["bio"]:
         caption += f"\n📝 البايو: {user_data['bio']}"
 
-    caption += f"""\n\n</b>{lines[4]}"""
+    caption += f"\n</b>{lines[4]}"
 
     return caption
 
-
-# =========================
-# MAIN PROFILE SENDER
-# =========================
 def send_profile(message):
+
     try:
+
         user_id = message.from_user.id
         chat_id = message.chat.id
 
         user_data = get_user_data(user_id, message)
-        group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
+
+        group_stats = None
+        if is_group(message):
+            group_stats = get_group_stats(user_id, chat_id)
 
         caption = build_profile(user_id, chat_id, user_data, group_stats)
 
         if user_data["photo_id"]:
-            file_id = user_data["photo_id"]
 
-            try:
-                bot.send_photo(
-                    chat_id,
-                    file_id,
-                    caption=caption,
-                    parse_mode="HTML",
-                    reply_to_message_id=message.message_id,
-                    has_spoiler=True
-                )
-
-            except Exception as e:
-
-                if "FILE_REFERENCE_EXPIRED" in str(e):
-
-                    # حذف الكاش
-                    USER_CACHE.pop(user_id, None)
-
-                    # إعادة تحميل البيانات
-                    cached = get_cached_user(user_id)
-                    file_id = cached["photo_id"]
-
-                    bot.send_photo(
-                        chat_id,
-                        file_id,
-                        caption=caption,
-                        parse_mode="HTML",
-                        reply_to_message_id=message.message_id,
-                        has_spoiler=True
-                    )
-
-                else:
-                    raise
+            bot.send_photo(
+                chat_id,
+                user_data["photo_id"],
+                caption=caption,
+                parse_mode="HTML",
+                reply_to_message_id=message.message_id,
+                has_spoiler=True
+            )
 
         else:
             send_reply(message, caption)
 
     except Exception as e:
         send_error_reply(message, send_error("send_profile", e))
-        
-
-
-def get_user_cached_data(user_id):
-
-    cached = get_cache(user_id)
-
-    if cached:
-        return cached
-
-    photos = bot.get_user_profile_photos(user_id)
-    user = bot.get_chat(user_id)
-
-    photo_id = None
-
-    if photos.total_count > 0:
-        photo_id = photos.photos[0][-1].file_id
-
-    data = {
-        "photo_id": photo_id,
-        "photo_count": photos.total_count,
-        "bio": getattr(user, "bio", None)
-    }
-
-    set_cache(user_id, data)
-
-    return data
-

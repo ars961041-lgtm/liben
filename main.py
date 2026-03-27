@@ -5,7 +5,7 @@ from handlers.replies import receive_responses
 from database.db_schema import create_all_tables
 from handlers.callbacks import callback_query
 from telebot.apihelper import ApiTelegramException
-from web import keep_alive
+from web.app import keep_alive
 
 logging.basicConfig(level=logging.INFO)
 

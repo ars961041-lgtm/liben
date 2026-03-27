@@ -31,25 +31,3 @@ def get_user_msgs (user_id, group_id):
     cursor.execute('SELECT message_count FROM group_members WHERE user_id = ? AND group_id = ?', (user_id, group_id))
     result = cursor.fetchone()
     return result[0] if result else 0
-
-def get_or_create_user_id(user_id):
-    conn = get_db_conn()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT id FROM users WHERE user_id = ?",
-        (user_id,)
-    )
-
-    row = cursor.fetchone()
-
-    if row:
-        return row[0]
-
-    cursor.execute(
-        "INSERT INTO users (user_id) VALUES (?)",
-        (user_id,)
-    )
-
-    conn.commit()
-    return cursor.lastrowid

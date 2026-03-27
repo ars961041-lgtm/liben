@@ -5,8 +5,7 @@ from modules.bank.services.bank_service import (
     invest,
     daily_reward,
     small_task,
-    light_risk,
-    format_top_richest
+    light_risk
 )
 
 from utils.helpers import send_reply
@@ -22,12 +21,6 @@ def bank_commands(message):
     text = message.text.strip()
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
-
-    # Top richest
-    if text == "توب الفلوس":
-        top_text = format_top_richest(user_id, username=username, limit=20)
-        send_reply(message, top_text)
-        return True
 
     # Create bank account
     if text in ["إنشاء حساب بنكي", "انشاء حساب بتكي"]:

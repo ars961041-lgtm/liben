@@ -1,5 +1,6 @@
 import time
-from handlers.tops.tops import get_top_countries, send_top_messages, send_top_users
+from handlers.chat_responses.responses_handler import chat_responses
+from handlers.tops.tops_handler import top_commands
 from modules.country.handlers.country_handler import create_country_command, my_country
 from modules.bank.handlers.bank_handler import bank_commands
 from utils.helpers import send_reply
@@ -16,11 +17,12 @@ def receive_responses(message):
     if normalized_text == "/start":
         send_welcome(message)
 
-    # 👇 أوامر البنوك
     elif bank_commands(message):
         return
 
-    # 👇 أوامر الدول
+    elif top_commands(message):
+        return
+    
     elif normalized_text.lower().startswith('إنشاء دولة') or normalized_text.lower().startswith('انشاء دولة'):
         create_country_command(message)
     elif normalized_text == 'دولتي':
@@ -29,12 +31,6 @@ def receive_responses(message):
     # 👇 أوامر البروفايل
     elif normalized_text in ["ايدي", "عني", "معلوماتي"]:
         send_profile(message)
+    
+    chat_responses(message)
 
-    # 👇 أوامر التوبات
-    elif normalized_text.lower() == "توب":
-        send_top_users(message)        # توب المتفاعلين في الجروب
-    elif normalized_text.lower() == "توب الرسائل":
-        send_top_messages(message)     # توب الرسائل
-    elif normalized_text.lower() == "توب الدول":
-        top_countries_text = get_top_countries()
-        send_reply(message, top_countries_text)

@@ -19,7 +19,6 @@ def create_groups_tables():
         is_muted INTEGER DEFAULT 0,
         is_restricted INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, group_id),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
     );
     ''')

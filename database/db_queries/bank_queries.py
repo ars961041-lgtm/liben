@@ -126,15 +126,21 @@ def can_use_cooldown(user_id, action, cooldown_seconds):
     if remaining <= 0:
         return True, 0
     return False, remaining
-     
+    
 def get_top_bank_balances(limit=30):
+
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT ua.user_id, ua.balance, COALESCE(un.name, 'Unknown') as name
+
+    cursor.execute(
+        '''
+        SELECT ua.user_id, ua.balance, COALESCE(un.name,'Unknown') AS name
         FROM user_accounts ua
         LEFT JOIN users_name un ON ua.user_id = un.user_id
         ORDER BY ua.balance DESC
         LIMIT ?
-    ''', (limit,))
+        ''',
+        (limit,)
+    )
+
     return cursor.fetchall()
