@@ -3,8 +3,8 @@ import time
 import threading
 import sqlite3
 
-# TOKEN = os.environ.get("BOT_TOKEN")
-TOKEN = '8783291040:AAHK1DNtZNYA2lfnQqwjdX2cOvZhcO4MUuo'
+TOKEN = os.environ.get("BOT_TOKEN")
+# TOKEN = '8783291040:AAHK1DNtZNYA2lfnQqwjdX2cOvZhcO4MUuo'
 
 is_test = False
 
