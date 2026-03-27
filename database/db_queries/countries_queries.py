@@ -142,3 +142,18 @@ def country_exists(name):
 
         return cursor.fetchone() is not None
     
+def get_top_country_stats(limit=10):
+    """
+    جلب أعلى الدول حسب عدد السكان أو حسب أي معيار آخر.
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT name, population
+        FROM countries
+        ORDER BY population DESC
+        LIMIT ?
+    """, (limit,))
+
+    return cursor.fetchall()

@@ -220,11 +220,11 @@ def handle_top_callbacks(call):
         bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=top_text, reply_markup=markup)
 
     elif call.data.startswith("top_interaction_"):
-        from handlers.users import get_top_users_text
+        from handlers.tops.tops import get_top_messages
         if not hasattr(call.message, 'chat') or call.message.chat.type not in ['group', 'supergroup']:
             top_text = "توب التفاعل متاح فقط في المجموعات!"
         else:
-            top_text = get_top_users_text(call.message.chat.id)
+            top_text = get_top_messages(call.message.chat.id)
         markup = types.InlineKeyboardMarkup()
         markup.row(
             types.InlineKeyboardButton("رجوع ↩️", callback_data=f"top_back_{user_id}"),

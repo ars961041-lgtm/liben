@@ -9,6 +9,7 @@ from database.db_queries import (
 )
 from core.bot import bot
 from telebot import types
+from handlers.utils.cache import get_cache, set_cache
 from utils.helpers import limit_text, send_reply, send_error, get_error_icons, is_group, send_error_reply
 import random
 import time
@@ -189,35 +190,6 @@ def send_welcome(message):
 """
     send_reply(message, welcome_text)
 
-def send_top_users(message):
-    if not is_group(message):
-        send_reply(message, "هذا الأمر متاح فقط في المجموعات!")
-        return
-
-    group_id = message.chat.id
-    top_text = get_top_users_text(group_id)
-    send_reply(message, top_text)
-
-
-def get_top_users_text(group_id):
-    top_users = get_top_group_members(group_id, limit=10)
-
-    if not top_users:
-        return "لا توجد بيانات تفاعل في هذه المجموعة بعد."
-
-    emojis = ["🥇", "🥈", "🥉"] + [""] * 7
-
-    caption = f"{lines[4]}<b>\n↜ توب لأكثر 10 متفاعلين في القروب \n\n"
-
-    for i, (user_id, msg_count, name) in enumerate(top_users, 1):
-        emoji = emojis[i-1] if i <= 3 else ""
-        short_name = limit_text(name, 20)
-        caption += f"{i}) {emoji} {msg_count} l {short_name}\n"
-
-    caption += f"\n</b>{lines[4]}"
-
-    return caption
-
 # =========================
 # CACHE SYSTEM
 # =========================
@@ -287,24 +259,23 @@ def get_achievements(msg_count):
 # =========================
 
 def get_user_data(user_id, message):
+
     full_name = message.from_user.first_name + (
         " " + message.from_user.last_name if message.from_user.last_name else ""
     )
 
     username = message.from_user.username or "لا يوجد"
 
-    cached = get_cached_user(user_id)
-
-    user = get_user_info(user_id)
+    cached = get_user_cached_data(user_id)
 
     return {
         "full_name": full_name,
         "username": username,
         "photo_id": cached["photo_id"],
+        "photo_count": cached["photo_count"],
         "bio": cached["bio"] or "لم يتم تعيينه",
     }
-
-
+    
 # =========================
 # GROUP STATS
 # =========================
@@ -431,3 +402,31 @@ def send_profile(message):
 
     except Exception as e:
         send_error_reply(message, send_error("send_profile", e))
+        
+
+
+def get_user_cached_data(user_id):
+
+    cached = get_cache(user_id)
+
+    if cached:
+        return cached
+
+    photos = bot.get_user_profile_photos(user_id)
+    user = bot.get_chat(user_id)
+
+    photo_id = None
+
+    if photos.total_count > 0:
+        photo_id = photos.photos[0][-1].file_id
+
+    data = {
+        "photo_id": photo_id,
+        "photo_count": photos.total_count,
+        "bio": getattr(user, "bio", None)
+    }
+
+    set_cache(user_id, data)
+
+    return data
+
