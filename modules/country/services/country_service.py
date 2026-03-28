@@ -261,7 +261,6 @@ class CountryService:
     @staticmethod
     def create_country_from_text(user_id, text):
 
-
         if not isinstance(text, str):
             return False, "تنسيق الأمر غير صالح"
 

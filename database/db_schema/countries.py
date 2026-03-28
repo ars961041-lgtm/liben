@@ -19,7 +19,7 @@ def create_countries_tables():
         happiness INTEGER DEFAULT 100,
         last_owner_time INTEGER,
         last_active INTEGER,
-        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (owner_id) REFERENCES users(user_id) ON DELETE SET NULL
     );
     ''')
     

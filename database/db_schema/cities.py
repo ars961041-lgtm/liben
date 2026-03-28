@@ -16,7 +16,7 @@ def create_cities_tables():
         level INTEGER DEFAULT 1,
         last_active INTEGER,
         UNIQUE(name, country_id),
-        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(user_id) ON DELETE SET NULL,
         FOREIGN KEY (country_id) REFERENCES countries(id) ON DELETE CASCADE
     );
     ''')

@@ -13,7 +13,7 @@ def create_buildings_table():
         building_type TEXT NOT NULL,
         quantity INTEGER DEFAULT 1,
         level INTEGER DEFAULT 1,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
         FOREIGN KEY (country_id) REFERENCES countries(id) ON DELETE CASCADE
     );
     ''')

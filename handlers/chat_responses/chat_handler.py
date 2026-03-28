@@ -61,13 +61,3 @@ def chat_responses(message):
     # ===== دينية =====
     elif "النبي" in text or "الرسول" in text:
         send_random(message, religious)
-
-    # ===== الردود الفكاهية العشوائية =====
-    elif any(word in text for word in funny):
-        send_random(message, funny)
-
-    # ===== الردود العشوائية للدردشة =====
-    else:
-        # هنا لو تحب ممكن تضيف ردود عشوائية عامة
-        if random.randint(1, 5) == 3:  # فرصة بسيطة للردود العشوائية
-            send_random(message, random_chat)
