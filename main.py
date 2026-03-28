@@ -9,6 +9,15 @@ from web.app import keep_alive
 from core.config import IS_TEST
 
 logging.basicConfig(level=logging.INFO)
+from handlers.members.welcome import welcome_member, left_member
+
+@bot.message_handler(content_types=["new_chat_members"])
+def welcome(message):
+    welcome_member(message)
+
+@bot.message_handler(content_types=["left_chat_member"])
+def left(message):
+    left_member(message)
 
 @bot.message_handler(func=lambda message: True)
 def replies(message):

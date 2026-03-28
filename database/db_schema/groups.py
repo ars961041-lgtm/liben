@@ -18,6 +18,7 @@ def create_groups_tables():
         message_count INTEGER DEFAULT 0,
         is_muted INTEGER DEFAULT 0,
         is_restricted INTEGER DEFAULT 0,
+        is_banned INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, group_id),
         FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
     );

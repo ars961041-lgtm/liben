@@ -19,3 +19,10 @@ def get_db_conn():
         _conn.row_factory = sqlite3.Row
 
     return _conn
+
+def close_db_conn():
+    global _conn
+
+    if _conn:
+        _conn.close()
+        _conn = None
