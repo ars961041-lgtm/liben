@@ -1,17 +1,37 @@
-# database/reset_db.py
-from core.config import DB_NAME
-from database.connection import close_db_conn
+from database.connection import get_db_conn
 from database.db_schema import create_all_tables
-import os
 
 def reset_database():
-    """تعيد إنشاء قاعدة البيانات كاملة"""
-    # اغلق الاتصال الحالي
-    close_db_conn()
+    conn = get_db_conn()
+    cursor = conn.cursor()
 
-    # احذف الملف القديم إذا موجود
-    if os.path.exists(DB_NAME):
-        os.remove(DB_NAME)
+    # 🔥 احذف كل الجداول
+    cursor.execute("PRAGMA foreign_keys = OFF")
 
-    # أنشئ جميع الجداول من جديد
+    cursor.execute("""
+        SELECT name FROM sqlite_master 
+        WHERE type='table'
+    """)
+
+    tables = cursor.fetchall()
+
+    for table in tables:
+        table_name = table[0]
+
+        # تجاهل جداول النظام
+        if table_name.startswith("sqlite_"):
+            continue
+
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+            print(f"🗑️ تم حذف الجدول: {table_name}")
+        except Exception as e:
+            print(f"❌ خطأ في حذف {table_name}:", e)
+
+    cursor.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+
+    # 🔥 إعادة إنشاء الجداول
     create_all_tables()
+
+    print("🚀 تم إعادة إنشاء قاعدة البيانات بالكامل")
