@@ -6,6 +6,7 @@ from database.db_schema import create_all_tables
 from handlers.callbacks import callback_query
 from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
+from core.config import IS_TEST
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,6 +43,9 @@ def start_bot():
 
 if __name__ == "__main__":
     print("✅ Bot is running...")
+
+    print("🧪 Running TEST bot" if IS_TEST else "🚀 Running MAIN bot")
+
 
     keep_alive()  # 🔥 مهم لـ Render
 

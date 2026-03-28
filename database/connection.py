@@ -1,14 +1,14 @@
 import sqlite3
-from core.config import is_test  
-_conn = None
+from core.config import DB_NAME
 
+_conn = None
 
 def get_db_conn():
     global _conn
 
     if _conn is None:
         _conn = sqlite3.connect(
-            "database_test.db" if is_test else "database.db",
+            DB_NAME,
             check_same_thread=False
         )
 

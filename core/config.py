@@ -1,14 +1,31 @@
 import os
-import time
-import threading
-import sqlite3
+from dotenv import load_dotenv
+load_dotenv()
+# =========================
+# MODE
+# =========================
+IS_TEST = os.environ.get("IS_TEST", "false").lower() == "true"
 
-TOKEN = os.environ.get("BOT_TOKEN")
-is_test = False
+# =========================
+# TOKENS
+# =========================
+if IS_TEST:
+    TOKEN = os.environ.get("TEST_TOKEN")
+else:
+    TOKEN = os.environ.get("BOT_TOKEN")
 
-# TOKEN = '8783291040:AAHK1DNtZNYA2lfnQqwjdX2cOvZhcO4MUuo'
-# is_test = True
+# =========================
+# DATABASE
+# =========================
+if IS_TEST:
+    DB_NAME = "test_database.db"
+else:
+    DB_NAME = "database.db"
 
+# =========================
+# OTHER
+# =========================
 developers_id = {7632471789}
-
 bot_name = "ليبن"
+
+print("🧪 TEST MODE" if IS_TEST else "🚀 PRODUCTION MODE")
