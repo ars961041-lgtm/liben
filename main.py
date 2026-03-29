@@ -7,9 +7,12 @@ from handlers.callbacks import callback_query
 from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
 from core.config import IS_TEST
-
-logging.basicConfig(level=logging.INFO)
 from handlers.members.welcome import welcome_member, left_member
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 @bot.message_handler(content_types=["new_chat_members"])
 def welcome(message):
