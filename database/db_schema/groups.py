@@ -15,7 +15,7 @@ def create_groups_tables():
     CREATE TABLE IF NOT EXISTS group_members (
         user_id INTEGER NOT NULL,
         group_id INTEGER NOT NULL,
-        message_count INTEGER DEFAULT 0,
+        messages_count INTEGER DEFAULT 0,
         is_muted INTEGER DEFAULT 0,
         is_restricted INTEGER DEFAULT 0,
         is_banned INTEGER DEFAULT 0,
@@ -26,12 +26,23 @@ def create_groups_tables():
     
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_group_members_group_msg
-    ON group_members(group_id, message_count DESC);
+    ON group_members(group_id, messages_count DESC);
     """)
     
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_group_members_user_group
     ON group_members(user_id, group_id);
+    """)
+    
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS group_punishment_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        action_type TINYINT NOT NULL, -- 0=حظر, 1=كتم, 2=تقييد, ... 
+        executor_id INTEGER NOT NULL, -- الشخص الذي نفذ العقوبة
+        timestamp INTEGER NOT NULL DEFAULT (strftime('%s','now')));
     """)
     
     conn.commit()

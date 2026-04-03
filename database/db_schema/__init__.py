@@ -1,33 +1,41 @@
+from database.db_schema.banks import create_banks_tables
+from database.db_schema.daily_tasks import create_daily_tasks_pool_table
 from .users import create_users_table
 from .groups import create_groups_tables
 from .countries import create_countries_tables
-from .facilities import create_facilities_tables
-from .cities import create_cities_tables
-from .buildings import create_buildings_table
 from .economy import create_economy_tables
-from .banks import create_banks_table
+from .assets import create_asset_tables
+from .war import create_war_tables
+from .alliances import create_alliance_tables
+from .advanced_war import create_advanced_war_tables
+from .live_battle import create_live_battle_tables
+from .war_economy import create_war_economy_tables
+from .war_balance import create_war_balance_tables
+from .war_extensions import create_war_extension_tables
+from .progression import create_progression_tables
 
 def create_all_tables():
-    # 1️⃣ المستخدمين والحسابات
+    # ─── admin_system يجب أن يكون أولاً لأن bot_constants يُستخدم في seed functions لاحقة ───
+    from database.db_schema.admin_system import create_admin_tables
+    create_admin_tables()
+
+    create_banks_tables()
     create_users_table()
-    create_banks_table()
-
-    # 2️⃣ المجموعات
     create_groups_tables()
-
-    # 3️⃣ القطاعات وأنواع المنشآت
-    create_facilities_tables()
-
-    # 4️⃣ الدول
-    create_countries_tables()
-
-    # 5️⃣ المدن والمرافق والميزانية والوحدات العسكرية
-    create_cities_tables()
-
-    # 6️⃣ المباني
-    create_buildings_table()
-
-    # 7️⃣ الاقتصاد العام
     create_economy_tables()
+    create_countries_tables()
+    create_asset_tables()
+    create_war_tables()
+    create_alliance_tables()
+    create_advanced_war_tables()
+    create_live_battle_tables()
+    create_war_economy_tables()
+    create_war_balance_tables()
+    create_war_extension_tables()
+    create_progression_tables()
+    create_daily_tasks_pool_table()
+
+    from modules.tickets.ticket_db import create_ticket_tables
+    create_ticket_tables()
 
     print("✅ تم إنشاء جميع جداول قاعدة البيانات بنجاح.")

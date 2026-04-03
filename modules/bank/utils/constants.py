@@ -1,17 +1,19 @@
 # ============================================
-# Bank Cooldowns (بالثواني)
+# Cooldowns (بالثواني)
 # ============================================
-
-SALARY_COOLDOWN_SEC = 600          # 10 دقائق
-DAILY_COOLDOWN_SEC = 86400          # 24 ساعة
-SMALL_TASK_COOLDOWN_SEC = 1800      # 30 دقيقة
-LIGHT_RISK_COOLDOWN_SEC = 1200      # 20 دقيقة
-INVEST_COOLDOWN_SEC = 1200          # 20 دقيقة
-
+SALARY_COOLDOWN = 86400          # 24 ساعة
+DAILY_COOLDOWN_SEC = 86400
+SMALL_TASK_COOLDOWN_SEC = 3600   # 1 ساعة
+RISK_COOLDOWN = 3600
+INVEST_COOLDOWN = 3600
 
 # ============================================
-# Salary Jobs
+# Salary
 # ============================================
+SALARY_AMOUNT = 500
+SALARY_MIN = 200
+SALARY_MAX = 600
+DAILY_SALARY_AMOUNT = 500
 
 JOBS = [
     ("مبرمج", "💻"),
@@ -26,10 +28,10 @@ JOBS = [
     ("ميكانيكي", "🔧"),
 ]
 
-
 # ============================================
 # Small Tasks
 # ============================================
+TASK_REWARDS = [50, 75, 100, 150]
 
 SMALL_TASKS = [
     "🚶 ساعدت شخصًا في عبور الطريق",
@@ -42,36 +44,29 @@ SMALL_TASKS = [
     "🍽 ساعدت في مطبخ مطعم",
 ]
 
-
-# ============================================
-# Investment Limits
-# ============================================
-
-MIN_INVEST_AMOUNT = 100
-MAX_INVEST_AMOUNT = 50000
-
-
-# ============================================
-# Risk System
-# ============================================
-
-LIGHT_RISK_WIN_CHANCE = 0.5
-
-LIGHT_RISK_MIN_AMOUNT = 100
-LIGHT_RISK_MAX_AMOUNT = 300
-
-
 # ============================================
 # Daily Reward
 # ============================================
-
+DAILY_REWARD = [100, 200, 300]
 DAILY_MIN_REWARD = 150
 DAILY_MAX_REWARD = 400
 
+# ============================================
+# Investment
+# ============================================
+INVEST_MIN = 100
+MIN_INVEST_AMOUNT = 100
+MAX_INVEST_AMOUNT = 50000
 
 # ============================================
-# Salary Range
+# Risk
 # ============================================
+RISK_RANGE = (-200, 500)
+LIGHT_RISK_WIN_CHANCE = 0.5
+LIGHT_RISK_MIN_AMOUNT = 100
+LIGHT_RISK_MAX_AMOUNT = 300
 
-SALARY_MIN = 200
-SALARY_MAX = 600
+# ============================================
+# Loans
+# ============================================
+MAX_LOAN_AMOUNT = 10000

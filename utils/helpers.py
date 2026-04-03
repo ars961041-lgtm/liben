@@ -1,8 +1,8 @@
-from core.config import developers_id
 from core.bot import bot
 from telebot import types
 import random
 from .constants import *
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # -------------------------------------------------------------- Get Shapes
 
@@ -59,9 +59,6 @@ def get_prev_icon():
 
 # -------------------------------------------------------------- checks
 
-def is_developer (user_id):
-  return user_id in developers_id
-
 # -------------------------------------------------------------- General Functions
 def send_error (fun_name, error):
   return f"Error in {fun_name} : \n<b>{str(error)}</b>"
@@ -72,16 +69,50 @@ def send_error_reply (msg, text):
   except Exception as e:
     bot.reply_to(send_error("send_error_relpy", e), parse_mode="HTML")
 
-def send_reply(msg, text, parse_html=True, reply_markup=None):
-  try:
-    bot.reply_to (
-      msg, 
-      get_section_dividers() + "<b>" + text + "</b>",
-      parse_mode="HTML" if parse_html else None,
-      reply_markup = reply_markup
-    )
-  except Exception as e:
-    bot.reply_to(send_error("send_reply", e), parse_mode="HTML")
+def send_reply(msg, text, parse_html=True, buttons=None):
+    """
+    إرسال رد على الرسالة الأصلية مع دعم الأزرار.
+    buttons: قائمة من القوائم [[("زر1", "cb_1"), ("زر2", "cb_2")], [...]]
+    """
+    try:
+        markup = None
+        if buttons:
+            markup = InlineKeyboardMarkup()
+            for row in buttons:
+                markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
+
+        bot.reply_to(
+            msg,
+            get_section_dividers() + "<b>" + text + "</b>",
+            parse_mode="HTML" if parse_html else None,
+            reply_markup=markup
+        )
+    except Exception as e:
+        try:
+            bot.reply_to(msg, f"❌ {str(e)}", parse_mode="HTML")
+        except Exception:
+            pass
+
+
+def send_message(chat_id, text, parse_html=True, buttons=None, reply_to_id=None):
+    """
+    إرسال رسالة جديدة (للبث والتنبيهات الحرجة فقط).
+    استخدم send_reply للردود العادية.
+    """
+    try:
+        markup = None
+        if buttons:
+            markup = InlineKeyboardMarkup()
+            for row in buttons:
+                markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
+
+        kwargs = {"parse_mode": "HTML" if parse_html else None, "reply_markup": markup}
+        if reply_to_id:
+            kwargs["reply_to_message_id"] = reply_to_id
+
+        bot.send_message(chat_id, text, **kwargs)
+    except Exception as e:
+        print(f"[send_message] error: {e}")
 
 def is_group (msg):
   if msg.chat.type in ["group", "supergroup"]:

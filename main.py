@@ -3,11 +3,13 @@ import time
 from core.bot import bot
 from handlers.replies import receive_responses
 from database.db_schema import create_all_tables
-from handlers.callbacks import callback_query
+from database.update_db import update_database
 from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
 from core.config import IS_TEST
 from handlers.members.welcome import welcome_member, left_member
+from database.daliy_tasks import run_daily_tasks
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,13 +31,6 @@ def replies(message):
     except Exception as e:
         print("Error in message handler:", e)
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query_handle(call):
-    try:
-        callback_query(call)
-    except Exception as e:
-        print("Error in callback handler:", e)
-
 def start_bot():
     while True:
         try:
@@ -54,13 +49,14 @@ def start_bot():
             time.sleep(5)
 
 if __name__ == "__main__":
+    
     print("✅ Bot is running...")
-
     print("🧪 Running TEST bot" if IS_TEST else "🚀 Running MAIN bot")
-
-
-    keep_alive()  # 🔥 مهم لـ Render
-
+    
+    keep_alive()
     create_all_tables()
-
+    update_database()
+    
+    run_daily_tasks()
+    
     start_bot()

@@ -1,21 +1,14 @@
 from database.connection import get_db_conn
 from database.db_queries import (
-    get_user_msgs,
-    get_user_balance,
     get_user_info,
     upsert_group_member,
-    get_top_group_members,
-    get_group_total_messages
 )
 from core.bot import bot
-from telebot import types
-from database.db_queries.groups_queries import get_group_stats
-from handlers.utils.cache import get_cache, set_cache
-from utils.helpers import limit_text, send_reply, send_error, get_error_icons, is_group, send_error_reply
+from database.db_queries.groups_queries import get_group_stats, get_group_total_messages
+from utils.helpers import limit_text, send_reply, send_error, is_group, send_error_reply
 import random
 import time
-from modules.country.keyboards.country_keyboard import create_gender_markup
-from utils.constants import right_arrows, lines
+from utils.constants import lines
 
 gender_emojis = {
   "male": ["🧔", "👨‍💼", "🦸‍♂️", "🕺"],
@@ -83,19 +76,6 @@ def send_account_info(message):
 def get_random_emoji(gender):
     return random.choice(gender_emojis.get(gender, gender_emojis["neutral"]))
 
-def ask_gender(msg):
-  try:
-    if not (is_group(msg)):
-      return
-
-    user_id = msg.from_user.id
-    markup = create_gender_markup(user_id)
-
-    send_reply(msg, "من فضلك اختر جنسك:", reply_markup=markup)
-
-  except Exception as e:
-    send_error_reply(msg, send_error(f"ask_gender", e))
-
 def send_gendered_welcome(msg, gender):
   try:
     group_name = msg.chat.title if is_group(msg) else None
@@ -118,25 +98,33 @@ def send_gendered_welcome(msg, gender):
 
 
 def send_welcome(message):
+    from core.personality import welcome_msg, send_with_delay
+    from core import memory as _mem
+    _mem.set_last_command(message.from_user.id, "/start")
+
+    from core.intelligence import get_suggestion_text
+    suggestion = get_suggestion_text(message.from_user.id)
+
     welcome_text = f"""
 {lines[4]}<b>
-مرحباً بك في بوت Liben! 🤖
+{welcome_msg()}
 
-هذا البوت مصمم لإدارة المدن والاقتصاد والتفاعل في المجموعات.
+مرحباً بك في بوت Liben! 🤖
 
 الأوامر المتاحة:
 - /start: لعرض هذه الرسالة
 - عني أو ايدي أو معلوماتي: لعرض معلوماتك الشخصية
-- توب المتفاعلين: لعرض أكثر 10 أعضاء تفاعلاً (في المجموعات فقط)
+- توب المتفاعلين: لعرض أكثر 10 أعضاء تفاعلاً
 - إنشاء دولة: لبدء إنشاء دولة جديدة
 - دولتي: لعرض معلومات دولتك
 - بنكي: لفتح قائمة البنك الذكية
-- إنشاء حساب بنكي: لبدء نظام Liben المالي
-
-استمتع بالتفاعل! 🚀
-</b>{lines[4]}
+- حرب: نظام الحرب المتقدم
+- تحالفي: نظام التحالفات
+- إبلاغ المطور: إرسال تذكرة دعم
+</b>{lines[4]}{suggestion}
 """
-    send_reply(message, welcome_text)
+    send_with_delay(message.chat.id, welcome_text, delay=0.5,
+                    reply_to=message.message_id)
 
 # =========================
 # LEVEL SYSTEM
@@ -168,13 +156,14 @@ def get_achievements(msg_count):
     return achievements
 
 
-def get_user_data(user_id, message):
+def get_user_data(user):
+    user_id = user.id
 
-    full_name = message.from_user.first_name + (
-        " " + message.from_user.last_name if message.from_user.last_name else ""
+    full_name = user.first_name + (
+        " " + user.last_name if user.last_name else ""
     )
 
-    username = message.from_user.username or None
+    username = user.username or None
 
     photos = bot.get_user_profile_photos(user_id)
 
@@ -184,37 +173,8 @@ def get_user_data(user_id, message):
 
     bio = None
     try:
-        user = bot.get_chat(user_id)
-        bio = getattr(user, "bio", None)
-    except:
-        pass
-
-    return {
-        "full_name": full_name,
-        "username": username,
-        "photo_id": photo_id,
-        "photo_count": photos.total_count,
-        "bio": bio or "لم يتم تعيينه",
-    }
- 
-def get_user_data(user_id, message):
-
-    full_name = message.from_user.first_name + (
-        " " + message.from_user.last_name if message.from_user.last_name else ""
-    )
-
-    username = message.from_user.username or None
-
-    photos = bot.get_user_profile_photos(user_id)
-
-    photo_id = None
-    if photos.total_count > 0:
-        photo_id = photos.photos[0][-1].file_id
-
-    bio = None
-    try:
-        user = bot.get_chat(user_id)
-        bio = getattr(user, "bio", None)
+        chat = bot.get_chat(user_id)
+        bio = getattr(chat, "bio", None)
     except:
         pass
 
@@ -240,15 +200,16 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
     caption += "\n"
 
     if group_stats:
+        level, next_level = calculate_level(group_stats["messages_count"])
+        achievements = get_achievements(group_stats["messages_count"])
+        msg_count = group_stats["messages_count"]
 
-        level, next_level = calculate_level(group_stats["msg_count"])
-        achievements = get_achievements(group_stats["msg_count"])
-
-        msg_count = group_stats["msg_count"]
+        total = get_group_total_messages(group_id) or 1
+        percentage = (msg_count / total) * 100
 
         caption += f"""📊 النشاط
 📨 الرسائل: {msg_count} / {next_level}
-📈 التفاعل: {group_stats['percentage']:.2f}٪
+📈 التفاعل: {percentage:.2f}٪
 🏅 الترتيب: {group_stats['rank']}
 
 ⭐ المستوى: {level}
@@ -259,6 +220,15 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
             for ach in achievements:
                 caption += f"{ach}\n"
 
+    # ─── اللقب الموسمي ───
+    try:
+        from modules.progression.seasons import get_latest_title
+        title = get_latest_title(user_id)
+        if title:
+            caption += f"\n🏆 اللقب الموسمي: {title}\n"
+    except Exception:
+        pass
+
     if user_data["bio"]:
         caption += f"\n📝 البايو: {user_data['bio']}"
 
@@ -266,23 +236,41 @@ def build_profile(user_id, group_id, user_data, group_stats=None):
 
     return caption
 
-def send_profile(message):
-
+def send_user_profile(message):
     try:
+        text = message.text.split()
 
-        user_id = message.from_user.id
+        # 1️⃣ الرد على رسالة
+        if message.reply_to_message:
+            target = message.reply_to_message.from_user
+
+        # 2️⃣ آيدي
+        elif len(text) > 1 and text[1].isdigit():
+            try:
+                target = bot.get_chat(int(text[1]))
+            except:
+                send_reply(message, "❌ لا يمكن جلب هذا المستخدم. قد يكون لم يبدأ محادثة مع البوت أو ليس في المجموعة.")
+                return
+
+        # 3️⃣ نفسه
+        else:
+            target = message.from_user
+
+        user_id = target.id
         chat_id = message.chat.id
 
-        user_data = get_user_data(user_id, message)
+        # جلب بيانات المستخدم
+        user_data = get_user_data(target)
 
         group_stats = None
         if is_group(message):
             group_stats = get_group_stats(user_id, chat_id)
 
+        # بناء البروفايل
         caption = build_profile(user_id, chat_id, user_data, group_stats)
 
+        # إرسال الصورة إذا موجودة، وإلا نص
         if user_data["photo_id"]:
-
             bot.send_photo(
                 chat_id,
                 user_data["photo_id"],
@@ -291,9 +279,8 @@ def send_profile(message):
                 reply_to_message_id=message.message_id,
                 has_spoiler=True
             )
-
         else:
             send_reply(message, caption)
 
     except Exception as e:
-        send_error_reply(message, send_error("send_profile", e))
+        send_error_reply(message, send_error("send_user_profile", e))

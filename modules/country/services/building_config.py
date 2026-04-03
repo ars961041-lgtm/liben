@@ -1,3 +1,8 @@
+# modules/country/services/building_config.py
+
+# -----------------------------
+# ⚙️ إعدادات المباني
+# -----------------------------
 BUILDING_CONFIG = {
     "hospital": {
         "name_ar": "مستشفى",
@@ -55,15 +60,26 @@ BUILDING_CONFIG = {
     }
 }
 
-def get_building_info(b_type):
-    return BUILDING_CONFIG.get(b_type, None)
+# -----------------------------
+# 🔍 جلب معلومات المبنى
+# -----------------------------
+def get_building_info(building_type: str):
+    """إرجاع إعدادات المبنى حسب نوعه"""
+    return BUILDING_CONFIG.get(building_type)
 
-def calculate_upgrade_cost(base_cost, current_level, cost_scale, target_level):
-    # calculate total cost from current_level to target_level
+# -----------------------------
+# 💰 حساب تكلفة الترقية من المستوى الحالي إلى المستوى المستهدف
+# -----------------------------
+def calculate_upgrade_cost(base_cost: float, current_level: int, cost_scale: float, target_level: int):
+    """تكلفة الترقية من current_level إلى target_level"""
     total_cost = 0
     for level in range(current_level, target_level):
         total_cost += base_cost * (cost_scale ** (level - 1))
     return round(total_cost)
 
-def calculate_buy_cost(base_cost, quantity):
+# -----------------------------
+# 💵 حساب تكلفة شراء عدد معين من المباني
+# -----------------------------
+def calculate_buy_cost(base_cost: float, quantity: int):
+    """تكلفة شراء عدد quantity من المباني"""
     return base_cost * quantity

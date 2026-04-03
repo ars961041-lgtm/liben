@@ -1,5 +1,7 @@
 from core.bot import bot
-from handlers.group_admin.permissions import can_delete_messages, can_pin_messages, is_admin
+from database.reset_db import reset_database
+from database.update_db import update_database
+from handlers.group_admin.permissions import can_delete_messages, can_pin_messages, is_admin, is_developer
 
 # ------------------------------------------------------------- Group Name & Bio
 
@@ -117,3 +119,21 @@ def pin_message(message):
 
     except Exception as e:
         bot.reply_to(message, f"<b>error in [pin_message]</b>\n{e}", parse_mode='HTML')
+              
+
+def reset_db(message):
+    if is_developer(message):
+        try:
+            reset_database()
+            bot.reply_to(message, "✅ تم إعادة إنشاء قاعدة البيانات بنجاح.")
+        except Exception as e:
+            bot.reply_to(message, f"🔥 حدث خطأ أثناء إعادة إنشاء القاعدة:\n{e}")
+
+def update_db(message):
+    if is_developer(message):
+        try:
+            update_database()
+            bot.reply_to(message, "✅ تم تحديث قاعدة البيانات بنجاح.")
+        except Exception as e:
+            bot.reply_to(message, f"🔥 حدث خطأ أثناء تحديث القاعدة:\n{e}")
+            

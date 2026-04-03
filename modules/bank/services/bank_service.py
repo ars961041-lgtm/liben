@@ -1,253 +1,168 @@
+# modules/bank/services/bank_services.py
 import random
-
+import time
 from database.db_queries.bank_queries import (
-    can_use_cooldown,
-    get_user_balance,
-    set_cooldown,
-    update_bank_balance,
-    create_bank_account as db_create_bank_account,
-    check_bank_account
+    check_bank_account, get_user_balance, update_bank_balance,
+    can_use_cooldown, set_cooldown,
+    create_loan, repay_loan, get_active_loans
 )
-
 from modules.bank.utils.constants import (
-    SALARY_COOLDOWN_SEC,
-    DAILY_COOLDOWN_SEC,
-    SMALL_TASK_COOLDOWN_SEC,
-    LIGHT_RISK_COOLDOWN_SEC,
-    INVEST_COOLDOWN_SEC,
-    JOBS,
-    SMALL_TASKS,
-)
-
-from modules.economy.services.economy_service import (
-    compute_inflation_index, 
-    get_inflation_index, 
-    adapt_salary_amount, 
-    adapt_investment_outcome, 
-    soft_cap_multiplier, 
-    event_generator, money_sink
+    SALARY_AMOUNT, SALARY_COOLDOWN,
+    TASK_REWARDS, DAILY_REWARD,
+    RISK_RANGE, RISK_COOLDOWN,
+    INVEST_MIN, INVEST_COOLDOWN
 )
 from utils.helpers import format_remaining_time
 
-
 # -------------------------------
-# Ensure bank account
+# ⚡️ الرواتب
 # -------------------------------
-
-def ensure_bank_account(user_id):
-    has_account, msg = check_bank_account(user_id)
-    if not has_account:
-        return False, msg
-    return True, None
-
-
-# -------------------------------
-# Create bank account
-# -------------------------------
-
-def create_bank_account(user_id):
-
-    has_account, msg = check_bank_account(user_id)
-
-    if has_account:
-        return False, "❌ لديك بالفعل حساب بنكي"
-
-    success = db_create_bank_account(user_id, initial_balance=1000.0)
-
-    if not success:
-        return False, "❌ حدث خطأ أثناء إنشاء الحساب"
-
-    return True, "🏦 تم إنشاء حساب بنكي بنجاح!\n💰 رصيدك الابتدائي: 1000 Liben"
-
-
-# -------------------------------
-# Salary
-# -------------------------------
-
-def salary(user_id, username):
-
-    ok, msg = ensure_bank_account(user_id)
+def salary(user_id, username=None):
+    ok, remain = can_use_cooldown(user_id, "salary", SALARY_COOLDOWN)
     if not ok:
-        return False, msg
-
-    can_use, remaining = can_use_cooldown(user_id, 'salary', SALARY_COOLDOWN_SEC)
-
-    if not can_use:
-        time_text = format_remaining_time(int(remaining))
-        return False, f"⏳ يمكنك استلام راتبك بعد {time_text}"
-
-    job, emoji = random.choice(JOBS)
-
-    compute_inflation_index()
-
-    base_amount = random.randint(200, 600)
-    amount = adapt_salary_amount(base_amount, user_id)
-
-    update_bank_balance(user_id, amount)
-
-    set_cooldown(user_id, 'salary')
-
-    balance = get_user_balance(user_id)
-
-    text = (
-        f"📥 إشعار إيداع\n"
-        f"👤 {username}\n"
-        f"💰 المبلغ: {amount:.2f} Liben\n"
-        f"💼 الوظيفة: {job} {emoji}\n"
-        f"🏦 رصيدك الحالي: {balance:.2f} Liben"
-    )
-
-    return True, text
-
+        return False, f"⏳ يمكنك أخذ الراتب بعد {format_remaining_time(remain)}"
+    update_bank_balance(user_id, SALARY_AMOUNT)
+    set_cooldown(user_id, "salary")
+    return True, f"💰 تم صرف راتبك اليومي: {SALARY_AMOUNT} Liben"
 
 # -------------------------------
-# Daily reward
+# 📝 المهام الصغيرة
 # -------------------------------
-
-def daily_reward(user_id):
-
-    ok, msg = ensure_bank_account(user_id)
-    if not ok:
-        return False, msg
-
-    can_use, remaining = can_use_cooldown(user_id, 'daily', DAILY_COOLDOWN_SEC)
-
-    if not can_use:
-        time_text = format_remaining_time(int(remaining))
-        return False, f"⏳ الجائزة اليومية بعد {time_text}"
-
-    amount = random.randint(150, 400)
-
-    update_bank_balance(user_id, amount)
-
-    set_cooldown(user_id, 'daily')
-
-    balance = get_user_balance(user_id)
-
-    text = (
-        f"🎁 الجائزة اليومية\n"
-        f"💰 ربحت: {amount} Liben\n"
-        f"🏦 رصيدك: {balance:.2f} Liben"
-    )
-
-    return True, text
-
-
-# -------------------------------
-# Small task
-# -------------------------------
-
 def small_task(user_id):
-
-    ok, msg = ensure_bank_account(user_id)
+    ok, remain = can_use_cooldown(user_id, "small_task", 3600)
     if not ok:
-        return False, msg
-
-    can_use, remaining = can_use_cooldown(user_id, 'small_task', SMALL_TASK_COOLDOWN_SEC)
-
-    if not can_use:
-        time_text = format_remaining_time(int(remaining))
-        return False, f"⏳ يمكنك تنفيذ مهمة بعد {time_text}"
-
-    task = random.choice(SMALL_TASKS)
-    reward = random.randint(50, 150)
-
+        return False, f"⏳ يمكنك عمل مهمة أخرى بعد {format_remaining_time(remain)}"
+    reward = random.choice(TASK_REWARDS)
     update_bank_balance(user_id, reward)
-
-    set_cooldown(user_id, 'small_task')
-
-    balance = get_user_balance(user_id)
-
-    text = (
-        f"🛠 مهمة صغيرة\n"
-        f"{task}\n"
-        f"💰 المكافأة: {reward} Liben\n"
-        f"🏦 رصيدك: {balance:.2f} Liben"
-    )
-
-    return True, text
-
+    set_cooldown(user_id, "small_task")
+    return True, f"📝 أنهيت المهمة وحصلت على: {reward} Liben"
 
 # -------------------------------
-# Light risk
+# 🎁 المكافأة اليومية
 # -------------------------------
+def daily_reward(user_id):
+    ok, remain = can_use_cooldown(user_id, "daily", 86400)
+    if not ok:
+        return False, f"⏳ يمكنك أخذ المكافأة اليومية بعد {format_remaining_time(remain)}"
+    reward = random.choice(DAILY_REWARD)
+    update_bank_balance(user_id, reward)
+    set_cooldown(user_id, "daily")
+    return True, f"🎁 حصلت على مكافأتك اليومية: {reward} Liben"
 
+# -------------------------------
+# 🎲 المخاطرة الخفيفة
+# -------------------------------
 def light_risk(user_id):
-
-    ok, msg = ensure_bank_account(user_id)
+    ok, remain = can_use_cooldown(user_id, "light_risk", RISK_COOLDOWN)
     if not ok:
-        return False, msg
-
-    can_use, remaining = can_use_cooldown(user_id, 'light_risk', LIGHT_RISK_COOLDOWN_SEC)
-
-    if not can_use:
-        time_text = format_remaining_time(int(remaining))
-        return False, f"⏳ حاول لاحقًا بعد {time_text}"
-
-    win = random.choice([True, False])
-
-    amount = random.randint(100, 300)
-
-    if win:
-        update_bank_balance(user_id, amount)
-        result = f"🎲 ربحت {amount} Liben!"
-    else:
-        update_bank_balance(user_id, -amount)
-        result = f"💸 خسرت {amount} Liben!"
-
-    set_cooldown(user_id, 'light_risk')
-
-    balance = get_user_balance(user_id)
-
-    text = (
-        f"⚡ مخاطرة بسيطة\n"
-        f"{result}\n"
-        f"🏦 رصيدك: {balance:.2f} Liben"
-    )
-
-    return True, text
-
+        return False, f"⏳ يمكنك تجربة المخاطرة بعد {format_remaining_time(remain)}"
+    change = random.randint(*RISK_RANGE)
+    update_bank_balance(user_id, change)
+    set_cooldown(user_id, "light_risk")
+    if change >= 0:
+        return True, f"🎲 نجاح المخاطرة! ربحت {change} Liben"
+    return True, f"🎲 فشلت المخاطرة! خسرت {-change} Liben"
 
 # -------------------------------
-# Invest
+# 📈 الاستثمار
 # -------------------------------
-def invest(user_id, amount):
-    ok, msg = ensure_bank_account(user_id)
+def invest(user_id, amount=None):
+    ok, remain = can_use_cooldown(user_id, "invest", INVEST_COOLDOWN)
     if not ok:
-        return False, msg
-
-    can_use, remaining = can_use_cooldown(user_id, 'invest', INVEST_COOLDOWN_SEC)
-    if not can_use:
-        time_text = format_remaining_time(int(remaining))
-        return False, f"⏳ يمكنك الاستثمار بعد {time_text}"
+        return False, f"⏳ يمكنك الاستثمار بعد {format_remaining_time(remain)}"
 
     balance = get_user_balance(user_id)
+    if amount is None or amount > balance:
+        amount = balance
+    if amount < INVEST_MIN:
+        return False, f"❌ الحد الأدنى للاستثمار {INVEST_MIN} Liben"
 
-    if amount is None or amount <= 0:
-        return False, "❌ اكتب المبلغ الذي تريد استثماره بشكل صحيح"
+    outcome = random.choices(["profit", "loss"], weights=[0.65, 0.35])[0]
+    percent = random.uniform(0.05, 0.2)
+    change = round(amount * percent, 2)
+    if outcome == "loss":
+        change = -change
+    update_bank_balance(user_id, change)
+    set_cooldown(user_id, "invest")
+    if change >= 0:
+        return True, f"📈 استثمار ناجح! ربحت {change} Liben"
+    return True, f"📉 استثمار خاسر! خسرت {-change} Liben"
 
+# -------------------------------
+# 💵 القروض
+# -------------------------------
+def take_loan(user_id, amount):
+    return create_loan(user_id, amount)
+
+def repay_user_loan(user_id, loan_id, amount):
+    return repay_loan(user_id, loan_id, amount)
+
+def list_loans(user_id):
+    loans = get_active_loans(user_id)
+    if not loans:
+        return "❌ ليس لديك أي قروض نشطة"
+    text = "💳 القروض النشطة:\n\n"
+    for l in loans:
+        loan_id, amount, interest, due_date, repaid = l[0], l[1], l[2], l[3], l[4]
+        total_due = round(amount * (1 + interest), 2)
+        remaining = round(total_due - repaid, 2)
+        import time as _time
+        text += (
+            f"🔹 قرض #{loan_id}\n"
+            f"   المبلغ الأصلي: {amount} Liben\n"
+            f"   الفائدة: {interest*100:.0f}%\n"
+            f"   إجمالي المستحق: {total_due} Liben\n"
+            f"   المسدد: {repaid} Liben\n"
+            f"   المتبقي: {remaining} Liben\n"
+            f"   الموعد النهائي: {_time.strftime('%Y-%m-%d', _time.localtime(due_date))}\n\n"
+        )
+    text += "للتسديد: تسديد القرض [رقم القرض] [المبلغ]"
+    return text
+
+# -------------------------------
+# 🏙 مشتريات حسب المدينة
+# -------------------------------
+def purchase_in_city(user_id, building_name, price):
+    from database.db_queries.cities_queries import get_user_city
+    city = get_user_city(user_id)
+    if not city:
+        return False, "❌ يجب أن تكون داخل مدينة للشراء"
+    update_bank_balance(user_id, -price)
+    return True, f"🏗 تم شراء {building_name} في {city['name']} مقابل {price} Liben"
+
+# -------------------------------
+# ⚡️ Precheck قبل التنفيذ
+# -------------------------------
+def can_purchase(user_id, price):
+    from database.db_queries.cities_queries import get_user_city
+    balance = get_user_balance(user_id)
+    if balance < price:
+        return False, f"❌ رصيدك لا يكفي ({balance:.2f} Liben)"
+    city = get_user_city(user_id)
+    if not city:
+        return False, "❌ يجب أن تكون داخل مدينة للشراء"
+    return True, ""
+
+def can_risk(user_id):
+    balance = get_user_balance(user_id)
+    if balance <= 0:
+        return False, "❌ لا يمكن المخاطرة برصيد صفر أو أقل"
+    return True, ""
+
+def can_invest(user_id, amount):
+    balance = get_user_balance(user_id)
+    if amount is None:
+        amount = balance
+    if amount < INVEST_MIN:
+        return False, f"❌ الحد الأدنى للاستثمار {INVEST_MIN} Liben"
     if amount > balance:
-        return False, "❌ ليس لديك رصيد كافٍ"
+        return False, f"❌ رصيدك لا يكفي ({balance:.2f} Liben)"
+    return True, ""
 
-    # حساب الربح أو الخسارة
-    profit = round(amount * random.uniform(-0.3, 0.6), 2)
-    update_bank_balance(user_id, profit)
-    set_cooldown(user_id, 'invest')
-    new_balance = get_user_balance(user_id)
+def can_take_loan(user_id, amount):
+    if amount < 0:
+        return False, "❌ لا يمكن أخذ قرض بالسالب"
+    return True, ""
 
-    # رسالة ذكية حسب النتيجة
-    if profit > 0:
-        result_text = f"🎉 مبروك! ربحت {profit:.2f} Liben من استثمارك 💰"
-    elif profit < 0:
-        result_text = f"😢 للأسف خسرت {abs(profit):.2f} Liben. لا تيأس، حاول مرة أخرى!"
-    else:
-        result_text = "😐 لم تربح أو تخسر شيئًا هذه المرة، حاول مرة أخرى!"
-
-    # نص كامل للمستخدم
-    text = (
-        f"📊 نتيجة الاستثمار\n"
-        f"{result_text}\n"
-        f"🏦 رصيدك الحالي: {new_balance:.2f} Liben"
-    )
-
-    return True, text
+def repay_user_loan(user_id, loan_id, amount):
+    return repay_loan(user_id, loan_id, amount)

@@ -1,8 +1,8 @@
 # core/permissions.py
 from core.config import developers_id
 
-def is_developer(user_id: int) -> bool:
-    return user_id in developers_id
+def is_developer(message):
+    return message.from_user.id in developers_id
 
 from core.bot import bot
 
