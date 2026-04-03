@@ -14,6 +14,7 @@ from handlers.group_admin.restrictions import (
 )
 from handlers.misc.time_date import today_date, today_time
 from handlers.games.games_handler import games_command
+from handlers.games.entertainment_games import entertainment_games_command
 from handlers.tops.tops_handler import top_commands
 from handlers.users import add_user_if_not_exists, send_user_profile, send_welcome, track_group_members
 from modules.bank.commands.bank_commands import bank_commands
@@ -28,6 +29,7 @@ from core.admin import is_muted_anywhere, is_any_dev
 from handlers.group_admin.developer.admin_panel import handle_admin_input, open_admin_panel
 from handlers.group_admin.developer.dev_guide import open_dev_guide
 from handlers.group_admin.developer.dev_store import open_dev_store, handle_dev_store_input
+from modules.formatting.format_handler import handle_format_command, handle_format_guide
 
 # =========================
 # ⏹️ أوامر ثابتة
@@ -108,9 +110,11 @@ def receive_responses(message):
     # =========================
     if normalized_text == "/start":
         send_welcome(message)
+        return
     
     if normalized_text == "المطور":
         show_developer(message)
+        return
 
     # -------------------------
     # 🏦 أوامر البنك
@@ -122,6 +126,9 @@ def receive_responses(message):
     # 🎮 الألعاب
     # -------------------------
     elif games_command(message):
+        return
+
+    elif entertainment_games_command(message):
         return
 
     # -------------------------
@@ -157,6 +164,12 @@ def receive_responses(message):
     elif normalized_text in ["كم الساعة", "كم الساعه", "الساعة كم", "الساعه كم", "الوقت"]:
         today_time(message)
 
+    # -------------------------
+    # ✨ التنسيق
+    # -------------------------
+    elif handle_format_command(message) or handle_format_guide(message):
+        return
+    
     # -------------------------
     # ⚔️ نظام الحرب
     # -------------------------
@@ -203,6 +216,15 @@ def receive_responses(message):
     # ─── الموسم ───
     elif normalized_text in ["الموسم", "موسم"]:
         _show_season(message)
+        return
+
+    # ─── التنسيق الذكي ───
+    elif normalized_text == "تنسيق":
+        handle_format_command(message)
+        return
+
+    elif normalized_text in ["شرح تنسيق", "دليل التنسيق"]:
+        handle_format_guide(message)
         return
 
     # ─── تحديث جروب البوت ───

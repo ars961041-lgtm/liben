@@ -69,7 +69,7 @@ def send_error_reply (msg, text):
   except Exception as e:
     bot.reply_to(send_error("send_error_relpy", e), parse_mode="HTML")
 
-def send_reply(msg, text, parse_html=True, buttons=None):
+def send_reply(msg, text, parse_html=True, buttons=None, Shape = True):
     """
     إرسال رد على الرسالة الأصلية مع دعم الأزرار.
     buttons: قائمة من القوائم [[("زر1", "cb_1"), ("زر2", "cb_2")], [...]]
@@ -83,7 +83,7 @@ def send_reply(msg, text, parse_html=True, buttons=None):
 
         bot.reply_to(
             msg,
-            get_section_dividers() + "<b>" + text + "</b>",
+            get_section_dividers() if Shape else "" + "<b>" + text + "</b>",
             parse_mode="HTML" if parse_html else None,
             reply_markup=markup
         )

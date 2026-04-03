@@ -2,6 +2,7 @@
 معالج الألعاب — قائمة الألعاب مع دليل شامل لكل لعبة
 """
 from core.bot import bot
+from database.db_queries.bank_queries import update_bank_balance
 from handlers.games.games_data import GAMES
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.constants import lines

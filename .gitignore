@@ -3,7 +3,5 @@ __pycache__/
 .DS_Store
 .env
 /docs/
-/PROJECT_STRUCTURE.md
-/test_database.db
-/test_database.db-shm
-/test_database.db-wal
+*.md
+*.db
