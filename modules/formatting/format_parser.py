@@ -131,15 +131,18 @@ class _Parser:
     def _process_line(self, line: str) -> str:
         """
         يعالج سطراً واحداً: يبحث عن الوسوم ويحوّلها.
+
+        الإصلاح: نمط البحث يطابق الوسم فقط (#tag#) بدون التقاط ما بعده.
+        وسوم #a# و #m# تستهلك باقي السطر يدوياً بعد اكتشافها،
+        بينما الوسوم البسيطة تترك pos بعد الوسم مباشرة فتحتفظ بالنص التالي.
         """
         out   = []
         pos   = 0
         stack = self.stack   # مشترك مع كامل المحلل
 
-        # نمط الوسوم في السطر
-        for m in re.finditer(r"#([a-z]+)#(?:[ \t]+(.+))?", line):
+        # ── نمط يطابق الوسم فقط — بدون التقاط ما بعده ──
+        for m in re.finditer(r"#([a-z]+)#", line):
             tag_key = m.group(1)
-            inline  = (m.group(2) or "").strip()
 
             # ── نص قبل الوسم ──
             before = line[pos:m.start()]
@@ -147,15 +150,19 @@ class _Parser:
                 out.append(html.escape(before))
             pos = m.end()
 
-            # ── وسم رابط ──
+            # ── وسم رابط: يستهلك باقي السطر من pos ──
             if tag_key == "a":
+                inline = line[pos:].strip()
+                pos    = len(line)          # استهلك كل ما تبقى
                 out.append(self._parse_link(inline))
-                continue
+                break                       # لا يوجد شيء بعده في هذا السطر
 
-            # ── وسم إشارة مستخدم ──
+            # ── وسم إشارة مستخدم: يستهلك باقي السطر من pos ──
             if tag_key == "m":
+                inline = line[pos:].strip()
+                pos    = len(line)
                 out.append(self._parse_mention(inline))
-                continue
+                break
 
             # ── وسم بسيط ──
             if tag_key not in SIMPLE_TAGS:
@@ -179,7 +186,6 @@ class _Parser:
                     self.warnings.append(
                         f"⚠️ ترتيب وسوم خاطئ عند #{tag_key}# — تم التصحيح تلقائياً."
                     )
-                    # أغلق الوسوم الأحدث أولاً
                     while stack and stack[-1] != tag_key:
                         inner = stack.pop()
                         _, inner_close, _ = SIMPLE_TAGS[inner]
@@ -188,7 +194,7 @@ class _Parser:
                         stack.pop()
                         out.append(close_html)
 
-        # ── ما تبقى من السطر ──
+        # ── ما تبقى من السطر بعد آخر وسم ──
         tail = line[pos:]
         if tail:
             out.append(html.escape(tail))

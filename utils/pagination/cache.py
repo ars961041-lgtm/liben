@@ -4,7 +4,7 @@ import uuid
 
 _CACHE = {}
 _CACHE_LOCK = threading.Lock()
-CACHE_TTL = 43200  # 12 ساعة
+CACHE_TTL = 7200  # 2 ساعة
 
 def store_cache(user_id: int, chat_id: int, payload: dict, owner=None) -> str:
     key = uuid.uuid4().hex[:12]

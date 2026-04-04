@@ -42,6 +42,9 @@ def chat_responses(message):
     elif text in BYE:
         send_random(message, bye_responses)
 
+    elif text in FAREWELL_RESPONSES:
+        send_random(message, farewell_responses)
+        
     # ===== مناداة البوت =====
     elif text in BOT:
         send_random(message, bot_responses)
@@ -70,9 +73,9 @@ def chat_responses(message):
         
     elif text in WHERE:
         send_random(message, where_responses)
-        
-    elif text in COME:
-        send_random(message, came_responses)
+
+    elif text in ARRIVAL_WORDS_RESPONSES:
+        send_random(message, arrival_words_responses)
         
     elif text in PRIVATE:
         send_random(message, private_responses)

@@ -1,82 +1,76 @@
-import html
+# import html
 
-from utils.helpers import send_reply
+# from utils.helpers import send_reply
 
+# SHORTCUTS = {
+#     "#b#": ("<b>", "</b>"),
+#     "#i#": ("<i>", "</i>"),
+#     "#u#": ("<u>", "</u>"),
+#     "#s#": ("<s>", "</s>"),
+#     "#sp#": ("<tg-spoiler>", "</tg-spoiler>"),
+#     "#q#": ("<blockquote>", "</blockquote>")
+# }
 
+# def _parse(text: str) -> str:
+#     result = ""
+#     stack = []
+#     i = 0
+#     while i < len(text):
+#         matched = False
+#         for key, (open_tag, close_tag) in SHORTCUTS.items():
+#             if text[i:i+len(key)] == key:
+#                 if stack and stack[-1] == key:
+#                     result += close_tag
+#                     stack.pop()
+#                 else:
+#                     result += open_tag
+#                     stack.append(key)
+#                 i += len(key)
+#                 matched = True
+#                 break
+#         if not matched:
+#             result += text[i]
+#             i += 1
 
-SHORTCUTS = {
-    "#b#": ("<b>", "</b>"),
-    "#i#": ("<i>", "</i>"),
-    "#u#": ("<u>", "</u>"),
-    "#s#": ("<s>", "</s>"),
-    "#sp#": ("<tg-spoiler>", "</tg-spoiler>"),
-    "#q#": ("<blockquote>", "</blockquote>")
-}
+#     # أغلق أي اختصارات مفتوحة
+#     while stack:
+#         key = stack.pop()
+#         result += SHORTCUTS[key][1]
 
+#     return result
 
-def _parse(text: str):
+# def format_command(message):
 
-    lines = text.split("\n")
-    result = []
-    stack = []
+#     text = message.text.strip()
 
-    for line in lines:
+#     if text != "تنسيق":
+#         return False
 
-        stripped = line.strip()
+#     if not message.reply_to_message:
+#         from core.bot import bot
+#         bot.reply_to(message, "❌ يجب الرد على رسالة")
+#         return True
 
-        if stripped in SHORTCUTS:
+#     target = message.reply_to_message.text
 
-            open_tag, close_tag = SHORTCUTS[stripped]
+#     if not target:
+#         return True
 
-            if stack and stack[-1] == stripped:
-                result.append(close_tag)
-                stack.pop()
-            else:
-                result.append(open_tag)
-                stack.append(stripped)
+#     html_text = _parse(target)
 
-            continue
+#     from core.bot import bot
 
-        result.append(html.escape(line))
+#     try:
 
-    while stack:
-        key = stack.pop()
-        result.append(SHORTCUTS[key][1])
+#         bot.send_message(
+#             message.chat.id,
+#             html_text,
+#             parse_mode="HTML"
+#         )
+        
+#         # send_reply(msg=message, text=html_text, parse_html=True, Shape=False)
 
-    return "\n".join(result)
+#     except:
+#         bot.reply_to(message, "❌ فشل التنسيق")
 
-
-def format_command(message):
-
-    text = message.text.strip()
-
-    if text != "تنسيق":
-        return False
-
-    if not message.reply_to_message:
-        from core.bot import bot
-        bot.reply_to(message, "❌ يجب الرد على رسالة")
-        return True
-
-    target = message.reply_to_message.text
-
-    if not target:
-        return True
-
-    html_text = _parse(target)
-
-    from core.bot import bot
-
-    try:
-
-        # bot.send_message(
-        #     message.chat.id,
-        #     html_text,
-        #     parse_mode="HTML"
-        # )
-        send_reply(msg=message, text=html_text, parse_html=True, Shape=False)
-
-    except:
-        bot.reply_to(message, "❌ فشل التنسيق")
-
-    return True
+#     return True

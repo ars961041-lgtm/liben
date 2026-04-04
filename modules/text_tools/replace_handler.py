@@ -24,9 +24,9 @@ def handle_replace_command(message) -> bool:
             "رد على الرسالة التي تريد تعديلها بـ:\n"
             "<code>تعديل كلمة كلمة</code>\n"
             "أو:\n"
-            "<code>تعديل |النص القديم| |النص الجديد|</code>\n"
+            "<code>تعديل |</code>النص القديم<code>|</code> <code>|</code>النص الجديد<code>|</code>\n"
             "أو مع عدد:\n"
-            "<code>تعديل |قديم| |جديد| 2</code>",
+            "<code>تعديل |</code>قديم| |جديد<code>|</code> 2",
             parse_mode="HTML",
         )
         return True
@@ -35,12 +35,13 @@ def handle_replace_command(message) -> bool:
     if parsed is None:
         bot.reply_to(
             message,
-            "❌ <b>صيغة خاطئة</b>\n\n"
-            "الصيغة الصحيحة:\n"
-            "<code>تعديل [قديم] [جديد]</code>\n"
-            "<code>تعديل [قديم] [جديد] [عدد]</code>\n\n"
-            "مثال: <code>تعديل من منِ</code>\n"
-            "مثال: <code>تعديل من منِ 2</code>",
+             "❌ <b>استخدام خاطئ</b>\n\n"
+            "رد على الرسالة التي تريد تعديلها بـ:\n"
+            "<code>تعديل كلمة كلمة</code>\n"
+            "أو:\n"
+            "<code>تعديل |النص القديم| |النص الجديد|</code>\n"
+            "أو مع عدد:\n"
+            "<code>تعديل |قديم| |جديد| 2</code>",
             parse_mode="HTML",
         )
         return True
