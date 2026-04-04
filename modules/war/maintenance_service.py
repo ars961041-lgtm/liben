@@ -211,18 +211,21 @@ def get_alliance_support_leaderboard(alliance_id: int) -> list:
     """يرجع ترتيب الداعمين في التحالف"""
     conn = get_db_conn()
     cursor = conn.cursor()
+
     cursor.execute("""
-        SELECT ass.user_id, ass.battles_supported,
-               ass.total_power_contributed, ass.resource_sent,
-               COALESCE(u.name, 'مجهول') AS name
+        SELECT 
+            ass.user_id,
+            ass.battles_supported,
+            ass.total_power_contributed,
+            ass.resource_sent,
+            COALESCE(un.name, 'مجهول') AS name
         FROM alliance_support_stats ass
-        LEFT JOIN users u ON ass.user_id = u.user_id
+        LEFT JOIN users_name un ON ass.user_id = un.user_id
         WHERE ass.alliance_id = ?
         ORDER BY ass.total_power_contributed DESC
     """, (alliance_id,))
+
     return [dict(r) for r in cursor.fetchall()]
-
-
 # ══════════════════════════════════════════
 # 🔔 تحذيرات الصيانة
 # ══════════════════════════════════════════

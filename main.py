@@ -8,7 +8,7 @@ from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
 from core.config import IS_TEST
 from handlers.members.welcome import welcome_member, left_member
-from database.daliy_tasks import run_daily_tasks
+from database.daily_tasks import run_daily_tasks
 
 
 logging.basicConfig(

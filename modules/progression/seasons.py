@@ -242,15 +242,19 @@ def get_season_history(limit: int = 5) -> list:
 def get_season_leaderboard(season_id: int, category: str = "battles") -> list:
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT sh.*, COALESCE(u.name, 'مجهول') AS user_name
-        FROM season_history sh
-        LEFT JOIN users u ON sh.user_id = u.user_id
-        WHERE sh.season_id = ? AND sh.category = ?
-        ORDER BY sh.rank ASC LIMIT 10
-    """, (season_id, category))
-    return [dict(r) for r in cursor.fetchall()]
 
+    cursor.execute("""
+        SELECT 
+            sh.*, 
+            COALESCE(un.name, 'مجهول') AS user_name
+        FROM season_history sh
+        LEFT JOIN users_name un ON sh.user_id = un.user_id
+        WHERE sh.season_id = ? AND sh.category = ?
+        ORDER BY sh.rank ASC 
+        LIMIT 10
+    """, (season_id, category))
+
+    return [dict(r) for r in cursor.fetchall()]
 
 def _notify_title(user_id: int, title: str, season_id: int):
     try:
