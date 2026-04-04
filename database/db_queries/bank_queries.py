@@ -17,9 +17,9 @@ def create_bank_account(user_id, initial_balance=None):
     if initial_balance is None:
         try:
             from core.admin import get_const_int
-            initial_balance = get_const_int("initial_balance", 1000)
+            initial_balance = get_const_int("initial_balance", 10000)
         except Exception:
-            initial_balance = 1000
+            initial_balance = 10000
     conn = get_db_conn()
     cursor = conn.cursor()
     try:

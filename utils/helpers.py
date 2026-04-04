@@ -3,7 +3,30 @@ from telebot import types
 import random
 from .constants import *
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from core.config import bot_name
 
+
+def get_bot_username() -> str:
+    """يجلب username البوت ديناميكياً ويخزنه مؤقتاً."""
+    try:
+        import core.bot as _cb
+        if not getattr(_cb, "bot_username", None):
+            _cb.bot_username = bot.get_me().username
+        return _cb.bot_username or ""
+    except Exception:
+        return ""
+
+
+def get_bot_link():
+    username = get_bot_username()
+    name = bot_name
+
+    # بناء رابط البوت
+    if username:
+        return f'<a href="https://t.me/{username}">{name}</a>'
+    else:
+        return f"<b>{name}</b>"
+      
 # -------------------------------------------------------------- Get Shapes
 
 def get_section_dividers():

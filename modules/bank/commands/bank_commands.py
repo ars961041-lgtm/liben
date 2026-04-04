@@ -37,7 +37,7 @@ def bank_commands(message):
         else:
             create_bank_account(user_id)
             from core.admin import get_const_int
-            bal = get_const_int("initial_balance", 1000)
+            bal = get_const_int("initial_balance", 10000)
             bot.reply_to(message, f"✅ تم إنشاء حسابك البنكي برصيد {bal:,} Liben")
         return True
 

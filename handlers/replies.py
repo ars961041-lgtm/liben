@@ -25,11 +25,19 @@ from modules.war.handlers.advanced_war_handler import handle_war_text_commands
 from modules.alliances.alliance_commands import alliance_commands
 from modules.tickets.ticket_callbacks import handle_ticket_commands, handle_ticket_media
 from core import memory, intelligence
-from core.admin import is_muted_anywhere, is_any_dev
+from core.admin import is_muted_anywhere, is_any_dev, is_globally_muted, is_group_muted
 from handlers.group_admin.developer.admin_panel import handle_admin_input, open_admin_panel
 from handlers.group_admin.developer.dev_guide import open_dev_guide
 from handlers.group_admin.developer.dev_store import open_dev_store, handle_dev_store_input
 from modules.formatting.format_handler import handle_format_command, handle_format_guide
+from modules.text_tools.replace_handler import handle_replace_command
+from modules.content_hub.hub_handler import (
+    handle_content_command, handle_add_content_command, handle_hub_input
+)
+from modules.quran.quran_handler import (
+    handle_quran_commands, handle_dev_quran_input
+)
+from handlers.group_admin.developer.dev_control_panel import handle_developer_input
 
 # =========================
 # ⏹️ أوامر ثابتة
@@ -51,13 +59,32 @@ def receive_responses(message):
     add_user_if_not_exists(message)
     track_group_members(message)
 
-    # تجاهل الرسائل المكتمة (النظام القديم)
-    if handle_muted_users(message):
+    # ─── القرآن — إدخال نصي للمطورين ───
+    handle_dev_quran_input(message)
+    # ─── أوامر الكتم العالمي النصية ───
+    
+    if message.text.startswith("كتم عالمي ") and is_any_dev(message.from_user.id):
+        _handle_global_mute_cmd(message)
         return
 
-    # ─── فحص الكتم العالمي والمجموعة (النظام الجديد) ───
-    chat_id_check = message.chat.id if message.chat.type != "private" else None
-    if is_muted_anywhere(message.from_user.id, chat_id_check):
+    elif message.text.startswith("رفع كتم عالمي ") and is_any_dev(message.from_user.id):
+        _handle_global_unmute_cmd(message)
+        return
+    
+    # تجاهل الرسائل المكتمة (النظام القديم)
+    elif handle_muted_users(message):
+        return
+
+    # ─── فحص الكتم العالمي — يُطبَّق في كل المجموعات بغض النظر عن مصدر الكتم ───
+    if is_globally_muted(message.from_user.id):
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception:
+            pass
+        return
+
+    # ─── فحص الكتم في المجموعة المحددة ───
+    if message.chat.type != "private" and is_group_muted(message.from_user.id, message.chat.id):
         try:
             bot.delete_message(message.chat.id, message.message_id)
         except Exception:
@@ -67,11 +94,6 @@ def receive_responses(message):
     # ─── تتبع الذاكرة ───
     user_id = message.from_user.id
     memory.set_last_interaction(user_id, message.chat.type)
-
-    # ─── معالجة الوسائط (صور، ملفات، إلخ) للتذاكر ───
-    # if not message.text:
-    #     handle_ticket_media(message)
-    #     return
 
     text = message.text.strip()
     if not text:
@@ -89,6 +111,14 @@ def receive_responses(message):
 
     # ─── متجر المطورين ───
     if handle_dev_store_input(message):
+        return
+
+# ─── لوحة تحكم المطور — إدخال نصي ───
+    if handle_developer_input(message):
+        return
+
+      # ─── مركز المحتوى — إدخال نصي (تعديل / إضافة) ───
+    if handle_hub_input(message):
         return
 
     # ─── تسجيل الأمر في الذاكرة ───
@@ -227,6 +257,24 @@ def receive_responses(message):
         handle_format_guide(message)
         return
 
+    # ─── الاستبدال الذكي ───
+    elif text.startswith("تعديل "):
+        handle_replace_command(message)
+        return
+
+    # ─── نظام إنجاز القرآن ───
+    elif handle_quran_commands(message):
+        return
+
+    # ─── مركز المحتوى — إضافة (مطورون) ───
+    elif text.startswith("اضف "):
+        if handle_add_content_command(message):
+            return
+
+    # ─── مركز المحتوى — عرض ───
+    elif handle_content_command(message):
+        return
+
     # ─── تحديث جروب البوت ───
     elif normalized_text in ["تحديث جروب البوت", "تعيين جروب البوت"] and is_any_dev(message.from_user.id):
         from core.admin import set_const
@@ -242,14 +290,7 @@ def receive_responses(message):
                      parse_mode="HTML")
         return
 
-    # ─── أوامر الكتم العالمي النصية ───
-    elif normalized_text.startswith("كتم عالمي ") and is_any_dev(message.from_user.id):
-        _handle_global_mute_cmd(message)
-        return
-
-    elif normalized_text.startswith("رفع كتم عالمي ") and is_any_dev(message.from_user.id):
-        _handle_global_unmute_cmd(message)
-        return
+    
     # -------------------------
     # 👨‍💻 أوامر المطور
     # -------------------------

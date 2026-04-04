@@ -56,8 +56,21 @@ def create_banks_tables():
     );
     ''')
 
+    # 💸 سجل التحويلات البنكية
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS bank_transfers (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user_id INTEGER NOT NULL,
+        to_user_id   INTEGER NOT NULL,
+        amount       REAL    NOT NULL,
+        fee          REAL    DEFAULT 0,
+        created_at   INTEGER DEFAULT (strftime('%s','now'))
+    )
+    """)
+
     # 🔎 Indexes
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_accounts_user ON user_accounts(user_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_accounts_balance ON user_accounts(balance DESC);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_bank_transfers_from ON bank_transfers(from_user_id);')
 
     conn.commit()

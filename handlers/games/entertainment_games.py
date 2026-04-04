@@ -8,8 +8,13 @@ from database.db_queries.bank_queries import check_bank_account, update_bank_bal
 from handlers.games.games_data import ALL_GAMES, GAMES_3_LIBEN, GAMES_5_LIBEN, GAMES_NO_REWARD
 from utils.pagination import set_state, get_state, clear_state
 
+# ── الألعاب التي تتطلب ملكية الإجابة (owner-locked) ──
+OWNED_GAME_TYPES = {"unscramble", "reverse", "connect", "country", "capital"}
+
 # تخزين حالات الألعاب النشطة
-ACTIVE_GAMES = {}  # game_id -> {"question": ..., "answer": ..., "start_time": ..., "participants": set()}
+# game_id -> {"question", "answer", "start_time", "participants", "owner_uid"}
+ACTIVE_GAMES = {}
+
 
 def entertainment_games_command(message):
     """
@@ -19,21 +24,20 @@ def entertainment_games_command(message):
     if not message.text:
         return False
 
-    text = message.text.strip().lower()
+    text    = message.text.strip().lower()
     user_id = message.from_user.id
     chat_id = message.chat.id
 
-    # التحقق من الألعاب المتاحة
     for game_key, game_data in ALL_GAMES.items():
         if text == game_key:
             _start_game(message, game_key, game_data)
             return True
 
-    # التحقق من الإجابات على الألعاب النشطة
     if _handle_game_answer(message):
         return True
 
     return False
+
 
 def _start_game(message, game_key, game_data):
     """بدء لعبة جديدة"""
@@ -41,11 +45,9 @@ def _start_game(message, game_key, game_data):
     chat_id = message.chat.id
     game_id = f"{chat_id}_{game_key}"
 
-    # إنهاء اللعبة السابقة إذا كانت موجودة
     if game_id in ACTIVE_GAMES:
         _end_game(game_id)
 
-    # اختيار سؤال عشوائي
     questions = game_data["data"]
     if not questions:
         bot.reply_to(message, f"❌ لا توجد أسئلة متاحة للعبة {game_data['name']} حالياً.")
@@ -53,20 +55,18 @@ def _start_game(message, game_key, game_data):
 
     question_data = random.choice(questions)
 
-    # إعداد بيانات اللعبة
     game_info = {
-        "game_key": game_key,
-        "game_data": game_data,
-        "question": question_data,
+        "game_key":   game_key,
+        "game_data":  game_data,
+        "question":   question_data,
         "start_time": time.time(),
         "participants": set(),
-        "chat_id": chat_id,
-        "message_id": message.message_id
+        "chat_id":    chat_id,
+        "message_id": message.message_id,
+        "owner_uid":  user_id,          # ← صاحب اللعبة
     }
 
     ACTIVE_GAMES[game_id] = game_info
-
-    # إرسال السؤال
     _send_question(game_info, message)
 
 def _send_question(game_info, original_message):
@@ -140,40 +140,43 @@ def _send_question(game_info, original_message):
 
 def _handle_game_answer(message):
     """معالجة إجابة المستخدم على لعبة نشطة"""
-    user_id = message.from_user.id
-    chat_id = message.chat.id
+    user_id     = message.from_user.id
+    chat_id     = message.chat.id
     user_answer = message.text.strip()
 
     # البحث عن لعبة نشطة في هذه المجموعة
     active_game = None
-    game_id = None
+    game_id     = None
     for gid, game_info in ACTIVE_GAMES.items():
         if game_info["chat_id"] == chat_id:
             active_game = game_info
-            game_id = gid
+            game_id     = gid
             break
 
     if not active_game:
         return False
 
-    game_data = active_game["game_data"]
-    question_data = active_game["question"]
+    game_data  = active_game["game_data"]
+    game_type  = game_data["type"]
 
-    # التحقق من الإجابة
-    correct_answer = _get_correct_answer(game_data["type"], question_data)
+    # ── فحص الملكية للألعاب المقيدة ──
+    if game_type in OWNED_GAME_TYPES:
+        owner_uid = active_game.get("owner_uid")
+        if owner_uid and user_id != owner_uid:
+            # bot.reply_to(message, "❌ هذه اللعبة ليست لك!")
+            return True   # تم التعامل مع الرسالة (رفض)
 
-    if _is_answer_correct(user_answer, correct_answer, game_data["type"]):
-        # إجابة صحيحة
+    question_data  = active_game["question"]
+    correct_answer = _get_correct_answer(game_type, question_data)
+
+    if _is_answer_correct(user_answer, correct_answer, game_type):
         _handle_correct_answer(message, active_game, game_id, user_id)
         return True
     else:
-        # إجابة خاطئة
-        if game_data["reward"] > 0:  # فقط في الألعاب التي تمنح مكافآت
-            bot.reply_to(message, "❌ خطأ! حاول مرة أخرى.", parse_mode='HTML')
+        if game_data["reward"] > 0:
+            bot.reply_to(message, "❌ إجابة خاطئة! حاول مرة أخرى.")
             _end_game(game_id)
         return True
-
-    return False
 
 def _get_correct_answer(game_type, question_data):
     """الحصول على الإجابة الصحيحة بناءً على نوع اللعبة"""
@@ -201,21 +204,22 @@ def _is_answer_correct(user_answer, correct_answer, game_type):
 def _handle_correct_answer(message, game_info, game_id, user_id):
     """معالجة الإجابة الصحيحة"""
     game_data = game_info["game_data"]
-    reward = game_data["reward"]
+    reward    = game_data["reward"]
 
     if reward > 0:
         if not check_bank_account(user_id):
-            success_msg = f"✅ <b>صحيح!</b> اكتب '<code>انشاء حساب بنكي</code>' للحصول على جائزة 🎁\n"
+            success_msg = (
+                f"✅ <b>إجابة صحيحة!</b>\n\n"
+                f"اكتب <code>انشاء حساب بنكي</code> للحصول على جائزتك 🎁"
+            )
         else:
-        # منح المكافأة
             update_bank_balance(user_id, reward)
-            # رسالة النجاح
-            success_msg = f"✅ <b>صحيح!</b> لقد حصلت على جائزتك 🎁\n"
-            success_msg += f"💰 +{reward} Liben"
+            success_msg = (
+                f"✅ <b>إجابة صحيحة!</b>\n\n"
+                f"💰 +{reward} Liben أُضيفت لرصيدك!"
+            )
+        bot.reply_to(message, success_msg, parse_mode="HTML")
 
-        bot.reply_to(message, success_msg, parse_mode='HTML')
-
-    # إنهاء اللعبة
     _end_game(game_id)
 
 def _end_game(game_id):

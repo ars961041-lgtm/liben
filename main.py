@@ -3,7 +3,6 @@ import time
 from core.bot import bot
 from handlers.replies import receive_responses
 from database.db_schema import create_all_tables
-from database.update_db import update_database
 from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
 from core.config import IS_TEST
@@ -55,8 +54,7 @@ if __name__ == "__main__":
     
     keep_alive()
     create_all_tables()
-    update_database()
-    
+
     run_daily_tasks()
     
     start_bot()

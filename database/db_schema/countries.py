@@ -87,15 +87,29 @@ def create_countries_tables():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS country_invites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        from_user_id INTEGER NOT NULL,   -- صاحب الدولة
-        to_user_id   INTEGER NOT NULL,   -- اللاعب المدعو
-        country_id   INTEGER NOT NULL,   -- الدولة
-        city_name    TEXT NOT NULL,      -- اسم المدينة المقترح
-        status TEXT DEFAULT 'pending',   -- pending / accepted / rejected
-        created_at INTEGER DEFAULT (strftime('%s','now')),
-        UNIQUE(to_user_id, status)  -- يمنع أكثر من دعوة لنفس الشخص
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user_id INTEGER NOT NULL,
+        to_user_id   INTEGER NOT NULL,
+        country_id   INTEGER NOT NULL,
+        city_name    TEXT    NOT NULL,
+        status       TEXT    DEFAULT 'pending',
+        created_at   INTEGER DEFAULT (strftime('%s','now')),
+        UNIQUE(to_user_id, status)
     );
+    """)
+
+    # ─── نقل الدولة ───
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS country_transfers (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        country_id       INTEGER NOT NULL,
+        from_user_id     INTEGER NOT NULL,
+        to_user_id       INTEGER NOT NULL,
+        penalty_applied  INTEGER DEFAULT 0,
+        status           TEXT    DEFAULT 'active',
+        transferred_at   INTEGER DEFAULT (strftime('%s','now')),
+        expires_at       INTEGER NOT NULL
+    )
     """)
 
     conn.commit()

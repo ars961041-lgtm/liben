@@ -99,7 +99,7 @@ def _send_country_overview(message, user_id, chat_id):
                           f"💸 التراجع يكلف 20% إضافية من الميزانية"),
                     buttons=buttons, layout=[1], owner_id=user_id)
         else:
-            bot.reply_to(message, "❌ ليس لديك دولة.\nاستخدم: انشاء دولة [الاسم]")
+            send_reply(msg=message,text= "❌ ليس لديك دولة.\nاستخدم: <code>انشاء دولة </code>[الاسم]", Shape=False)
         return
 
     country_id = country["id"]

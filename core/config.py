@@ -19,13 +19,16 @@ else:
 # =========================
 if IS_TEST:
     DB_NAME = "test_database.db"
+    DB_CONTENT = "test_content_hub.db"
+    
 else:
+    DB_CONTENT = "content_hub.db"
     DB_NAME = "database.db"
 
 # =========================
 # OTHER
 # =========================
 developers_id = {7632471789}
-bot_name = "ليبن"
+bot_name = "𝐋𝐈𝐁𝐄𝐍 | ليبن"
 
 print("🧪 TEST MODE" if IS_TEST else "🚀 PRODUCTION MODE")
