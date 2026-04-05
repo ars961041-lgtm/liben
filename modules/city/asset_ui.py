@@ -33,7 +33,7 @@ def open_city_store(message, user_id: int, city_id: int):
 
     text = (
         f"🏪 متجر المدينة\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"💰 رصيدك: {balance:.0f} Liben\n\n"
         f"اختر القطاع:"
     )
@@ -79,12 +79,12 @@ def handle_store_sector(call, data):
         for a in paged
     ]
     nav = []
-    if page > 0:
-        nav.append(btn("⬅️ السابق", "store_sector",
-                       {"sid": sector_id, "cid": city_id, "p": page - 1}, owner=owner))
     if page < total_pages - 1:
-        nav.append(btn("التالي ➡️", "store_sector",
+        nav.append(btn("التالي ⬅️", "store_sector",
                        {"sid": sector_id, "cid": city_id, "p": page + 1}, owner=owner))
+    if page > 0:
+        nav.append(btn("➡️ السابق", "store_sector",
+                       {"sid": sector_id, "cid": city_id, "p": page - 1}, owner=owner))
     nav.append(btn("رجوع", "store_back_sectors", {"cid": city_id}, color=RED, owner=owner))
 
     edit_ui(call, text=text, buttons=buttons + nav,
@@ -182,7 +182,7 @@ def handle_store_item(call, data):
 
     text = (
         f"{asset['emoji']} <b>{asset['name_ar']}</b>\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"<blockquote>💰 السعر: {asset['base_price']:.0f} Liben / وحدة\n"
         f"🔧 الصيانة: {asset['maintenance']:.0f} / وحدة\n"
         f"📈 الدخل الأساسي: {asset['income']:.0f} / وحدة\n"
@@ -256,7 +256,7 @@ def handle_store_item_branch(call, data):
     income_per_unit = calculate_asset_income(asset["income"], branch["bonus_pct"], level=1, quantity=1)
     text = (
         f"{asset['emoji']} {asset['name_ar']}\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"فرع: {branch['emoji']} {branch['name_ar']}\n"
         f"📈 الدخل المتوقع: {income_per_unit:.0f} / وحدة\n"
         f"💰 السعر: {asset['base_price']:.0f} Liben / وحدة\n"
@@ -360,7 +360,7 @@ def handle_upgrade_item(call, data):
     branch_label = f" - {rows[0]['branch_emoji']} {branch_name}" if branch_name else ""
     text = (
         f"🔼 ترقية {asset['emoji']} {asset['name_ar']}{branch_label}\n"
-        f"ا {get_lines()}\n💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"{get_lines()}\n💰 رصيدك: {balance:.0f} Liben\n\n"
     )
     for r in rows:
         cost_1 = calc_upgrade_cost(asset, r["level"], 1)
@@ -399,7 +399,7 @@ def handle_upgrade_level(call, data):
     text = (
         f"🔼 ترقية {asset['emoji']} {asset['name_ar']}\n"
         f"المستوى: {from_level} → {from_level + 1}\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"تمتلك: {max_qty} وحدة\n"
         f"💰 رصيدك: {balance:.0f} Liben\n\n"
         f"اختر الكمية للترقية:"

@@ -6,6 +6,7 @@ from database.db_queries.bank_queries import update_bank_balance
 from handlers.games.games_data import GAMES
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.constants import lines
+from utils.helpers import get_lines
 
 B  = "p"
 BK = "d"
@@ -34,7 +35,7 @@ def _send_games_menu(message):
 
     text = (
         f"🎮 <b>دليل الألعاب</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"اختر لعبة لعرض شرحها الكامل:"
     )
     buttons = [
@@ -79,10 +80,10 @@ def _on_game_detail(call, data):
 
     text = (
         f"{game['emoji']} <b>{game['name']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📝 {game['desc_ar']}\n\n"
         f"📋 <b>{pg['title']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{pg['content']}"
     )
     if total > 1:
@@ -90,10 +91,10 @@ def _on_game_detail(call, data):
 
     buttons = []
     nav = []
-    if page > 0:
-        nav.append(btn("◀️ السابق", "game_detail", {"gid": gid, "p": page - 1}, color=B, owner=owner))
     if page < total - 1:
-        nav.append(btn("التالي ▶️", "game_detail", {"gid": gid, "p": page + 1}, color=B, owner=owner))
+        nav.append(btn("التالي ◀️", "game_detail", {"gid": gid, "p": page + 1}, color=B, owner=owner))
+    if page > 0:
+        nav.append(btn("▶️ السابق", "game_detail", {"gid": gid, "p": page - 1}, color=B, owner=owner))
 
     if nav:
         buttons.extend(nav)
@@ -114,7 +115,7 @@ def _on_back_menu(call, data):
     owner = (call.from_user.id, call.message.chat.id)
     text  = (
         f"🎮 <b>دليل الألعاب</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"اختر لعبة لعرض شرحها الكامل:"
     )
     buttons = [

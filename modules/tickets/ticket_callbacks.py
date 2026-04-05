@@ -8,12 +8,13 @@ from modules.tickets.ticket_db import (
     get_ticket_messages, get_stats,
 )
 from modules.tickets.ticket_handler import (
-    CATEGORIES, DEVELOPERS, DEV_GROUP_ID,
+    CATEGORIES, DEVELOPERS, _get_dev_group_id,
     is_developer, close_ticket_action,
     handle_category_selection, set_awaiting_dev_reply,
     _escape,
 )
 import time as _time
+from utils.helpers import get_lines
 
 
 # ══════════════════════════════════════════
@@ -108,12 +109,12 @@ def _send_admin_panel(chat_id, user_id):
     stats = get_stats()
     text = (
         f"📊 <b>لوحة التحكم — نظام التذاكر</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📬 مفتوحة: {stats['open']}\n"
         f"📁 مغلقة: {stats['closed']}\n"
         f"📅 اليوم: {stats['today']}\n"
         f"📊 الإجمالي: {stats['total']}\n"
-        f"━━━━━━━━━━━━━━━"
+        f"{get_lines()}"
     )
     buttons = [
         btn("📬 التذاكر المفتوحة", "ticket_list", data={"status": "open",   "page": 0}, owner=(user_id, chat_id), color="su"),
@@ -135,12 +136,12 @@ def on_ticket_stats(call, data):
     stats = get_stats()
     text = (
         f"📊 <b>إحصائيات التذاكر</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📅 تذاكر اليوم: <b>{stats['today']}</b>\n"
         f"📬 مفتوحة: <b>{stats['open']}</b>\n"
         f"📁 مغلقة: <b>{stats['closed']}</b>\n"
         f"📊 الإجمالي: <b>{stats['total']}</b>\n"
-        f"━━━━━━━━━━━━━━━"
+        f"{get_lines()}"
     )
     edit_ui(call, text=text,
             buttons=[btn("🔙 رجوع", "ticket_admin_back", data={}, owner=(user_id, chat_id))],
@@ -156,12 +157,12 @@ def on_admin_back(call, data):
     stats = get_stats()
     text = (
         f"📊 <b>لوحة التحكم — نظام التذاكر</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📬 مفتوحة: {stats['open']}\n"
         f"📁 مغلقة: {stats['closed']}\n"
         f"📅 اليوم: {stats['today']}\n"
         f"📊 الإجمالي: {stats['total']}\n"
-        f"━━━━━━━━━━━━━━━"
+        f"{get_lines()}"
     )
     buttons = [
         btn("📬 التذاكر المفتوحة", "ticket_list", data={"status": "open", "page": 0}, owner=(user_id, chat_id), color="su"),
@@ -201,7 +202,7 @@ def on_ticket_list(call, data):
         return
 
     status_label = "المفتوحة" if status == "open" else "الكل"
-    text = f"🎫 <b>التذاكر — {status_label}</b> (صفحة {page+1}/{total_pages})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🎫 <b>التذاكر — {status_label}</b> (صفحة {page+1}/{total_pages})\n{get_lines()}\n\n"
 
     buttons = []
     for t in tickets:
@@ -216,12 +217,12 @@ def on_ticket_list(call, data):
         )
 
     nav = []
-    if page > 0:
-        nav.append(btn("◀️ السابق", "ticket_list",
-                       data={"status": status, "page": page - 1}, owner=(user_id, chat_id)))
     if page < total_pages - 1:
-        nav.append(btn("التالي ▶️", "ticket_list",
+        nav.append(btn("التالي ◀️", "ticket_list",
                        data={"status": status, "page": page + 1}, owner=(user_id, chat_id)))
+    if page > 0:
+        nav.append(btn("▶️ السابق", "ticket_list",
+                       data={"status": status, "page": page - 1}, owner=(user_id, chat_id)))
     nav.append(btn("🔙 رجوع", "ticket_admin_back", data={}, owner=(user_id, chat_id)))
 
     layout = [1] * len(buttons) + [len(nav)]
@@ -256,12 +257,12 @@ def on_ticket_view(call, data):
 
     text = (
         f"🎫 <b>تذكرة #{ticket_id}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"👤 المستخدم: <code>{ticket['user_id']}</code>\n"
         f"📂 النوع: {cat_label}\n"
         f"📊 الحالة: {status_label}\n"
         f"📅 التاريخ: {created}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"💬 <b>المحادثة ({len(messages)} رسالة):</b>\n\n"
     )
 
@@ -330,7 +331,7 @@ def handle_ticket_commands(message):
         return True
 
     # ─── رد المطور في المجموعة ───
-    if chat_id == DEV_GROUP_ID and is_developer(user_id):
+    if chat_id == _get_dev_group_id() and is_developer(user_id):
         from modules.tickets.ticket_handler import handle_dev_reply
         if handle_dev_reply(message):
             return True
@@ -354,7 +355,7 @@ def handle_ticket_media(message):
         return handle_ticket_message_input(message)
 
     # رد المطور في المجموعة
-    if chat_id == DEV_GROUP_ID and is_developer(user_id):
+    if chat_id == _get_dev_group_id() and is_developer(user_id):
         from modules.tickets.ticket_handler import handle_dev_reply
         if handle_dev_reply(message):
             return True

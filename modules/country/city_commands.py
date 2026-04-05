@@ -8,6 +8,7 @@ from database.db_queries.advanced_war_queries import (
 )
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.helpers import send_reply
+from utils.helpers import get_lines
 
 CITY_COMMANDS = {"مدينتي", "شراء", "ترقية", "متجر", "جيش مدينتي", "جيشي"}
 
@@ -114,13 +115,13 @@ def _city_main_text(details):
     military = get_city_military_power(city_id) if city_id else 0
     return (
         f"🏙 مدينة: {details['name']}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"💰 الاقتصاد:       {stats.get('economy', 0):.1f}\n"
         f"🏥 الصحة:          {stats.get('health', 0):.1f}\n"
         f"📚 التعليم:         {stats.get('education', 0):.1f}\n"
         f"🪖 القوة العسكرية: {military:.1f}\n"
         f"🛣 البنية التحتية:  {stats.get('infrastructure', 0):.1f}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📈 الدخل: {stats.get('income', 0):.0f} | 🔧 الصيانة: {stats.get('maintenance', 0):.0f}"
     )
 
@@ -154,7 +155,7 @@ def handle_city_detail(call, data):
     if topic == "economy":
         text = (
             f"💰 اقتصاد مدينة {details['name']}\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"نقاط الاقتصاد: {stats.get('economy', 0):.1f}\n"
             f"الدخل:   {stats.get('income', 0):.0f} Liben\n"
             f"الصيانة: {stats.get('maintenance', 0):.0f} Liben\n"
@@ -164,21 +165,21 @@ def handle_city_detail(call, data):
     elif topic == "health":
         text = (
             f"🏥 صحة مدينة {details['name']}\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"مستوى الصحة: {stats.get('health', 0):.1f}\n\n"
             f"لتحسينه: شراء مستشفى أو عيادة"
         )
     elif topic == "education":
         text = (
             f"📚 تعليم مدينة {details['name']}\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"مستوى التعليم: {stats.get('education', 0):.1f}\n\n"
             f"لتحسينه: شراء مدرسة أو جامعة"
         )
     elif topic == "military":
         text = (
             f"🪖 قوة مدينة {details['name']}\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"القوة العسكرية: {stats.get('military', 0):.1f}\n\n"
             f"لتحسينه: شراء قاعدة عسكرية أو ثكنة عسكرية"
         )
@@ -186,9 +187,9 @@ def handle_city_detail(call, data):
         from database.db_queries.assets_queries import get_city_assets
         rows = get_city_assets(city_id)
         if not rows:
-            text = f"🏢 مباني مدينة {details['name']}\n━━━━━━━━━━━━━━━\nلا توجد مباني بعد.\n\nللشراء: متجر"
+            text = f"🏢 مباني مدينة {details['name']}\n{get_lines()}\nلا توجد مباني بعد.\n\nللشراء: متجر"
         else:
-            text = f"🏢 مباني مدينة {details['name']}\n━━━━━━━━━━━━━━━\n"
+            text = f"🏢 مباني مدينة {details['name']}\n{get_lines()}\n"
             for r in rows:
                 text += f"{r['emoji']} {r['name_ar']}: {r['quantity']} وحدة | مستوى {r['level']}\n"
             text += "\nللترقية: ترقية"
@@ -224,7 +225,7 @@ def _buildings_list_text():
 
 
 def _send_buildings_menu(message, user_id, city_id):
-    text = "🏢 المباني المتاحة للشراء:\n━━━━━━━━━━━━━━━\n" + _buildings_list_text()
+    text = f"🏢 المباني المتاحة للشراء:\n{get_lines()}\n" + _buildings_list_text()
     text += "\n\nللشراء: شراء [نوع] [كمية]\nمثال: شراء hospital 2"
     bot.reply_to(message, text)
 
@@ -291,7 +292,7 @@ def _send_city_army(message, city_id):
     total_def = 0.0
     total_hp  = 0.0
 
-    text = "🪖 <b>جيش مدينتك</b>\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🪖 <b>جيش مدينتك</b>\n{get_lines()}\n\n"
 
     if troops:
         text += "⚔️ <b>الجنود:</b>\n"
@@ -321,7 +322,7 @@ def _send_city_army(message, city_id):
 
     total_power = max(0, total_atk + total_def)
     text += (
-        f"\n━━━━━━━━━━━━━━━\n"
+        f"\n{get_lines()}\n"
         f"⚔️ الهجوم الكلي: {max(0, total_atk):.0f}\n"
         f"🛡 الدفاع الكلي: {max(0, total_def):.0f}\n"
         f"❤️ الحياة الكلية: {max(0, total_hp):.0f}\n"

@@ -1,11 +1,11 @@
 # utils/pagination/router.py
-import threading
 import time
 from core.bot import bot
 from .cache import get_cache
 
-# Action handlers
+# ── Action handlers ──
 ACTION_HANDLERS = {}
+
 
 def register_action(name: str):
     def decorator(func):
@@ -13,51 +13,97 @@ def register_action(name: str):
         return func
     return decorator
 
-# User state
-USER_STATE = {}
-TEMP_STATE_TIMEOUT = 60
 
-def set_state(user_id, chat_id, state, data=None, precheck=None):
-    key = (user_id, chat_id)
-    USER_STATE[key] = {"state": state, "data": data or {}, "precheck": precheck}
-    def clear_later():
-        time.sleep(TEMP_STATE_TIMEOUT)
-        USER_STATE.pop(key, None)
-    threading.Thread(target=clear_later, daemon=True).start()
+# ══════════════════════════════════════════
+# State — delegates to StateManager
+# ══════════════════════════════════════════
+# Backward-compatible shim: all existing set_state/get_state/clear_state
+# calls continue to work, but now use the central StateManager.
 
-def get_state(user_id, chat_id): return USER_STATE.get((user_id, chat_id), {})
-def clear_state(user_id, chat_id): USER_STATE.pop((user_id, chat_id), None)
-def is_busy(user_id, chat_id): return (user_id, chat_id) in USER_STATE
+def set_state(user_id, chat_id, state: str, data: dict = None, precheck=None,
+              ttl: int = 300):
+    """
+    Backward-compatible wrapper.
+    Stores state in the new StateManager format:
+      {"type": state, "step": None, "mid": data.get("_mid"), "extra": data}
+    """
+    from core.state_manager import StateManager
+    d = data or {}
+    StateManager.set(user_id, chat_id, {
+        "type":  state,
+        "step":  d.pop("_step", None),
+        "mid":   d.pop("_mid", None),
+        "extra": d,
+    }, ttl=ttl)
 
+
+def get_state(user_id, chat_id) -> dict:
+    """
+    Backward-compatible wrapper.
+    Returns the old-style dict: {"state": type, "data": extra+mid}
+    so existing code that does state["state"] and state.get("data", {}) still works.
+    """
+    from core.state_manager import StateManager
+    s = StateManager.get(user_id, chat_id)
+    if not s:
+        return {}
+    # Reconstruct old-style dict
+    data = dict(s.get("extra") or {})
+    if s.get("mid") is not None:
+        data["_mid"] = s["mid"]
+    if s.get("step") is not None:
+        data["_step"] = s["step"]
+    return {"state": s["type"], "data": data}
+
+
+def clear_state(user_id, chat_id):
+    from core.state_manager import StateManager
+    StateManager.clear(user_id, chat_id)
+
+
+def is_busy(user_id, chat_id) -> bool:
+    from core.state_manager import StateManager
+    return StateManager.exists(user_id, chat_id)
+
+
+# ══════════════════════════════════════════
 # Pagination
+# ══════════════════════════════════════════
 
 def paginate_list(items, page=0, per_page=10):
     total_pages = max(1, (len(items) + per_page - 1) // per_page)
-    start, end = page * per_page, page * per_page + per_page
+    start = page * per_page
+    end   = start + per_page
     return items[start:end], total_pages
 
+
+# ══════════════════════════════════════════
 # Callback handler
+# ══════════════════════════════════════════
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_buttons(call):
     data = call.data
-    if not data.startswith("k:"): return
+    if not data.startswith("k:"):
+        return
     key = data.split(":", 1)[1]
 
-    # check if entry exists at all (for expiry vs ownership distinction)
     from .cache import _CACHE, _CACHE_LOCK, CACHE_TTL
-    import time
     with _CACHE_LOCK:
         entry = _CACHE.get(key)
 
     if not entry:
-        bot.answer_callback_query(call.id, "⏳ انتهت صلاحية هذا الزر، أعد فتح القائمة.", show_alert=True)
+        bot.answer_callback_query(
+            call.id, "⏳ انتهت صلاحية هذا الزر، أعد فتح القائمة.", show_alert=True
+        )
         return
 
     if time.time() - entry["ts"] > CACHE_TTL:
-        bot.answer_callback_query(call.id, "⏳ انتهت صلاحية هذا الزر، أعد فتح القائمة.", show_alert=True)
+        bot.answer_callback_query(
+            call.id, "⏳ انتهت صلاحية هذا الزر، أعد فتح القائمة.", show_alert=True
+        )
         return
 
-    # ownership check
     owner = entry.get("owner")
     if owner:
         owner_uid, owner_cid = owner

@@ -1,13 +1,20 @@
 from core.bot import bot
 from database.db_queries.group_punishments_queries import delete_group_punishments, get_group_punishments, get_last_punishment, get_user_punishments, is_user_status, log_punishment, set_user_status
-from handlers.group_admin.permissions import is_admin
+from handlers.group_admin.permissions import is_admin, sender_can_restrict
 from utils.pagination import btn, register_action, send_ui
 from utils.constants import lines
 # ---------------------------- Core Punishment Handler
 def handle_punishment(message, field, action_name, apply_func=None, reverse=False, require_admin=True):
-    if require_admin and not is_admin(message):
-        bot.reply_to(message, "ليس لديك صلاحية")
-        return
+    if require_admin:
+        if not is_admin(message):
+            bot.reply_to(message, "❌ أنت لست مشرفاً في هذه المجموعة.", parse_mode="HTML")
+            return
+        # For restrict/mute/ban, also verify the sender holds can_restrict_members
+        if field in ("is_restricted", "is_muted", "is_banned"):
+            ok, err = sender_can_restrict(message)
+            if not ok:
+                bot.reply_to(message, err, parse_mode="HTML")
+                return
 
     user_id, name = get_target_user(message)
     if not user_id:

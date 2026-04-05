@@ -6,6 +6,7 @@ from utils.pagination import btn, send_ui, edit_ui, register_action, set_state, 
 
 from .format_parser import parse
 from .format_constants import FORMAT_GUIDE
+from utils.helpers import get_lines
 
 _B = "p"   # أزرق
 _G = "su"  # أخضر
@@ -58,7 +59,7 @@ def _show_preview(message, uid: int, cid: int, raw_text: str):
     set_state(uid, cid, "fmt_preview", data={"raw": raw_text})
 
     # بناء نص المعاينة
-    preview_header = "👁 <b>معاينة التنسيق:</b>\n━━━━━━━━━━━━━━━\n"
+    preview_header = f"👁 <b>معاينة التنسيق:</b>\n{get_lines()}\n"
     preview_body   = result.html if result.html.strip() else "<i>(نص فارغ)</i>"
 
     # تحذيرات التصحيح التلقائي
@@ -181,8 +182,8 @@ def handle_format_guide(message):
     send_ui(
         cid,
         text=(
-            "📚 <b>دليل التنسيق الذكي</b>\n"
-            "━━━━━━━━━━━━━━━\n\n"
+            f"📚 <b>دليل التنسيق الذكي</b>\n"
+            "{get_lines()}\n\n"
             "اختر نوع التنسيق لعرض شرحه:"
         ),
         buttons=buttons,
@@ -212,7 +213,7 @@ def on_guide_section(call, data):
 
     text = (
         f"{info['title']}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"📝 <b>الشرح:</b>\n{info['desc']}\n\n"
         f"🔤 <b>الاستخدام:</b>\n<code>{info['usage']}</code>\n\n"
         f"✨ <b>النتيجة:</b>\n{info['example']}"
@@ -242,7 +243,7 @@ def on_guide_back(call, data):
         call,
         text=(
             "📚 <b>دليل التنسيق الذكي</b>\n"
-            "━━━━━━━━━━━━━━━\n\n"
+            f"{get_lines()}\n\n"
             "اختر نوع التنسيق لعرض شرحه:"
         ),
         buttons=buttons,

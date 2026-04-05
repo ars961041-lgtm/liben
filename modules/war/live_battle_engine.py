@@ -15,6 +15,7 @@ from database.db_queries.advanced_war_queries import (
 from database.db_queries.war_queries import update_city_resources
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 from modules.war.power_calculator import get_country_power, aggregate_country_forces
+from utils.helpers import get_lines
 
 TICK_INTERVAL   = 10    # ثانية بين كل دورة
 BATTLE_DURATION = 300   # 5 دقائق
@@ -550,7 +551,7 @@ def _send_final_report(battle, winner_cid, loot, atk_power, def_power,
 
     header = (
         f"⚔️ <b>تقرير المعركة #{battle_id}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"{'🏆 المهاجم انتصر!' if attacker_won else ('🛡 المدافع صمد!' if winner_cid else '🤝 تعادل!')}\n"
         f"🏳️ الفائز: <b>{_cname(winner_cid)}</b>\n\n"
         f"📊 <b>القوى النهائية:</b>\n"

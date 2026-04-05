@@ -3,6 +3,7 @@
 """
 import math
 from database.connection import get_db_conn
+from utils.helpers import get_lines
 
 
 def _c(name, default):
@@ -198,7 +199,7 @@ def get_influence_display(country_id: int) -> str:
 
     return (
         f"🌍 <b>النفوذ والتأثير</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"⭐ نقاط النفوذ: {p['points']}\n\n"
         f"💰 مكافأة الدخل: +{p['income_bonus']}% / {p['income_cap']}%\n"
         f"  [{bar}]\n"

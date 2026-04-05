@@ -4,6 +4,7 @@
 from core.bot import bot
 from core.admin import is_any_dev
 from utils.pagination import btn, send_ui, edit_ui, register_action
+from utils.helpers import get_lines
 
 _B  = "p"
 _GR = "su"
@@ -252,7 +253,7 @@ def _send_guide_menu(chat_id, user_id):
     owner = (user_id, chat_id)
     text  = (
         "📚 <b>دليل المطور التفاعلي</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر القسم الذي تريد شرحه:"
     )
     buttons = [
@@ -288,21 +289,21 @@ def show_section(call, data):
 
     text = (
         f"{section['emoji']} <b>{section['title']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"📋 <b>{pg['title']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{pg['content']}"
     )
     if total > 1:
         text += f"\n\n📄 صفحة {page + 1} / {total}"
 
     nav = []
-    if page > 0:
-        nav.append(btn("◀️ السابق", "devguide_section",
-                       data={"sid": sid, "p": page - 1}, owner=owner, color=_B))
     if page < total - 1:
-        nav.append(btn("التالي ▶️", "devguide_section",
+        nav.append(btn("التالي ◀️", "devguide_section",
                        data={"sid": sid, "p": page + 1}, owner=owner, color=_B))
+    if page > 0:
+        nav.append(btn("▶️ السابق", "devguide_section",
+                       data={"sid": sid, "p": page - 1}, owner=owner, color=_B))
 
     buttons = list(nav)
     buttons.append(btn("🔙 القائمة الرئيسية", "devguide_back", owner=owner, color=_RD))
@@ -322,7 +323,7 @@ def back_to_guide_menu(call, data):
     owner = (user_id, chat_id)
     text  = (
         "📚 <b>دليل المطور التفاعلي</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر القسم الذي تريد شرحه:"
     )
     buttons = [

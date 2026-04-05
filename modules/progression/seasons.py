@@ -197,13 +197,9 @@ def _distribute_season_rewards(season_id: int, cursor):
 
 
 def _notify_season_end(season_id: int):
-    """يُرسل إشعار نهاية الموسم"""
+    """يُرسل إشعار نهاية الموسم لمجموعة المطورين."""
     try:
-        from core.bot import bot
-        from core.admin import get_const
-        group_id = int(get_const("dev_group_id", "-1"))
-        if group_id == -1:
-            return
+        from core.dev_notifier import send_to_dev_group
 
         conn = get_db_conn()
         cursor = conn.cursor()
@@ -225,7 +221,7 @@ def _notify_season_end(season_id: int):
             rank, uid, score = row[0], row[1], row[2]
             text += f"{medals[rank-1]} ID:{uid} — {score:.0f} انتصار\n"
 
-        bot.send_message(group_id, text, parse_mode="HTML")
+        send_to_dev_group(text)
     except Exception:
         pass
 

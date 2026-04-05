@@ -12,6 +12,7 @@ from utils.pagination.buttons import build_keyboard
 from modules.quran import quran_db as db
 from modules.quran import quran_service as svc
 from modules.quran import quran_ui as ui
+from utils.helpers import get_lines
 
 # ── تهيئة الجداول عند الاستيراد ──
 db.create_tables()
@@ -220,9 +221,9 @@ def on_tafseer(call, data):
         call,
         text=(
             f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
-            f"━━━━━━━━━━━━━━━\n\n"
+            f"{get_lines()}\n\n"
             f"{ayah['text_with_tashkeel']}\n\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"اختر التفسير:"
         ),
         buttons=buttons,
@@ -257,9 +258,9 @@ def on_show_tafseer(call, data):
         text=(
             f"📖 <b>تفسير {name_ar}</b>\n"
             f"<b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
-            f"━━━━━━━━━━━━━━━\n\n"
+            f"{get_lines()}\n\n"
             f"{ayah['text_with_tashkeel']}\n\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"📝 <b>التفسير:</b>\n{content}"
         ),
         buttons=[btn("🔙 رجوع للتفاسير", "qr_tafseer", {"aid": aid}, color=_R, owner=owner)],

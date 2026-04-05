@@ -79,10 +79,10 @@ def handle_replace_command(message) -> bool:
     line = get_lines()
     
     reply = (
-        f"ا {line}\n"
+        f"{line}\n"
         f"🔢 <b>{count_note}</b>\n"
         f"📄 عدد الكلمات{total_words}، عدد الحروف {total_characters}\n"
-        f"ا {line}\n"
+        f"{line}\n"
         f"🤖 via {get_bot_link()}"
     )
 

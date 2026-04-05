@@ -8,6 +8,7 @@ from utils.pagination import (
     btn, send_ui, edit_ui, register_action,
     paginate_list, set_state, get_state, clear_state,
 )
+from utils.helpers import get_lines
 
 # ── ألوان الأزرار ──
 _B = "p"   # أزرق
@@ -114,7 +115,7 @@ def _render_main(chat_id: int, user_id: int):
     ]
     send_ui(
         chat_id,
-        text="🛒 <b>متجر المطورين</b>\n━━━━━━━━━━━━━━━\nاختر النظام الذي تريد إدارته:",
+        text=f"🛒 <b>متجر المطورين</b>\n{get_lines()}\nاختر النظام الذي تريد إدارته:",
         buttons=buttons,
         layout=_grid(len(buttons), 2),
         owner_id=user_id,
@@ -141,7 +142,7 @@ def back_to_main(call, data):
     ]
     edit_ui(
         call,
-        text="🛒 <b>متجر المطورين</b>\n━━━━━━━━━━━━━━━\nاختر النظام الذي تريد إدارته:",
+        text=f"🛒 <b>متجر المطورين</b>\n{get_lines()}\nاختر النظام الذي تريد إدارته:",
         buttons=buttons,
         layout=_grid(len(buttons), 2),
     )
@@ -202,7 +203,7 @@ def show_constants(call, data):
 
     items, total_pages = paginate_list(all_items, page, per_page=PER_PAGE)
     text = (f"⚙️ <b>{_CAT_NAMES.get(cat, cat)}</b> "
-            f"({page+1}/{max(1, total_pages)})\n━━━━━━━━━━━━━━━\n\n")
+            f"({page+1}/{max(1, total_pages)})\n{get_lines()}\n\n")
 
     buttons = []
     for c in items:
@@ -286,7 +287,7 @@ def show_alliances(call, data):
 
     items, total_pages = paginate_list(all_items, page, per_page=PER_PAGE)
     text = (f"🏰 <b>ترقيات التحالفات</b> "
-            f"({page+1}/{max(1, total_pages)})\n━━━━━━━━━━━━━━━\n\n")
+            f"({page+1}/{max(1, total_pages)})\n{get_lines()}\n\n")
 
     buttons = []
     for u in items:
@@ -405,7 +406,7 @@ def show_troops(call, data):
         return
 
     items, total_pages = paginate_list(all_items, page, per_page=PER_PAGE)
-    text = f"{title} ({page+1}/{max(1, total_pages)})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"{title} ({page+1}/{max(1, total_pages)})\n{get_lines()}\n\n"
 
     buttons = []
     for item in items:
@@ -538,7 +539,7 @@ def show_cards(call, data):
         return
 
     items, total_pages = paginate_list(all_items, page, per_page=PER_PAGE)
-    text = f"🃏 <b>البطاقات</b> ({page+1}/{max(1, total_pages)})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🃏 <b>البطاقات</b> ({page+1}/{max(1, total_pages)})\n{get_lines()}\n\n"
 
     buttons = []
     for c in items:
@@ -631,7 +632,7 @@ def show_spy_agents(call, data):
     except Exception:
         items = []
 
-    text = "🕵️ <b>ثوابت نظام الجواسيس</b>\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🕵️ <b>ثوابت نظام الجواسيس</b>\n{get_lines()}\n\n"
     buttons = []
     for c in items:
         text += f"🔹 <b>{c['name']}</b> = <code>{c['value']}</code>\n\n"

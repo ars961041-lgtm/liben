@@ -4,6 +4,7 @@
 يمكن حذف هذا الملف بأمان.
 """
 # war_report.py
+from utils.helpers import get_lines
 
 def format_battle_report(attacker_name, defender_name, result):
     winner = result["winner"]
@@ -31,18 +32,18 @@ def format_battle_report(attacker_name, defender_name, result):
 
 🏙 <b>{attacker_name}</b> 🆚 <b>{defender_name}</b>
 
-━━━━━━━━━━━━━━━
+{get_lines()}
 
 🔥 <b>القوة المتبقية:</b>
 🟥 المهاجم: {attacker_hp}
 🟦 المدافع: {defender_hp}
 
-━━━━━━━━━━━━━━━
+{get_lines()}
 
 🏆 <b>الفائز:</b>
 👑 {winner_name}
 
-━━━━━━━━━━━━━━━
+{get_lines()}
 
 📉 <b>خسائر المهاجم:</b>
 {attacker_losses}
@@ -50,7 +51,7 @@ def format_battle_report(attacker_name, defender_name, result):
 📉 <b>خسائر المدافع:</b>
 {defender_losses}
 
-━━━━━━━━━━━━━━━
+{get_lines()}
 
 💬 <i>إما أن تحكم… أو تُمحى</i>
 """

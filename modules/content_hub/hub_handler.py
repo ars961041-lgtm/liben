@@ -12,6 +12,7 @@ from modules.content_hub.hub_db import (
     get_random, get_by_id, insert_content, update_content,
     delete_content, count_rows, create_tables,
 )
+from utils.helpers import get_lines
 
 # ── تهيئة الجداول عند الاستيراد ──
 create_tables()
@@ -90,7 +91,7 @@ def _send_content(message, uid: int, cid: int, table: str, row: dict):
     total   = count_rows(table)
     text    = (
         f"{label}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{row['content']}\n\n"
         f"<i>#{row['id']} من {total}</i>"
     )
@@ -118,7 +119,7 @@ def on_refresh(call, data):
     total   = count_rows(table)
     text    = (
         f"{label}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{row['content']}\n\n"
         f"<i>#{row['id']} من {total}</i>"
     )
@@ -151,10 +152,10 @@ def on_share(call, data):
     label    = TYPE_LABELS.get(table, table)
 
     share_text = (
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📜 {label} #{row['id']}\n\n"
         f"{row['content']}\n\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"🤖 via {get_bot_link()}"
     )
 
@@ -258,9 +259,9 @@ def handle_hub_input(message) -> bool:
             clear_state(uid, cid)
             return False
 
-        table  = sdata.get("table")
-        row_id = sdata.get("row_id")
-        mid    = sdata.get("_mid")
+        table    = sdata.get("table")
+        row_id   = sdata.get("row_id")
+        mid      = sdata.get("_mid")
         new_text = (message.text or "").strip()
         clear_state(uid, cid)
 
@@ -270,12 +271,7 @@ def handle_hub_input(message) -> bool:
             pass
 
         if not new_text:
-            if mid:
-                try:
-                    bot.edit_message_text("❌ النص لا يمكن أن يكون فارغاً.",
-                                          cid, mid, parse_mode="HTML")
-                except Exception:
-                    pass
+            _send_error(cid, mid, uid, "❌ النص لا يمكن أن يكون فارغاً.")
             return True
 
         ok = update_content(table, row_id, new_text)
@@ -284,7 +280,7 @@ def handle_hub_input(message) -> bool:
             total = count_rows(table)
             text  = (
                 f"{label}\n"
-                f"━━━━━━━━━━━━━━━\n\n"
+                f"{get_lines()}\n\n"
                 f"{new_text}\n\n"
                 f"<i>#{row_id} من {total}</i>"
             )
@@ -299,6 +295,8 @@ def handle_hub_input(message) -> bool:
                 )
             except Exception:
                 pass
+        elif not ok:
+            _send_error(cid, mid, uid, "❌ فشل التعديل.")
         return True
 
     # ── إضافة محتوى ──
@@ -309,6 +307,7 @@ def handle_hub_input(message) -> bool:
 
         table = sdata.get("table")
         raw   = (message.text or "").strip()
+        mid   = sdata.get("_mid")
         clear_state(uid, cid)
 
         try:
@@ -317,26 +316,56 @@ def handle_hub_input(message) -> bool:
             pass
 
         if not raw:
-            bot.send_message(cid, "❌ النص لا يمكن أن يكون فارغاً.")
+            _send_error(cid, mid, uid, "❌ النص لا يمكن أن يكون فارغاً.")
             return True
 
-        # دعم المحتوى المتعدد بالفاصل
-        items   = [i.strip() for i in raw.split(CONTENT_SEPARATOR) if i.strip()]
-        added   = 0
+        items = [i.strip() for i in raw.split(CONTENT_SEPARATOR) if i.strip()]
+        added = 0
         for item in items:
             insert_content(table, item)
             added += 1
 
-        label = TYPE_LABELS.get(table, table)
-        bot.send_message(
-            cid,
+        label   = TYPE_LABELS.get(table, table)
+        success = (
             f"✅ تمت إضافة <b>{added}</b> عنصر إلى {label}.\n"
-            f"الفاصل المستخدم: <code>{CONTENT_SEPARATOR}</code>",
-            parse_mode="HTML",
+            f"الفاصل المستخدم: <code>{CONTENT_SEPARATOR}</code>"
         )
+        _send_success(cid, mid, uid, success)
         return True
 
     return False
+
+
+def _send_error(cid: int, mid, uid: int, text: str):
+    """يعرض رسالة خطأ مع زر إغلاق."""
+    from utils.pagination.buttons import build_keyboard
+    owner  = (uid, cid)
+    markup = build_keyboard([btn("❌ إغلاق", "hub_close", {}, color=_R, owner=owner)], [1], uid)
+    if mid:
+        try:
+            bot.edit_message_text(text, cid, mid, parse_mode="HTML", reply_markup=markup)
+            return
+        except Exception:
+            pass
+    bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup)
+
+
+def _send_success(cid: int, mid, uid: int, text: str):
+    """يعرض رسالة نجاح مع أزرار رجوع وإغلاق — يستبدل الكيبورد القديم."""
+    from utils.pagination.buttons import build_keyboard
+    owner   = (uid, cid)
+    buttons = [
+        btn("🔙 رجوع", "hub_cancel_edit", {}, color=_B, owner=owner),
+        btn("❌ إغلاق", "hub_close",       {}, color=_R, owner=owner),
+    ]
+    markup = build_keyboard(buttons, [2], uid)
+    if mid:
+        try:
+            bot.edit_message_text(text, cid, mid, parse_mode="HTML", reply_markup=markup)
+            return
+        except Exception:
+            pass
+    bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup)
 
 
 # ══════════════════════════════════════════

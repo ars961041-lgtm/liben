@@ -7,6 +7,7 @@ from database.db_queries.countries_queries import get_country_by_user, get_count
 from database.db_queries.advanced_war_queries import is_country_frozen
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.helpers import send_reply
+from utils.helpers import get_lines
 
 
 def country_commands(message):
@@ -144,13 +145,13 @@ def _country_main_text(country, stats=None):
 
     return (
         f"🌍 دولة: {country['name']}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"💰 الاقتصاد:       {stats.get('economy', 0):.1f}\n"
         f"🏥 الصحة:          {stats.get('health', 0):.1f}\n"
         f"📚 التعليم:         {stats.get('education', 0):.1f}\n"
         f"🪖 القوة العسكرية: {stats.get('military', 0):.1f}\n"
         f"🛣 البنية التحتية:  {stats.get('infra', 0):.1f}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📈 الدخل: {stats.get('income', 0):.0f} | 🔧 الصيانة: {stats.get('maintenance', 0):.0f}\n"
         f"{influence_line}"
         f"اضغط على زر لمزيد من التفاصيل"
@@ -218,7 +219,7 @@ def handle_country_detail(call, data):
 
     DETAIL_TEXTS = {
         "economy": (
-            f"💰 تفاصيل الاقتصاد\n━━━━━━━━━━━━━━━\n"
+            f"💰 تفاصيل الاقتصاد\n{get_lines()}\n"
             f"نقاط الاقتصاد: {stats.get('economy', 0):.1f}\n"
             f"الدخل الكلي:   {stats.get('income', 0):.0f} Liben\n"
             f"الصيانة:       {stats.get('maintenance', 0):.0f} Liben\n"
@@ -226,22 +227,22 @@ def handle_country_detail(call, data):
             f"لتحسينه: شراء مصنع أو بنك محلي أو سوق تجاري في مدينتك"
         ),
         "health": (
-            f"🏥 تفاصيل الصحة\n━━━━━━━━━━━━━━━\n"
+            f"🏥 تفاصيل الصحة\n{get_lines()}\n"
             f"مستوى الصحة: {stats.get('health', 0):.1f}\n\n"
             f"لتحسينه: شراء مستشفى أو عيادة في مدينتك"
         ),
         "education": (
-            f"📚 تفاصيل التعليم\n━━━━━━━━━━━━━━━\n"
+            f"📚 تفاصيل التعليم\n{get_lines()}\n"
             f"مستوى التعليم: {stats.get('education', 0):.1f}\n\n"
             f"لتحسينه: شراء مدرسة أو جامعة في مدينتك"
         ),
         "military": (
-            f"🪖 تفاصيل القوة العسكرية\n━━━━━━━━━━━━━━━\n"
+            f"🪖 تفاصيل القوة العسكرية\n{get_lines()}\n"
             f"القوة العسكرية: {stats.get('military', 0):.1f}\n\n"
             f"لتحسينه: شراء قاعدة عسكرية أو ثكنة عسكرية في مدينتك"
         ),
         "infra": (
-            f"🛣 تفاصيل البنية التحتية\n━━━━━━━━━━━━━━━\n"
+            f"🛣 تفاصيل البنية التحتية\n{get_lines()}\n"
             f"مستوى البنية: {stats.get('infra', 0):.1f}\n\n"
             f"لتحسينه: شراء بنية تحتية أو محطة طاقة في مدينتك"
         ),
@@ -292,7 +293,7 @@ def handle_country_cities(call, data):
     total_pages = (len(cities) + PER_PAGE - 1) // PER_PAGE
 
     text = f"🏙 مدن الدولة\n"
-    text += f"━━━━━━━━━━━━━━━\n"
+    text += f"{get_lines()}\n"
     text += f"📄 صفحة {page+1}/{total_pages}\n\n"
 
     for c in page_items:
@@ -300,15 +301,15 @@ def handle_country_cities(call, data):
 
     buttons = []
 
-    if page > 0:
-        buttons.append(
-            btn("⬅️ السابق", "country_cities", {"cid": country_id, "p": page-1},
-                owner=(call.from_user.id, call.message.chat.id))
-        )
-
     if page < total_pages - 1:
         buttons.append(
-            btn("التالي ➡️", "country_cities", {"cid": country_id, "p": page+1},
+            btn("التالي ⬅️", "country_cities", {"cid": country_id, "p": page+1},
+                owner=(call.from_user.id, call.message.chat.id))
+        )
+        
+    if page > 0:
+        buttons.append(
+            btn("➡️ السابق", "country_cities", {"cid": country_id, "p": page-1},
                 owner=(call.from_user.id, call.message.chat.id))
         )
 

@@ -15,6 +15,8 @@ from utils.pagination import btn, build_keyboard, clear_state, edit_ui, get_stat
 from handlers.group_admin.developer.dev_troop_panel import (
     handle_troop_dev_input, open_troop_dev_panel
 )
+from utils.helpers import get_lines
+
 
 GREEN = "su"
 RED  = "d"
@@ -58,7 +60,7 @@ def _parse_fields(text):
 
 def _asset_block(a):
     return (
-        f"📋 بيانات العنصر\n━━━━━━━━━━━━━━━\n<code>"
+        f"📋 بيانات العنصر\n{get_lines()}\n<code>"
         f"name: {a['name']}\nname_ar: {a['name_ar']}\nemoji: {a['emoji']}\n"
         f"sector_id: {a['sector_id']}\nbase_price: {a['base_price']}\n"
         f"base_value: {a['base_value']}\ncost_scale: {a['cost_scale']}\n"
@@ -101,7 +103,7 @@ def open_dev_panel(message):
 def _show_sectors_new(message):
     sectors = get_all_sectors()
     owner   = (message.from_user.id, message.chat.id)
-    text    = "🛠 لوحة المطور\n━━━━━━━━━━━━━━━\nاختر الجانب:"
+    text    = f"🛠 لوحة المطور\n{get_lines()}\nاختر الجانب:"
     buttons = [
         btn(f"{s['emoji']} {s['name']}", "dev_sector", {"sid": s["id"]}, color=BLUE, owner=owner)
         for s in sectors
@@ -114,7 +116,7 @@ def _show_sectors_new(message):
 def _show_sectors(call):
     sectors = get_all_sectors()
     owner   = (call.from_user.id, call.message.chat.id)
-    text = "🛠 لوحة المطور\n━━━━━━━━━━━━━━━\nاختر الجانب:"
+    text = f"🛠 لوحة المطور\n{get_lines()}\nاختر الجانب:"
     buttons = [
         btn(f"{s['emoji']} {s['name']}", "dev_sector", {"sid": s["id"]}, color=BLUE, owner=owner)
         for s in sectors
@@ -336,7 +338,7 @@ def _on_branch(call, data):
         bot.answer_callback_query(call.id, "❌ الفرع غير موجود", show_alert=True)
         return
     b    = dict(row)
-    text = (f"🌿 الفرع\n━━━━━━━━━━━━━━━\n"
+    text = (f"🌿 الفرع\n{get_lines()}\n"
             f"<code>name: {b['name']}\nname_ar: {b['name_ar']}\n"
             f"emoji: {b['emoji']}\nbonus_pct: {b['bonus_pct']}</code>")
     buttons = [

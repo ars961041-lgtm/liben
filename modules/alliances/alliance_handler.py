@@ -14,6 +14,7 @@ from database.db_queries.alliances_queries import (
     get_invite_by_id,
 )
 from database.db_queries.bank_queries import get_user_balance
+from utils.helpers import get_lines
 
 
 # ══════════════════════════════════════════
@@ -56,7 +57,7 @@ def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=Non
 
     text = (
         f"🏰 <b>تحالف: {alliance['name']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"💪 القوة: {power:.0f}\n"
         f"👥 الأعضاء: {member_count}/{alliance.get('max_countries', 10)}\n\n"
         f"اختر ما تريد:"

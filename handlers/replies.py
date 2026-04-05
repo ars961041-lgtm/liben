@@ -1,4 +1,7 @@
 from core.bot import bot
+from core.state_manager import StateManager
+from utils.logger import log_event
+from utils.helpers import send_result, get_lines
 
 from handlers.chat_responses.chat_handler import chat_responses
 from handlers.general.general_handler import show_developer
@@ -38,6 +41,8 @@ from modules.quran.quran_handler import (
     handle_quran_commands, handle_dev_quran_input
 )
 from handlers.group_admin.developer.dev_control_panel import handle_developer_input
+from handlers.group_admin.promote import handle_promote_command, handle_promote_input
+from handlers.group_admin.promote.promote_handler import handle_edit_command
 
 # =========================
 # ⏹️ أوامر ثابتة
@@ -52,315 +57,355 @@ commands = {
 }
 
 
-def receive_responses(message):
-    """
-    هذه الدالة الأساسية لمعالجة كل الرسائل الواردة
-    """
+def _in_private(message):
+    # ══════════════════════════════════════════
+    # 7. أوامر عامة
+    # ══════════════════════════════════════════
+    if message == "/start":
+        send_welcome(message)
+        return
+
+    if message == "المطور":
+        show_developer(message)
+        return
+
+def is_group(message):
+    # ══════════════════════════════════════════
+    # 1b. حماية الخاص — الأوامر الجماعية فقط في المجموعات
+    # ══════════════════════════════════════════
+
+    return message.chat.type in ("group", "supergroup")
+
+
+def _dispatch(message):
+    """المعالج الداخلي — يُلفّه receive_responses بحدود الخطأ."""
     add_user_if_not_exists(message)
     track_group_members(message)
 
-    # ─── القرآن — إدخال نصي للمطورين ───
-    handle_dev_quran_input(message)
-    # ─── أوامر الكتم العالمي النصية ───
-    
-    if message.text.startswith("كتم عالمي ") and is_any_dev(message.from_user.id):
-        _handle_global_mute_cmd(message)
+    uid = message.from_user.id
+    cid = message.chat.id
+
+    # ══════════════════════════════════════════
+    # 0. كشف انتهاء الجلسة (TTL)
+    # ══════════════════════════════════════════
+    from utils.pagination.router import get_state as _gs
+    _flow_state = _gs(uid, cid)
+    _sm_state   = StateManager.get(uid, cid)
+    # إذا كانت هناك جلسة pagination منتهية ولا توجد حالة نشطة في StateManager
+    if _flow_state.get("state") and not _sm_state:
+        send_result(
+            chat_id=cid,
+            text="⚠️ انتهت العملية بسبب عدم التفاعل",
+        )
         return
 
-    elif message.text.startswith("رفع كتم عالمي ") and is_any_dev(message.from_user.id):
-        _handle_global_unmute_cmd(message)
-        return
-    
-    # تجاهل الرسائل المكتمة (النظام القديم)
-    elif handle_muted_users(message):
-        return
-
-    # ─── فحص الكتم العالمي — يُطبَّق في كل المجموعات بغض النظر عن مصدر الكتم ───
-    if is_globally_muted(message.from_user.id):
+    # ══════════════════════════════════════════
+    # 1. فحص الكتم — أولوية قصوى
+    # ══════════════════════════════════════════
+    if is_globally_muted(uid):
         try:
-            bot.delete_message(message.chat.id, message.message_id)
+            bot.delete_message(cid, message.message_id)
         except Exception:
             pass
         return
 
-    # ─── فحص الكتم في المجموعة المحددة ───
-    if message.chat.type != "private" and is_group_muted(message.from_user.id, message.chat.id):
+    if message.chat.type != "private" and is_group_muted(uid, cid):
         try:
-            bot.delete_message(message.chat.id, message.message_id)
+            bot.delete_message(cid, message.message_id)
         except Exception:
             pass
         return
 
-    # ─── تتبع الذاكرة ───
-    user_id = message.from_user.id
-    memory.set_last_interaction(user_id, message.chat.type)
+    if handle_muted_users(message):
+        return
 
-    text = message.text.strip()
+
+    # ══════════════════════════════════════════
+    # 2. تتبع الذاكرة
+    # ══════════════════════════════════════════
+    memory.set_last_interaction(uid, message.chat.type)
+
+    if not message.text:
+        return
+
+    text            = message.text.strip()
+    normalized_text = text.lower()
+
     if not text:
         return
 
-    normalized_text = text.lower()
+    # ══════════════════════════════════════════
+    # 3. معالجات الإدخال النصي (حالات الانتظار)
+    # ══════════════════════════════════════════
+    if handle_dev_input(message):          return
+    if handle_admin_input(message):        return
+    if handle_dev_store_input(message):    return
+    if handle_developer_input(message):    return
+    if handle_dev_quran_input(message):    return
+    if handle_hub_input(message):          return
+    if handle_promote_input(message):      return
 
-    # ── Developer input intercept (must be first) ──────────────
-    if handle_dev_input(message):
-        return
+    # ══════════════════════════════════════════
+    # 4. تسجيل الأمر في الذاكرة
+    # ══════════════════════════════════════════
+    memory.set_last_command(uid, text)
 
-    # ─── لوحة إدارة البوت (ثوابت، مطورون، كتم) ───
-    if handle_admin_input(message):
-        return
-
-    # ─── متجر المطورين ───
-    if handle_dev_store_input(message):
-        return
-
-# ─── لوحة تحكم المطور — إدخال نصي ───
-    if handle_developer_input(message):
-        return
-
-      # ─── مركز المحتوى — إدخال نصي (تعديل / إضافة) ───
-    if handle_hub_input(message):
-        return
-
-    # ─── تسجيل الأمر في الذاكرة ───
-    memory.set_last_command(user_id, text)
-
-    # ─── نظام التذاكر (يجب أن يكون قبل باقي الأوامر) ───
+    # ══════════════════════════════════════════
+    # 5. نظام التذاكر
+    # ══════════════════════════════════════════
     if handle_ticket_commands(message):
         return
 
-    # ─── حالة انتظار رسالة التذكرة ───
-    from utils.pagination.router import get_state
-    if get_state(message.from_user.id, message.chat.id).get("state") == "awaiting_ticket_msg":
+    from utils.pagination.router import get_state as _gs
+    if _gs(uid, cid).get("state") == "awaiting_ticket_msg":
         from modules.tickets.ticket_handler import handle_ticket_message_input
         handle_ticket_message_input(message)
         return
 
-    # =========================
-    # أوامر عامة
-    # =========================
-    if normalized_text == "/start":
-        send_welcome(message)
-        return
-    
-    if normalized_text == "المطور":
-        show_developer(message)
-        return
+    # ══════════════════════════════════════════
+    # 6. أوامر المطور
+    # ══════════════════════════════════════════
+    if is_any_dev(uid):
+        if normalized_text.startswith("كتم عالمي "):
+            _handle_global_mute_cmd(message)
+            return
+        if normalized_text.startswith("رفع كتم عالمي "):
+            _handle_global_unmute_cmd(message)
+            return
+        if normalized_text in ["تحديث جروب البوت", "تعيين جروب البوت"]:
+            _set_dev_group(message)
+            return
+        if normalized_text in ["متجر المطورين", "متجر المطور", "dev store"]:
+            open_dev_store(message)
+            return
+        if normalized_text in ["لوحة المطور", "dev panel"]:
+            from handlers.group_admin.developer.dev_control_panel import open_developer_panel
+            open_developer_panel(message)
+            return
+        if text.startswith("اضف "):
+            if handle_add_content_command(message):
+                return
 
-    # -------------------------
-    # 🏦 أوامر البنك
-    # -------------------------
-    elif bank_commands(message):
-        return
 
-    # -------------------------
-    # 🎮 الألعاب
-    # -------------------------
-    elif games_command(message):
+    # ── ترقية / تعديل مشرف ──
+    if normalized_text in ["/promote", "رفع مشرف"]:
+        handle_promote_command(message)
         return
-
-    elif entertainment_games_command(message):
-        return
-
-    # -------------------------
-    # 🏆 أوامر التوبات
-    # -------------------------
-    elif top_commands(message):  # ← سيتم التعامل مع كل التوبات الجديدة هنا
-        return
-
-    # -------------------------
-    # 🌍 أوامر الدولة
-    # -------------------------
-    elif country_commands(message):
+    if normalized_text in ["/edit_admin", "تعديل مشرف"]:
+        handle_edit_command(message)
         return
 
-    elif city_commands(message):
+    # ══════════════════════════════════════════
+    # 8. البنك
+    # ══════════════════════════════════════════
+    if bank_commands(message):
         return
 
-    elif daily_tasks_commands(message):
+    # ══════════════════════════════════════════
+    # 9. الألعاب
+    # ══════════════════════════════════════════
+    if games_command(message):
+        return
+    if entertainment_games_command(message):
         return
 
-    # -------------------------
-    # 🏰 أوامر التحالفات
-    # -------------------------
-    elif alliance_commands(message):
+    # ══════════════════════════════════════════
+    # 10. التوبات
+    # ══════════════════════════════════════════
+    if top_commands(message):
         return
 
-    # -------------------------
-    # 🗓 الوقت والتاريخ
-    # -------------------------
-    elif normalized_text in ["اليوم"]:
-        today_date(message)
+    # ══════════════════════════════════════════
+    # 11. الدولة والمدن
+    # ══════════════════════════════════════════
+    if country_commands(message):   return
+    if city_commands(message):      return
+    if daily_tasks_commands(message): return
 
-    elif normalized_text in ["كم الساعة", "كم الساعه", "الساعة كم", "الساعه كم", "الوقت"]:
-        today_time(message)
-
-    # -------------------------
-    # ✨ التنسيق
-    # -------------------------
-    elif handle_format_command(message) or handle_format_guide(message):
-        return
-    
-    # -------------------------
-    # ⚔️ نظام الحرب
-    # -------------------------
-    elif handle_war_text_commands(message):
+    # ══════════════════════════════════════════
+    # 12. التحالفات
+    # ══════════════════════════════════════════
+    if alliance_commands(message):
         return
 
-    # -------------------------
-    # 🛠 لوحة إدارة البوت
-    # -------------------------
-    elif normalized_text in ["لوحة الإدارة", "لوحة الادارة", "ثوابت البوت", "/admin"]:
-        open_admin_panel(message)
+    # ══════════════════════════════════════════
+    # 13. الحرب
+    # ══════════════════════════════════════════
+    if handle_war_text_commands(message):
         return
 
-    # ─── دليل المطور ───
-    elif normalized_text in ["شرح المطور", "دليل المطور"]:
-        open_dev_guide(message)
+    # ══════════════════════════════════════════
+    # 14. القرآن
+    # ══════════════════════════════════════════
+    if handle_quran_commands(message):
         return
 
-    # ─── متجر المطورين ───
-    elif normalized_text in ["متجر المطورين", "متجر المطور", "dev store"] and is_any_dev(message.from_user.id):
-        open_dev_store(message)
+    # ══════════════════════════════════════════
+    # 15. مركز المحتوى
+    # ══════════════════════════════════════════
+    if handle_content_command(message):
         return
 
-    # ─── إنجازاتي ───
-    elif normalized_text in ["إنجازاتي", "انجازاتي", "الإنجازات"]:
-        _show_achievements(message)
-        return
-
-    # ─── تقدمي ───
-    elif normalized_text in ["تقدمي", "تقدم"]:
-        _show_progress(message)
-        return
-
-    # ─── النفوذ ───
-    elif normalized_text in ["نفوذي", "تأثيري"]:
-        _show_influence(message)
-        return
-
-    # ─── الأحداث العالمية ───
-    elif normalized_text in ["الأحداث", "حدث", "الاحداث"]:
-        _show_global_event(message)
-        return
-
-    # ─── الموسم ───
-    elif normalized_text in ["الموسم", "موسم"]:
-        _show_season(message)
-        return
-
-    # ─── التنسيق الذكي ───
-    elif normalized_text == "تنسيق":
+    # ══════════════════════════════════════════
+    # 16. التنسيق والاستبدال
+    # ══════════════════════════════════════════
+    if normalized_text == "تنسيق":
         handle_format_command(message)
         return
-
-    elif normalized_text in ["شرح تنسيق", "دليل التنسيق"]:
+    if normalized_text in ["شرح تنسيق", "دليل التنسيق"]:
         handle_format_guide(message)
         return
-
-    # ─── الاستبدال الذكي ───
-    elif text.startswith("تعديل "):
+    if text.startswith("تعديل "):
         handle_replace_command(message)
         return
 
-    # ─── نظام إنجاز القرآن ───
-    elif handle_quran_commands(message):
+    # ══════════════════════════════════════════
+    # 17. الوقت والتاريخ
+    # ══════════════════════════════════════════
+    if normalized_text == "اليوم":
+        today_date(message)
+        return
+    if normalized_text in ["كم الساعة", "كم الساعه", "الساعة كم", "الساعه كم", "الوقت"]:
+        today_time(message)
         return
 
-    # ─── مركز المحتوى — إضافة (مطورون) ───
-    elif text.startswith("اضف "):
-        if handle_add_content_command(message):
-            return
-
-    # ─── مركز المحتوى — عرض ───
-    elif handle_content_command(message):
+    # ══════════════════════════════════════════
+    # 18. لوحة الإدارة ودليل المطور
+    # ══════════════════════════════════════════
+    if normalized_text in ["لوحة الإدارة", "لوحة الادارة", "ثوابت البوت", "/admin"]:
+        open_admin_panel(message)
+        return
+    if normalized_text in ["شرح المطور", "دليل المطور"]:
+        open_dev_guide(message)
         return
 
-    # ─── تحديث جروب البوت ───
-    elif normalized_text in ["تحديث جروب البوت", "تعيين جروب البوت"] and is_any_dev(message.from_user.id):
-        from core.admin import set_const
-        group_id = str(message.chat.id)
-        set_const("dev_group_id", group_id)
-        # تحديث ticket handler
-        try:
-            import modules.tickets.ticket_handler as _th
-            _th.DEV_GROUP_ID = int(group_id)
-        except Exception:
-            pass
-        bot.reply_to(message, f"✅ تم تعيين هذه المجموعة كجروب البوت الرئيسي\nID: <code>{group_id}</code>",
-                     parse_mode="HTML")
+    # ══════════════════════════════════════════
+    # 19. الإنجازات والتقدم والنفوذ والمواسم
+    # ══════════════════════════════════════════
+    if normalized_text in ["إنجازاتي", "انجازاتي", "الإنجازات"]:
+        _show_achievements(message)
+        return
+    if normalized_text in ["تقدمي", "تقدم"]:
+        _show_progress(message)
+        return
+    if normalized_text in ["نفوذي", "تأثيري"]:
+        _show_influence(message)
+        return
+    if normalized_text in ["الأحداث", "حدث", "الاحداث"]:
+        _show_global_event(message)
+        return
+    if normalized_text in ["الموسم", "موسم"]:
+        _show_season(message)
         return
 
-    
-    # -------------------------
-    # 👨‍💻 أوامر المطور
-    # -------------------------
-    elif normalized_text in DEV_COMMANDS:
+    # ══════════════════════════════════════════
+    # 20. أوامر المطور (DEV_COMMANDS)
+    # ══════════════════════════════════════════
+    if normalized_text in DEV_COMMANDS:
         if is_developer(message):
-            cmd_info = DEV_COMMANDS[normalized_text]
-            func = cmd_info["func"]
+            cmd_info   = DEV_COMMANDS[normalized_text]
+            func       = cmd_info["func"]
             needs_user = cmd_info.get("needs_user", False)
-
             if needs_user:
-                user_id, _ = get_target_user(message)
-                if not user_id:
+                target_uid, _ = get_target_user(message)
+                if not target_uid:
                     bot.reply_to(message, "حدد المستخدم بالرد أو الايدي أو اليوزر")
                     return
-                func(message, user_id)
+                func(message, target_uid)
             else:
                 func(message)
-            return
-        else:
-            return
+        return
 
-    # -------------------------
-    # 📌 أوامر المجموعة
-    # -------------------------
-    elif normalized_text == "مسح":
+    # ══════════════════════════════════════════
+    # 21. أوامر المجموعة
+    # ══════════════════════════════════════════
+    if normalized_text == "مسح":
         delete_message(message)
-
-    elif normalized_text == "تثبيت":
+        return
+    if normalized_text == "تثبيت":
         pin_message(message)
-
-    elif normalized_text == "لقبي":
+        return
+    if normalized_text == "لقبي":
         custom_title(message)
-
-    elif normalized_text == 'تعيين اسم المجموعة':
+        return
+    if normalized_text == "تعيين اسم المجموعة":
         set_group_name(message)
-
-    elif normalized_text == 'تعيين بايو المجموعة':
+        return
+    if normalized_text == "تعيين بايو المجموعة":
         set_group_bio(message)
+        return
 
-    # -------------------------
-    # 🧾 أوامر الملف الشخصي
-    # -------------------------
-    elif text in ["عني", "ايدي", "معلوماتي"] or text.startswith("ايدي"):
-        send_user_profile(message)  
-
-    elif normalized_text in ["عنه", "معلوماته"]:
+    # ══════════════════════════════════════════
+    # 22. الملف الشخصي
+    # ══════════════════════════════════════════
+    if text in ["عني", "ايدي", "معلوماتي"] or text.startswith("ايدي"):
         send_user_profile(message)
-    # -------------------------
-    # البحث عن أوامر محددة
-    # -------------------------
-    else:
-        for command_name, func in commands.items():
-            if normalized_text.startswith(command_name):
-                user_id, _ = get_target_user(message)
-                if not user_id:
-                    bot.reply_to(message, "حدد المستخدم بالرد أو الايدي أو اليوزر")
-                    return
-                func(message)
-                return
+        return
+    if normalized_text in ["عنه", "معلوماته"]:
+        send_user_profile(message)
+        return
 
-    # -------------------------
-    # 💬 الردود التلقائية
-    # -------------------------
-    # ─── متابعة المستخدم لتذكرة مفتوحة (في الخاص) ───
+    # ══════════════════════════════════════════
+    # 23. أوامر الكتم/الحظر (prefix-based)
+    # ══════════════════════════════════════════
+    for command_name, func in commands.items():
+        if normalized_text.startswith(command_name):
+            target_uid, _ = get_target_user(message)
+            if not target_uid:
+                bot.reply_to(message, "حدد المستخدم بالرد أو الايدي أو اليوزر")
+                return
+            func(message)
+            return
+
+    # ══════════════════════════════════════════
+    # 24. متابعة التذاكر المفتوحة (الخاص فقط)
+    # ══════════════════════════════════════════
     if message.chat.type == "private":
         from modules.tickets.ticket_handler import handle_user_followup
         if handle_user_followup(message):
             return
 
+    # ══════════════════════════════════════════
+    # 25. الردود التلقائية
+    # ══════════════════════════════════════════
     chat_responses(message)
+
+
+def receive_responses(message):
+    """
+    نقطة الدخول الرئيسية — حدود الخطأ الإلزامية.
+    أي استثناء يُنظّف الحالة ويُبلّغ المستخدم فوراً.
+    """
+    uid = message.from_user.id
+    cid = message.chat.id
+    state = StateManager.get(uid, cid)
+
+    try:
+        _in_private(message)
+        if is_group(message):
+            _dispatch(message)
+        
+    except Exception as e:
+        StateManager.clear(uid, cid)
+        log_event("flow_error", user=uid, chat=cid, error=str(e), state=state)
+        send_result(
+            chat_id=cid,
+            text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
+        )
+
+
+def _set_dev_group(message):
+    from core.admin import set_const
+    group_id = str(message.chat.id)
+    set_const("dev_group_id", group_id)
+    try:
+        import modules.tickets.ticket_handler as _th
+        _th.DEV_GROUP_ID = int(group_id)
+    except Exception:
+        pass
+    bot.reply_to(message,
+                 f"✅ تم تعيين هذه المجموعة كجروب البوت الرئيسي\nID: <code>{group_id}</code>",
+                 parse_mode="HTML")
 
 
 # ══════════════════════════════════════════
@@ -412,7 +457,7 @@ def _show_achievements(message):
             bot.reply_to(message, "🏅 لم تحصل على أي إنجازات بعد!\nاستمر في اللعب لكسب الإنجازات.",
                          parse_mode="HTML")
             return
-        text = f"🏅 <b>إنجازاتك ({len(achievements)})</b>\n━━━━━━━━━━━━━━━\n\n"
+        text = f"🏅 <b>إنجازاتك ({len(achievements)})</b>\n{get_lines()}\n\n"
         for a in achievements[:15]:
             import time as _t
             ts = _t.strftime("%Y-%m-%d", _t.localtime(a["unlocked_at"]))
@@ -438,7 +483,7 @@ def _show_progress(message):
         if not progress:
             bot.reply_to(message, "✅ أنجزت كل الإنجازات المتاحة!", parse_mode="HTML")
             return
-        text = "📈 <b>تقدمك نحو الإنجازات القادمة</b>\n━━━━━━━━━━━━━━━\n\n"
+        text = "📈 <b>تقدمك نحو الإنجازات القادمة</b>\n{get_lines()}\n\n"
         for p in progress:
             text += (
                 f"{p['emoji']} <b>{p['name_ar']}</b>\n"
@@ -511,7 +556,7 @@ def _show_season(message):
         season = get_active_season()
         text = (
             f"🏆 <b>الموسم الحالي: {status['name']}</b>\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"⏱️ ينتهي خلال: {status['days_left']} يوم {status['hours_left']} ساعة\n\n"
         )
 

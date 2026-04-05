@@ -6,7 +6,7 @@ from core.bot import bot
 from utils.pagination import btn, send_ui, edit_ui, register_action, paginate_list, grid
 from database.db_queries.countries_queries import get_country_by_owner
 from database.db_queries.advanced_war_queries import (
-    get_all_cards, get_user_cards, add_user_card, get_card_by_id,
+    add_discovered_country, get_all_cards, get_user_cards, add_user_card, get_card_by_id,
     get_reputation, ensure_reputation, get_battle_history_for_country,
     get_active_battles_for_country, get_battle_by_id,
     get_spy_units, ensure_spy_units, get_my_pending_support_requests,
@@ -19,6 +19,7 @@ from modules.war.services.advanced_war_service import (
     send_support_request_all, send_support_request_targeted,
 )
 
+from utils.helpers import get_lines
 
 def _back_btn(user_id, chat_id):
     return btn("🔙 رجوع", "adv_war_main_back", data={}, owner=(user_id, chat_id))
@@ -1016,7 +1017,7 @@ def open_hospital_menu(message):
     text = f"🏥 <b>المستشفى والإصلاح</b>\n"
     if healed > 0:
         text += f"✅ تم شفاء {healed} جندي!\n"
-    text += f"━━━━━━━━━━━━━━━\n\n"
+    text += f"{get_lines()}\n\n"
 
     if injured:
         text += f"🏥 <b>الجنود المصابون ({len(injured)} نوع):</b>\n"
@@ -1090,7 +1091,7 @@ def show_country_status(call, data):
 
     text = (
         f"🏳️ <b>حالة دولة {country['name']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"💪 القوة الكاملة: {breakdown['total']:.0f}\n"
         f"🪖 الجنود: {breakdown['troop_count']}\n"
         f"🛡 المعدات: {breakdown['equipment_count']}\n"
@@ -1213,7 +1214,7 @@ def show_war_log(call, data):
         return
 
     items, total_pages = paginate_list(history, page, per_page=8)
-    text = f"📜 <b>سجل الحروب</b> (صفحة {page+1}/{total_pages})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"📜 <b>سجل الحروب</b> (صفحة {page+1}/{total_pages})\n{get_lines()}\n\n"
     for entry in items:
         text += format_history_entry(entry, country["id"]) + "\n\n"
 
@@ -1262,7 +1263,7 @@ def show_country_status(call, data):
 
     text = (
         f"🏳️ <b>حالة دولة {country['name']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"💪 القوة الكاملة: {breakdown['total']:.0f}\n"
         f"🪖 الجنود: {breakdown['troop_count']}\n"
         f"🛡 المعدات: {breakdown['equipment_count']}\n"
@@ -1328,7 +1329,7 @@ def show_force_shop(call, data):
 
     items, total_pages = paginate_list(items_all, page, per_page=5)
 
-    text = f"{title}\n💰 رصيدك: {balance:.0f} Liben\n━━━━━━━━━━━━━━━\n\n"
+    text = f"{title}\n💰 رصيدك: {balance:.0f} Liben\n{get_lines()}\n\n"
     buttons = []
     for item in items:
         emoji = item.get("emoji", "⚔️")
@@ -1488,7 +1489,7 @@ def show_radar(call, data):
                 buttons=[_back_btn(user_id, chat_id)], layout=[1])
         return
 
-    text = "📡 <b>الرادار — أهداف قريبة</b>\n━━━━━━━━━━━━━━━\n\n"
+    text = "📡 <b>الرادار — أهداف قريبة</b>\n{get_lines()}\n\n"
     buttons = []
     for t in targets:
         tier_label = TIER_LABELS.get(t["tier"], "🟡")
@@ -1519,7 +1520,7 @@ def show_agents_menu(call, data):
     from modules.war.spy_service import get_agents, AGENT_TYPES, _c
 
     agents = get_agents(country["id"])
-    text   = "🕵️ <b>عملاء التجسس</b>\n━━━━━━━━━━━━━━━\n\n"
+    text   = "🕵️ <b>عملاء التجسس</b>\n{get_lines()}\n\n"
 
     if agents:
         for a in agents:
@@ -1658,7 +1659,7 @@ def show_support_stats(call, data):
     alliance = dict(alliance)
 
     stats = get_alliance_support_leaderboard(alliance["id"])
-    text  = f"🤝 <b>إحصائيات دعم تحالف {alliance['name']}</b>\n━━━━━━━━━━━━━━━\n\n"
+    text  = f"🤝 <b>إحصائيات دعم تحالف {alliance['name']}</b>\n{get_lines()}\n\n"
 
     if not stats:
         text += "لا توجد إحصائيات بعد."

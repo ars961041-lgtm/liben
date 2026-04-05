@@ -157,11 +157,7 @@ def _end_event(event_id: int):
 
 def _notify_event_start(event: dict):
     try:
-        from core.bot import bot
-        from core.admin import get_const
-        group_id = int(get_const("dev_group_id", "-1"))
-        if group_id == -1:
-            return
+        from core.dev_notifier import send_to_dev_group
         remaining = event["duration_hours"]
         msg = (
             f"{event['emoji']} <b>حدث عالمي جديد!</b>\n\n"
@@ -169,20 +165,16 @@ def _notify_event_start(event: dict):
             f"📝 {event['description_ar']}\n"
             f"⏱️ المدة: {remaining} ساعة"
         )
-        bot.send_message(group_id, msg, parse_mode="HTML")
+        send_to_dev_group(msg)
     except Exception:
         pass
 
 
 def _notify_event_end(event: dict):
     try:
-        from core.bot import bot
-        from core.admin import get_const
-        group_id = int(get_const("dev_group_id", "-1"))
-        if group_id == -1:
-            return
+        from core.dev_notifier import send_to_dev_group
         msg = f"{event['emoji']} <b>انتهى الحدث: {event['name_ar']}</b>"
-        bot.send_message(group_id, msg, parse_mode="HTML")
+        send_to_dev_group(msg)
     except Exception:
         pass
 

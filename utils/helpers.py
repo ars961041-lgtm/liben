@@ -200,3 +200,57 @@ def format_remaining_time(seconds):
 def dont_have_power ():
   return "<b>ليس لديك صلاحية لاستخدام هذا الأمر</b>"
 
+
+# ══════════════════════════════════════════
+# 📤 send_result / edit_result — المعيار العالمي
+# ══════════════════════════════════════════
+
+def send_result(chat_id: int, text: str, buttons=None, reply_to_id: int = None):
+    """
+    إرسال رسالة بالمعيار العالمي:
+    - parse_mode="HTML" دائماً
+    - disable_web_page_preview=True دائماً
+    """
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = None
+    if buttons:
+        markup = InlineKeyboardMarkup()
+        for row in buttons:
+            markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
+    kwargs = {
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": markup,
+    }
+    if reply_to_id:
+        kwargs["reply_to_message_id"] = reply_to_id
+    try:
+        bot.send_message(chat_id, text, **kwargs)
+    except Exception as e:
+        print(f"[send_result] error: {e}")
+
+
+def edit_result(chat_id: int, message_id: int, text: str, buttons=None):
+    """
+    تعديل رسالة بالمعيار العالمي:
+    - parse_mode="HTML" دائماً
+    - disable_web_page_preview=True دائماً
+    """
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = None
+    if buttons:
+        markup = InlineKeyboardMarkup()
+        for row in buttons:
+            markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
+    try:
+        bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=message_id,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=markup,
+        )
+    except Exception as e:
+        print(f"[edit_result] error: {e}")
+

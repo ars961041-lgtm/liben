@@ -4,15 +4,20 @@
 import time
 from core.bot import bot
 from core.config import developers_id
+from core.dev_notifier import send_to_dev_group
+from utils.helpers import get_lines
 from modules.tickets.ticket_db import (
     create_ticket, get_ticket, get_open_ticket_for_user,
     add_ticket_message, close_ticket, set_ticket_group_msg,
     get_ticket_by_group_msg, check_limits, record_ticket_usage,
-    get_ticket_messages,
 )
+from core.admin import get_const_int
 
-# ─── معرف مجموعة المطورين ───
-DEV_GROUP_ID = -1003505563946  # سالب لأنها مجموعة/سوبرجروب
+
+def _get_dev_group_id() -> int:
+    """يجلب معرف مجموعة المطورين ديناميكياً في كل استدعاء."""
+    return get_const_int("dev_group_id", -1)
+
 
 # ─── قائمة المطورين ───
 DEVELOPERS = list(developers_id)
@@ -144,17 +149,34 @@ def handle_ticket_message_input(message):
     # تأكيد للمستخدم
     from core.personality import send_with_delay, success_msg
     from core import memory as _mem
-
+    from utils.keyboards import ui_btn
     _mem.increment_daily_reports(user_id)
+    from telebot.types import InlineKeyboardMarkup
+
+    bot_user = bot.get_me()
+    bot_username = bot_user.username
+
+    buttons = [
+        ui_btn(
+            text="📩 راسل البوت",
+            url=f"https://t.me/{bot_username}",
+            style="primary"
+        )
+    ]
+
+    markup = InlineKeyboardMarkup()
+    markup.add(*buttons)
 
     send_with_delay(
         chat_id,
         f"{success_msg()}\n\n"
         f"🎫 رقم التذكرة: <b>#{ticket_id}</b>\n"
         f"📂 النوع: {CATEGORIES[cat]}\n\n"
-        f"سيتم الرد عليك قريباً.",
+        f"📨 سيتم إرسال الرد إليك في <b>خاص البوت</b>.\n"
+        f"⚠️ إذا لم تكن قد راسلت البوت من قبل، اضغط الزر بالأسفل واضغط على بدء.",
         delay=0.6,
-        reply_to=message.message_id
+        reply_to=message.message_id,
+        markup=markup
     )
 
     return True
@@ -166,13 +188,22 @@ def handle_ticket_message_input(message):
 def send_to_devs(ticket_id, message, cat):
     user = message.from_user
     mention = f'<a href="tg://user?id={user.id}">{_escape(user.first_name)}</a>'
+    dev_id = list(developers_id)[0]
+    line = get_lines()
+    try:
+        dev_user = bot.get_chat(dev_id)
+        dev_name = f"{dev_user.first_name or ''} {dev_user.last_name or ''}".strip()
+    except Exception:
+        dev_name = "المطور"
 
     header = (
+        f"تعال <a href='tg://user?id={dev_id}'><b>{dev_name}</b></a>\n"
+        f"{line}\n"
         f"🎫 <b>تذكرة جديدة #{ticket_id}</b>\n"
         f"👤 المستخدم: {mention}\n"
         f"🆔 ID: <code>{user.id}</code>\n"
         f"📂 النوع: {CATEGORIES.get(cat, cat)}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{line}\n"
         f"📩 الرسالة:\n"
     )
 
@@ -183,22 +214,12 @@ def send_to_devs(ticket_id, message, cat):
         btn("💬 رد", "ticket_dev_reply", data={"tid": ticket_id}, owner=None, color="su"),
         btn("🔒 إغلاق التذكرة", "ticket_close", data={"tid": ticket_id}, owner=None, color="d"),
     ]
-
     markup = build_keyboard(buttons, [2], None)
 
-    try:
-        sent = bot.send_message(
-            DEV_GROUP_ID,
-            header + _escape(message.text) + "\n━━━━━━━━━━━━━━━",
-            parse_mode="HTML",
-            reply_markup=markup
-        )
-
-        return sent.message_id
-
-    except Exception as e:
-        print(f"[Tickets] خطأ في إرسال للمجموعة: {e}")
-        return None
+    return send_to_dev_group(
+        header + _escape(message.text) + f"\n{line}",
+        reply_markup=markup,
+    )
 
 # ══════════════════════════════════════════
 # 💬 رد المطور
@@ -213,7 +234,7 @@ def handle_dev_reply(message):
     chat_id = message.chat.id
 
     # فقط في مجموعة المطورين
-    if chat_id != DEV_GROUP_ID:
+    if chat_id != _get_dev_group_id():
         return False
 
     # فقط المطورون
@@ -264,7 +285,7 @@ def _send_dev_reply_to_user(ticket, message, ticket_id):
     header = (
         f"💬 <b>رد المطور على تذكرتك #{ticket_id}</b>\n"
         f"👤 {mention}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"✉️ الرد:\n"
     )
 
@@ -272,7 +293,7 @@ def _send_dev_reply_to_user(ticket, message, ticket_id):
         if message.text:
             bot.send_message(
                 user_id,
-                header + _escape(message.text) + "\n━━━━━━━━━━━━━━━",
+                header + _escape(message.text) + "\n{get_lines()}",
                 parse_mode="HTML"
             )
 
@@ -326,7 +347,7 @@ def _forward_user_reply_to_devs(ticket, message, ticket_id):
     header = (
         f"🎫 <b>رد على التذكرة #{ticket_id}</b>\n"
         f"👤 المستخدم: {mention}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"📩 الرسالة:\n"
     )
 
@@ -337,20 +358,13 @@ def _forward_user_reply_to_devs(ticket, message, ticket_id):
         btn("💬 رد", "ticket_dev_reply", data={"tid": ticket_id}, owner=None, color="su"),
         btn("🔒 إغلاق التذكرة", "ticket_close", data={"tid": ticket_id}, owner=None, color="d"),
     ]
-
     markup = build_keyboard(buttons, [2], None)
 
-    try:
-        if message.text:
-            bot.send_message(
-                DEV_GROUP_ID,
-                header + _escape(message.text) + "\n━━━━━━━━━━━━━━━",
-                parse_mode="HTML",
-                reply_markup=markup
-            )
-
-    except Exception as e:
-        print(f"[Tickets] خطأ في إعادة توجيه رد المستخدم: {e}")
+    if message.text:
+        send_to_dev_group(
+            header + _escape(message.text) + f"\n{get_lines()}",
+            reply_markup=markup,
+        )
 
 
 # ══════════════════════════════════════════
@@ -376,7 +390,7 @@ def close_ticket_action(ticket_id, closer_user_id):
         send_with_delay(
             ticket["user_id"],
             f"🔒 <b>تم إغلاق التذكرة #{ticket_id}</b>\n\n"
-            f"شكراً لتواصلك معنا. نتمنى أن نكون قد أفدناك 🙏",
+            f"شكراً لتواصلك معنا. نتمنى أن نكون قد أفدناك 🙆‍♂",
             delay=0.5
         )
     except Exception:

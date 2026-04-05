@@ -9,6 +9,7 @@ from database.db_queries.war_queries import (
 )
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
+from utils.helpers import get_lines
 
 
 # ══════════════════════════════════════════
@@ -120,7 +121,7 @@ def get_city_forces_display(country_id: int) -> str:
         return "❌ لا توجد مدن في دولتك."
 
     total_power = get_country_power(country_id)
-    text = f"🪖 <b>قوات دولتك</b>\n💪 القوة الكاملة: {total_power:.0f}\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🪖 <b>قوات دولتك</b>\n💪 القوة الكاملة: {total_power:.0f}\n{get_lines()}\n\n"
 
     for city in cities:
         cid  = city["id"] if isinstance(city, dict) else city[0]

@@ -4,20 +4,20 @@ Complete management for Content Hub and Quran System
 """
 from core.bot import bot
 from core.admin import is_any_dev
+from core.state_manager import StateManager
 from utils.pagination import (
     btn, send_ui, edit_ui, register_action,
-    set_state, get_state, clear_state, paginate_list
+    paginate_list, set_state, get_state, clear_state,
 )
 from utils.pagination.buttons import build_keyboard
+from utils.helpers import get_lines
 
 # Content Hub imports
 from modules.content_hub.hub_db import CONTENT_TYPES, TYPE_LABELS, count_rows
-from modules.content_hub.hub_handler import _build_buttons as build_content_buttons
 
 # Quran imports
 from modules.quran import quran_db as qr_db
 from modules.quran import quran_service as qr_svc
-from modules.quran import quran_ui as qr_ui
 
 _B = "p"   # أزرق
 _G = "su"  # أخضر
@@ -41,7 +41,7 @@ def open_developer_panel(message):
 
     text = (
         "🛠️ <b>لوحة تحكم المطور</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر النظام المراد إدارته:"
     )
 
@@ -86,15 +86,15 @@ def _show_content_hub_panel(call_or_message):
 
     text = (
         "📚 <b>إدارة المحتوى</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر نوع المحتوى:"
     )
 
     buttons = [
-        btn("📜 اقتباسات", "hub_dev_type", {"type": "quotes"},     color=_B, owner=owner),
-        btn("😂 نوادر",     "hub_dev_type", {"type": "anecdotes"},  color=_B, owner=owner),
-        btn("📖 قصص",      "hub_dev_type", {"type": "stories"},    color=_B, owner=owner),
-        btn("🧠 حكم",      "hub_dev_type", {"type": "wisdom"},     color=_B, owner=owner),
+        btn("📜 اقتباسات", "hub_dev_type", {"type": "quotes"},    color=_B, owner=owner),
+        btn("😂 نوادر",     "hub_dev_type", {"type": "anecdotes"}, color=_B, owner=owner),
+        btn("📖 قصص",      "hub_dev_type", {"type": "stories"},   color=_B, owner=owner),
+        btn("🧠 حكم",      "hub_dev_type", {"type": "wisdom"},    color=_B, owner=owner),
         btn("⬅️ رجوع",     "dev_back_main", {},                   color=_R, owner=owner),
     ]
 
@@ -113,7 +113,7 @@ def on_dev_back_main(call, data):
 
     text = (
         "🛠️ <b>لوحة تحكم المطور</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر النظام المراد إدارته:"
     )
 
@@ -129,9 +129,12 @@ def on_dev_back_main(call, data):
 @register_action("hub_dev_type")
 def on_hub_dev_type(call, data):
     """عرض لوحة التحكم لنوع محتوى محدد"""
-    content_type = data.get("type")
-    table = CONTENT_TYPES.get(content_type)
-    if not table:
+    # data["type"] يحمل اسم الجدول مباشرة (quotes, anecdotes, stories, wisdom)
+    table = data.get("type")
+
+    # التحقق أن الجدول صالح
+    valid_tables = set(CONTENT_TYPES.values())
+    if table not in valid_tables:
         bot.answer_callback_query(call.id, "❌ نوع محتوى غير صحيح.", show_alert=True)
         return
 
@@ -142,15 +145,15 @@ def on_hub_dev_type(call, data):
     label = TYPE_LABELS.get(table, table)
     text = (
         f"{label}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"اختر العملية:"
     )
 
     buttons = [
-        btn("🔍 بحث",        "hub_dev_search",     {"table": table}, color=_B, owner=owner),
-        btn("➕ إضافة",       "hub_dev_add",        {"table": table}, color=_G, owner=owner),
-        btn("📋 عرض عشوائي", "hub_dev_random",     {"table": table}, color=_B, owner=owner),
-        btn("⬅️ رجوع",       "dev_content_hub",    {},              color=_R, owner=owner),
+        btn("🔍 بحث",        "hub_dev_search",  {"table": table}, color=_B, owner=owner),
+        btn("➕ إضافة",       "hub_dev_add",     {"table": table}, color=_G, owner=owner),
+        btn("📋 عرض عشوائي", "hub_dev_random",  {"table": table}, color=_B, owner=owner),
+        btn("⬅️ رجوع",       "dev_content_hub", {},               color=_R, owner=owner),
     ]
 
     edit_ui(call, text=text, buttons=buttons, layout=[2, 2])
@@ -245,7 +248,7 @@ def on_hub_dev_random(call, data):
     total = count_rows(table)
     text = (
         f"{label} — معاينة المطور\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{row['content']}\n\n"
         f"<i>#{row['id']} من {total}</i>"
     )
@@ -367,7 +370,7 @@ def _show_quran_dev_panel(call):
 
     text = (
         "📖 <b>إدارة القرآن</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         "اختر العملية:"
     )
 
@@ -483,22 +486,24 @@ def on_qr_dev_edit_tafseer(call, data):
 
 @register_action("qr_dev_add_ayat")
 def on_qr_dev_add_ayat(call, data):
-    """بدء إضافة آيات"""
+    """بدء إضافة آيات — يستخدم تدفق qr_dev_add"""
     uid = call.from_user.id
     cid = call.message.chat.id
     owner = (uid, cid)
 
-    set_state(uid, cid, "qr_dev_awaiting_sura", data={
-        "_mid": call.message.message_id,
-    })
+    StateManager.set(uid, cid, {
+        "type":  "qr_dev_add",
+        "step":  "await_sura",
+        "mid":   call.message.message_id,
+        "extra": {},
+    }, ttl=300)
 
     bot.answer_callback_query(call.id)
     cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)
 
     try:
         bot.edit_message_text(
-            f"➕ <b>إضافة آيات</b>\n\n"
-            f"أرسل اسم السورة:",
+            "➕ <b>إضافة آيات</b>\n\nأرسل اسم السورة:",
             cid, call.message.message_id,
             parse_mode="HTML",
             reply_markup=build_keyboard([cancel_btn], [1], uid),
@@ -530,7 +535,7 @@ def on_qr_dev_stats(call, data):
 
     text = (
         f"📊 <b>إحصائيات القرآن</b>\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"📖 إجمالي الآيات: <b>{total_ayat}</b>\n\n"
         f"📚 التفاسير المتاحة:\n"
     )
@@ -566,328 +571,17 @@ def on_qr_dev_cancel(call, data):
 
 def handle_developer_input(message) -> bool:
     """
-    معالج الإدخال النصي للوحة المطور
-    يرجع True إذا تم التعامل مع الرسالة.
+    معالج الإدخال النصي للوحة المطور.
+    يُفوَّض للمحرك في dev_flows.py.
     """
-    uid = message.from_user.id
-    cid = message.chat.id
-
-    if not is_any_dev(uid):
-        return False
-
-    state = get_state(uid, cid)
-    if not state or "state" not in state:
-        return False
-
-    s = state["state"]
-    sdata = state.get("data", {})
-
-    if not (s.startswith("hub_dev_") or s.startswith("qr_dev_")):
-        return False
-
-    raw = (message.text or "").strip()
-    mid = sdata.get("_mid")
-    clear_state(uid, cid)
-
-    try:
-        bot.delete_message(cid, message.message_id)
-    except Exception:
-        pass
-
-    def _reply(text: str):
-        if mid:
-            try:
-                bot.edit_message_text(text, cid, mid, parse_mode="HTML")
-            except Exception:
-                bot.send_message(cid, text, parse_mode="HTML")
-        else:
-            bot.send_message(cid, text, parse_mode="HTML")
-
-    # ── CONTENT HUB ──
-
-    # بحث محتوى
-    if s == "hub_dev_awaiting_search":
-        from modules.content_hub.hub_db import get_by_id
-
-        table = sdata.get("table")
-        if not raw.isdigit():
-            _reply("❌ أرسل رقماً صحيحاً.")
-            return True
-
-        row_id = int(raw)
-        row = get_by_id(table, row_id)
-        if not row:
-            _reply(f"❌ لا يوجد محتوى بالرقم {row_id}.")
-            return True
-
-        # عرض المحتوى مع أزرار التعديل
-        label = TYPE_LABELS.get(table, table)
-        total = count_rows(table)
-        text = (
-            f"{label} — معاينة المطور\n"
-            f"━━━━━━━━━━━━━━━\n\n"
-            f"{row['content']}\n\n"
-            f"<i>#{row['id']} من {total}</i>"
-        )
-
-        owner = (uid, cid)
-        buttons = [
-            btn("✏️ تعديل",   "hub_dev_edit",   {"table": table, "row_id": row["id"]}, color=_B, owner=owner),
-            btn("🗑 حذف",     "hub_dev_delete_confirm", {"table": table, "row_id": row["id"]}, color=_R, owner=owner),
-            btn("📤 مشاركة", "hub_dev_share",  {"table": table, "row_id": row["id"]}, color=_G, owner=owner),
-            btn("⬅️ رجوع",   "hub_dev_type",   {"type": list(CONTENT_TYPES.keys())[list(CONTENT_TYPES.values()).index(table)]}, color=_R, owner=owner),
-        ]
-
-        if mid:
-            try:
-                from utils.pagination.buttons import build_keyboard
-                bot.edit_message_text(
-                    text, cid, mid,
-                    parse_mode="HTML",
-                    reply_markup=build_keyboard(buttons, [2, 2], uid),
-                )
-            except Exception:
-                pass
-        return True
-
-    # إضافة محتوى
-    if s == "hub_dev_awaiting_add":
-        from modules.content_hub.hub_db import insert_content, CONTENT_SEPARATOR
-
-        table = sdata.get("table")
-        if not raw:
-            _reply("❌ النص لا يمكن أن يكون فارغاً.")
-            return True
-
-        items = [i.strip() for i in raw.split(CONTENT_SEPARATOR) if i.strip()]
-        added = 0
-        for item in items:
-            insert_content(table, item)
-            added += 1
-
-        label = TYPE_LABELS.get(table, table)
-        _reply(
-            f"✅ تمت إضافة <b>{added}</b> عنصر إلى {label}.\n"
-            f"الفاصل المستخدم: <code>{CONTENT_SEPARATOR}</code>"
-        )
-        return True
-
-    # تعديل محتوى
-    if s == "hub_dev_awaiting_edit":
-        from modules.content_hub.hub_db import update_content
-
-        table = sdata.get("table")
-        row_id = sdata.get("row_id")
-        if not raw:
-            _reply("❌ النص لا يمكن أن يكون فارغاً.")
-            return True
-
-        ok = update_content(table, row_id, raw)
-        if ok:
-            # أعد عرض المحتوى المحدث
-            label = TYPE_LABELS.get(table, table)
-            total = count_rows(table)
-            text = (
-                f"{label} — معاينة المطور\n"
-                f"━━━━━━━━━━━━━━━\n\n"
-                f"{raw}\n\n"
-                f"<i>#{row_id} من {total}</i>"
-            )
-
-            owner = (uid, cid)
-            buttons = [
-                btn("✏️ تعديل",   "hub_dev_edit",   {"table": table, "row_id": row_id}, color=_B, owner=owner),
-                btn("🗑 حذف",     "hub_dev_delete_confirm", {"table": table, "row_id": row_id}, color=_R, owner=owner),
-                btn("📤 مشاركة", "hub_dev_share",  {"table": table, "row_id": row_id}, color=_G, owner=owner),
-                btn("⬅️ رجوع",   "hub_dev_type",   {"type": list(CONTENT_TYPES.keys())[list(CONTENT_TYPES.values()).index(table)]}, color=_R, owner=owner),
-            ]
-
-            if mid:
-                try:
-                    from utils.pagination.buttons import build_keyboard
-                    bot.edit_message_text(
-                        text, cid, mid,
-                        parse_mode="HTML",
-                        reply_markup=build_keyboard(buttons, [2, 2], uid),
-                    )
-                except Exception:
-                    pass
-        else:
-            _reply("❌ فشل في التعديل.")
-        return True
-
-    # ── QURAN ──
-
-    # بحث آية
-    if s == "qr_dev_awaiting_search":
-        results = qr_svc.search(raw)
-        if not results:
-            _reply(f"🔍 لم يتم العثور على نتائج لـ: <b>{raw}</b>")
-            return True
-
-        # عرض نتائج البحث مع pagination
-        _show_quran_search_results(message, uid, cid, raw, results, page=0, mid=mid)
-        return True
-
-    # تعديل آية
-    if s == "qr_dev_awaiting_edit_ayah":
-        # تحليل الإدخال
-        parts = raw.split()
-        if not parts:
-            _reply("❌ أدخل اسم السورة ورقم الآية.")
-            return True
-
-        if len(parts) == 1 and parts[0].isdigit():
-            # رقم آية مباشر
-            ayah_id = int(parts[0])
-            ayah = qr_db.get_ayah(ayah_id)
-        else:
-            # اسم سورة + رقم
-            ayah_num = parts[-1] if parts[-1].isdigit() else None
-            sura_name = " ".join(parts[:-1] if ayah_num else parts)
-            if not ayah_num:
-                _reply("❌ أدخل رقم الآية.")
-                return True
-            ayah = qr_db.get_ayah_by_sura_number(sura_name, int(ayah_num))
-
-        if not ayah:
-            _reply("❌ الآية غير موجودة.")
-            return True
-
-        # عرض الآية مع زر التعديل
-        _show_ayah_for_edit(message, uid, cid, ayah, mid)
-        return True
-
-    # تعديل تفسير
-    if s == "qr_dev_awaiting_edit_tafseer":
-        if not raw.isdigit():
-            _reply("❌ أرسل رقماً صحيحاً.")
-            return True
-
-        ayah_id = int(raw)
-        ayah = qr_db.get_ayah(ayah_id)
-        if not ayah:
-            _reply(f"❌ لا توجد آية بالرقم {ayah_id}.")
-            return True
-
-        # عرض أزرار التفسير
-        _show_tafseer_selection(message, uid, cid, ayah, mid)
-        return True
-
-    # إضافة آيات — الخطوة الأولى: اسم السورة
-    if s == "qr_dev_awaiting_sura":
-        if not raw:
-            _reply("❌ أدخل اسم السورة.")
-            return True
-
-        set_state(uid, cid, "qr_dev_awaiting_ayat", data={
-            "sura": raw,
-            "_mid": mid,
-        })
-
-        owner = (uid, cid)
-        cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)
-
-        if mid:
-            try:
-                bot.edit_message_text(
-                    f"➕ <b>إضافة آيات — سورة {raw}</b>\n\n"
-                    f"أرسل رقم الآية الأولى (افتراضي: 1):",
-                    cid, mid,
-                    parse_mode="HTML",
-                    reply_markup=build_keyboard([cancel_btn], [1], uid),
-                )
-            except Exception:
-                pass
-        return True
-
-    # إضافة آيات — الخطوة الثانية: رقم البداية
-    if s == "qr_dev_awaiting_ayat":
-        sura_name = sdata.get("sura")
-        start_num = 1
-        if raw.isdigit():
-            start_num = int(raw)
-
-        set_state(uid, cid, "qr_dev_awaiting_ayat_text", data={
-            "sura": sura_name,
-            "start": start_num,
-            "_mid": mid,
-        })
-
-        owner = (uid, cid)
-        cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)
-
-        if mid:
-            try:
-                bot.edit_message_text(
-                    f"➕ <b>إضافة آيات — سورة {sura_name}</b>\n\n"
-                    f"أرسل الآيات. لإضافة عدة آيات دفعة واحدة، افصل بينها بـ:\n"
-                    f"<code>{qr_db.BULK_SEPARATOR}</code>\n\n"
-                    f"مثال:\nبِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ\n---\nالْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ",
-                    cid, mid,
-                    parse_mode="HTML",
-                    reply_markup=build_keyboard([cancel_btn], [1], uid),
-                )
-            except Exception:
-                pass
-        return True
-
-    # إضافة آيات — الخطوة الثالثة: النص
-    if s == "qr_dev_awaiting_ayat_text":
-        sura_name = sdata.get("sura")
-        start_num = sdata.get("start", 1)
-        if not raw:
-            _reply("❌ النص لا يمكن أن يكون فارغاً.")
-            return True
-
-        added = qr_svc.bulk_add_ayat(sura_name, start_num, raw)
-        _reply(
-            f"✅ تمت إضافة <b>{added}</b> آية إلى سورة <b>{sura_name}</b>.\n"
-            f"الفاصل المستخدم: <code>{qr_db.BULK_SEPARATOR}</code>"
-        )
-        return True
-
-    # ── QURAN ──
-
-    # بحث آية
-    if s == "qr_dev_awaiting_search":
-        results = qr_svc.search(raw)
-        if not results:
-            _reply(f"🔍 لم يتم العثور على نتائج لـ: <b>{raw}</b>")
-            return True
-
-        # عرض نتائج البحث مع pagination
-        _show_quran_search_results(message, uid, cid, raw, results, page=0, mid=mid)
-        return True
-
-    # تعديل نص الآية
-    if s == "qr_dev_edit_ayah_text":
-        aid = sdata.get("aid")
-        if not raw:
-            _reply("❌ النص لا يمكن أن يكون فارغاً.")
-            return True
-        ok = qr_svc.edit_ayah(aid, raw)
-        _reply("✅ تم تعديل نص الآية." if ok else "❌ فشل التعديل.")
-        return True
-
-    # تعديل التفسير
-    if s == "qr_dev_edit_tafseer_text":
-        aid = sdata.get("aid")
-        col = sdata.get("col")
-        if not raw:
-            _reply("❌ النص لا يمكن أن يكون فارغاً.")
-            return True
-        ok = qr_svc.edit_tafseer(aid, col, raw)
-        _reply("✅ تم تعديل التفسير." if ok else "❌ فشل التعديل.")
-        return True
-
-    return False
+    from handlers.group_admin.developer.dev_flows import dispatch
+    return dispatch(message, message.from_user.id, message.chat.id)
 
 
 def _show_quran_search_results(message_or_call, uid, cid, query, results, page, mid):
     """عرض نتائج البحث في القرآن مع pagination"""
     items, total_pages = paginate_list(results, page, per_page=_PER_PAGE)
-    text = f"🔍 <b>نتائج البحث: {query}</b> ({page+1}/{total_pages})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🔍 <b>نتائج البحث: {query}</b> ({page+1}/{total_pages})\n{get_lines()}\n\n"
     for r in items:
         text += (
             f"📖 <b>{r['sura_name']}</b> — آية {r['ayah_number']}\n"
@@ -957,9 +651,9 @@ def on_qr_dev_select_ayah(call, data):
 
     text = (
         f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{ayah['text_with_tashkeel']}\n\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"<i>آية #{ayah['id']}</i>"
     )
 
@@ -1024,9 +718,9 @@ def _show_ayah_for_edit(message, uid, cid, ayah, mid):
     """عرض الآية مع زر التعديل"""
     text = (
         f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"{ayah['text_with_tashkeel']}\n\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"<i>آية #{ayah['id']}</i>"
     )
 
@@ -1053,7 +747,7 @@ def _show_tafseer_selection(message, uid, cid, ayah, mid):
     text = (
         f"📖 <b>تعديل تفسير</b>\n"
         f"<b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
-        f"━━━━━━━━━━━━━━━\n\n"
+        f"{get_lines()}\n\n"
         f"اختر نوع التفسير:"
     )
 

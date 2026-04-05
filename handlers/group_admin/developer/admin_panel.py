@@ -13,6 +13,7 @@ from core.admin import (
 from utils.pagination import (
     btn, send_ui, edit_ui, register_action, paginate_list, set_state, get_state, clear_state
 )
+from utils.helpers import get_lines
 
 _RED  = "d"
 _GRN  = "su"
@@ -48,7 +49,7 @@ def _send_main_panel(chat_id, user_id):
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
     ]
     send_ui(chat_id,
-            text="🛠 <b>لوحة إدارة البوت</b>\n━━━━━━━━━━━━━━━\nاختر ما تريد إدارته:",
+            text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
             buttons=buttons, layout=[2, 2, 1], owner_id=user_id)
 
 
@@ -70,7 +71,7 @@ def show_constants(call, data):
     items, total_pages = paginate_list(all_consts, page, per_page=8)
     owner = (user_id, chat_id)
 
-    text = f"⚙️ <b>ثوابت البوت</b> (صفحة {page+1}/{total_pages})\n━━━━━━━━━━━━━━━\n\n"
+    text = f"⚙️ <b>ثوابت البوت</b> (صفحة {page+1}/{total_pages})\n{get_lines()}\n\n"
     buttons = []
     for c in items:
         text += f"🔹 <b>{c['name']}</b> = <code>{c['value']}</code>\n   {c['description']}\n\n"
@@ -132,7 +133,7 @@ def show_developers(call, data):
     devs  = get_all_developers()
     owner = (user_id, chat_id)
 
-    text = "👨‍💻 <b>قائمة المطورين</b>\n━━━━━━━━━━━━━━━\n\n"
+    text = f"👨‍💻 <b>قائمة المطورين</b>\n{get_lines()}\n\n"
     buttons = []
     for d in devs:
         role_ar = "👑 أساسي" if d["role"] == "primary" else "🔧 ثانوي"
@@ -222,7 +223,7 @@ def show_global_mutes(call, data):
     items, total_pages = paginate_list(mutes, page, per_page=8)
     owner = (user_id, chat_id)
 
-    text = f"🔇 <b>الكتم العالمي</b> ({len(mutes)} مكتوم)\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🔇 <b>الكتم العالمي</b> ({len(mutes)} مكتوم)\n{get_lines()}\n\n"
     buttons = []
     for m in items:
         text += f"🔇 ID: <code>{m['user_id']}</code> | {m.get('reason','') or 'بدون سبب'}\n"
@@ -292,7 +293,7 @@ def show_group_mutes(call, data):
     items, total_pages = paginate_list(mutes, page, per_page=8)
     owner = (user_id, chat_id)
 
-    text = f"🔕 <b>كتم المجموعة</b> ({len(mutes)} مكتوم)\n━━━━━━━━━━━━━━━\n\n"
+    text = f"🔕 <b>كتم المجموعة</b> ({len(mutes)} مكتوم)\n{get_lines()}\n\n"
     buttons = []
     for m in items:
         text += f"🔕 ID: <code>{m['user_id']}</code> | {m.get('reason','') or 'بدون سبب'}\n"
@@ -364,7 +365,7 @@ def back_to_main(call, data):
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
     ]
     edit_ui(call,
-            text="🛠 <b>لوحة إدارة البوت</b>\n━━━━━━━━━━━━━━━\nاختر ما تريد إدارته:",
+            text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
             buttons=buttons, layout=[2, 2, 1])
 
 
@@ -487,7 +488,7 @@ def reset_db_confirm(call, data):
         call,
         text=(
             "⚠️ <b>تحذير: مسح قاعدة البيانات</b>\n"
-            "━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             "سيتم حذف <b>جميع البيانات</b> بشكل نهائي:\n"
             "• جميع المستخدمين والدول والمدن\n"
             "• جميع الأرصدة والمعارك والتحالفات\n"
@@ -519,7 +520,18 @@ def reset_db_execute(call, data):
     try:
         from database.reset_db import reset_database
         from database.update_db import update_database
-        reset_database()
+        ok, err_msg = reset_database()
+
+        if not ok:
+            try:
+                bot.edit_message_text(
+                    f"⚠️ <b>تعذّر مسح قاعدة البيانات</b>\n{err_msg}",
+                    chat_id, call.message.message_id, parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            return
+
         update_database()
 
         # إعادة بذر الثوابت الافتراضية

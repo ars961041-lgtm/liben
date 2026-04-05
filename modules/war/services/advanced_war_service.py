@@ -26,6 +26,7 @@ from modules.war.power_calculator import (
     get_country_power, aggregate_country_forces, calc_raw_power
 )
 from modules.war.war_simulator import simulate_battle
+from utils.helpers import get_lines
 
 TRAVEL_TIME  = 20 * 60
 BATTLE_TIME  = 5  * 60
@@ -764,7 +765,7 @@ def _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result
 
     report = (
         f"⚔️ <b>نتيجة المعركة #{battle['id']}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"{'🏆 المهاجم انتصر!' if attacker_won else ('🛡 المدافع صمد!' if winner_cid else '🤝 تعادل!')}\n"
         f"🏳️ الفائز: <b>{_cname(winner_cid)}</b>\n\n"
         f"📊 القوى:\n"

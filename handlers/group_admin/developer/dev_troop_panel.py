@@ -15,6 +15,7 @@ from utils.pagination import (
     btn, edit_ui, send_ui, register_action,
     set_state, get_state, clear_state, build_keyboard, grid
 )
+from utils.helpers import get_lines
 
 GREEN = "su"
 RED   = "d"
@@ -87,7 +88,7 @@ def open_troop_dev_panel(message):
 
 def _show_war_hub_new(message):
     owner = (message.from_user.id, message.chat.id)
-    text  = "🪖 إدارة نظام الحرب\n━━━━━━━━━━━━━━━\nاختر القسم:"
+    text  = f"🪖 إدارة نظام الحرب\n{get_lines()}\nاختر القسم:"
     buttons = [
         btn("🪖 الجنود",  "dev_troop_menu",     color=GREEN, owner=owner),
         btn("🛡 المعدات", "dev_equipment_menu",  color=BLUE,  owner=owner),
@@ -98,7 +99,7 @@ def _show_war_hub_new(message):
 
 def _show_war_hub(call):
     owner = _owner(call)
-    text  = "🪖 إدارة نظام الحرب\n━━━━━━━━━━━━━━━\nاختر القسم:"
+    text  = f"🪖 إدارة نظام الحرب\n{get_lines()}\nاختر القسم:"
     buttons = [
         btn("🪖 الجنود",  "dev_troop_menu",    color=GREEN, owner=owner),
         btn("🛡 المعدات", "dev_equipment_menu", color=BLUE,  owner=owner),
@@ -123,7 +124,7 @@ def _edit_panel(chat_id, msg_id, text, buttons, layout, owner_id):
 def _troop_block(t: dict) -> str:
     return (
         f"🪖 {t['emoji']} {t['name_ar']}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"<code>"
         f"name: {t['name']}\n"
         f"name_ar: {t['name_ar']}\n"
@@ -140,7 +141,7 @@ def _troop_block(t: dict) -> str:
 def _show_troop_menu(call):
     troops = [dict(t) for t in get_all_troop_types()]
     owner  = _owner(call)
-    text   = "🪖 إدارة الجنود\n━━━━━━━━━━━━━━━\nاختر نوع الجنود للتعديل:"
+    text   = f"🪖 إدارة الجنود\n{get_lines()}\nاختر نوع الجنود للتعديل:"
     buttons = [
         btn(f"{t['emoji']} {t['name_ar']}", "dev_troop_edit",
             {"tid": t["id"]}, color=BLUE, owner=owner)
@@ -214,7 +215,7 @@ def handle_dev_troop_field(call, data):
     bot.answer_callback_query(call.id)
     edit_ui(call,
             text=(f"✏️ تعديل {label}\n"
-                  f"━━━━━━━━━━━━━━━\n"
+                  f"{get_lines()}\n"
                   f"القيمة الحالية: <code>{current}</code>\n\n"
                   f"أرسل القيمة الجديدة:"),
             buttons=_back_btn("dev_troop_edit", {"tid": tid}, owner),
@@ -232,7 +233,7 @@ def handle_dev_troop_add(call, data):
     _set_await(call.from_user.id, call.message.chat.id, mid, "dev_troop_add_input", {})
     bot.answer_callback_query(call.id)
     edit_ui(call,
-            text=f"➕ إضافة قوة جديدة\n━━━━━━━━━━━━━━━\nأرسل البيانات:\n\n<code>{_TROOP_TEMPLATE}</code>",
+            text=f"➕ إضافة قوة جديدة\n{get_lines()}\nأرسل البيانات:\n\n<code>{_TROOP_TEMPLATE}</code>",
             buttons=_back_btn("dev_troop_menu", {}, owner),
             layout=[1])
 
@@ -251,7 +252,7 @@ def handle_dev_troop_delete(call, data):
         return
 
     text = (f"🗑 حذف القوة: {t['emoji']} {t['name_ar']}\n"
-            f"━━━━━━━━━━━━━━━\n"
+            f"{get_lines()}\n"
             f"⚠️ هل أنت متأكد؟ سيتم حذف هذه القوة نهائياً.")
     buttons = [
         btn("✅ تأكيد الحذف", "dev_troop_delete_confirm", {"tid": tid}, color=RED,  owner=owner),
@@ -356,7 +357,7 @@ def _parse_fields(text: str) -> dict:
 def _eq_block(e: dict) -> str:
     return (
         f"🛡 {e['emoji']} {e['name_ar']}\n"
-        f"━━━━━━━━━━━━━━━\n"
+        f"{get_lines()}\n"
         f"<code>"
         f"name: {e['name']}\n"
         f"name_ar: {e['name_ar']}\n"
@@ -373,7 +374,7 @@ def _eq_block(e: dict) -> str:
 def _show_equipment_menu(call):
     equipment = [dict(e) for e in get_all_equipment_types()]
     owner     = _owner(call)
-    text      = "🛡 إدارة المعدات\n━━━━━━━━━━━━━━━\nاختر نوع المعدات للتعديل:"
+    text      = f"🛡 إدارة المعدات\n{get_lines()}\nاختر نوع المعدات للتعديل:"
     buttons   = [
         btn(f"{e['emoji']} {e['name_ar']}", "dev_eq_edit",
             {"eid": e["id"]}, color=BLUE, owner=owner)
@@ -428,7 +429,7 @@ def handle_dev_eq_field(call, data):
                "dev_eq_field_input", {"eid": eid, "f": field})
     bot.answer_callback_query(call.id)
     edit_ui(call,
-            text=(f"✏️ تعديل {label}\n━━━━━━━━━━━━━━━\n"
+            text=(f"✏️ تعديل {label}\n{get_lines()}\n"
                   f"القيمة الحالية: <code>{current}</code>\n\nأرسل القيمة الجديدة:"),
             buttons=_back_btn("dev_eq_edit", {"eid": eid}, owner), layout=[1])
 
@@ -440,7 +441,7 @@ def handle_dev_eq_add(call, data):
     _set_await(call.from_user.id, call.message.chat.id, mid, "dev_eq_add_input", {})
     bot.answer_callback_query(call.id)
     edit_ui(call,
-            text=f"➕ إضافة معدة جديدة\n━━━━━━━━━━━━━━━\nأرسل البيانات:\n\n<code>{_EQ_TEMPLATE}</code>",
+            text=f"➕ إضافة معدة جديدة\n{get_lines()}\nأرسل البيانات:\n\n<code>{_EQ_TEMPLATE}</code>",
             buttons=_back_btn("dev_equipment_menu", {}, owner), layout=[1])
 
 
@@ -452,7 +453,7 @@ def handle_dev_eq_delete(call, data):
     if not e:
         bot.answer_callback_query(call.id, "❌ المعدة غير موجودة", show_alert=True)
         return
-    text = (f"🗑 حذف المعدة: {e['emoji']} {e['name_ar']}\n━━━━━━━━━━━━━━━\n⚠️ هل أنت متأكد؟")
+    text = (f"🗑 حذف المعدة: {e['emoji']} {e['name_ar']}\n{get_lines()}\n⚠️ هل أنت متأكد؟")
     buttons = [
         btn("✅ تأكيد الحذف", "dev_eq_delete_confirm", {"eid": eid}, color=RED,  owner=owner),
         btn("إلغاء",          "dev_eq_edit",            {"eid": eid}, color=BLUE, owner=owner),

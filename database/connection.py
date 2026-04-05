@@ -1,49 +1,60 @@
-# import sqlite3
-# import threading
-# from core.config import DB_NAME
-
-# _local = threading.local()
-
-# def get_db_conn():
-#     if not hasattr(_local, "conn") or _local.conn is None:
-#         _local.conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-#         _local.conn.execute("PRAGMA foreign_keys = ON")
-#         _local.conn.execute("PRAGMA journal_mode = WAL")
-#         _local.conn.execute("PRAGMA synchronous = NORMAL")
-#         _local.conn.row_factory = sqlite3.Row
-#     return _local.conn
-
-# def close_db_conn():
-#     if hasattr(_local, "conn") and _local.conn:
-#         _local.conn.close()
-#         _local.conn = None
-
+"""
+اتصال قاعدة البيانات الرئيسية — thread-local مع WAL وtimeout
+"""
 import sqlite3
 import threading
 from core.config import DB_NAME
 
-# لكل Thread اتصال منفصل
 _local = threading.local()
 
-def get_db_conn():
+# تتبع جميع الاتصالات النشطة عبر كل الـ threads
+_CONNECTIONS_LOCK = threading.Lock()
+ACTIVE_CONNECTIONS: set = set()
+
+
+def get_db_conn() -> sqlite3.Connection:
     """
-    Returns a thread-local SQLite connection.
-    Ensures foreign keys, WAL mode, and row_factory (dict-like access) are set.
+    يرجع اتصالاً thread-local.
+    WAL + foreign_keys + row_factory مُفعَّلة دائماً.
     """
     if getattr(_local, "conn", None) is None:
-        conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+        conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
-        conn.row_factory = sqlite3.Row  # هذا يسمح بالوصول للقيم كـ dict
+        conn.row_factory = sqlite3.Row
         _local.conn = conn
+        with _CONNECTIONS_LOCK:
+            ACTIVE_CONNECTIONS.add(conn)
     return _local.conn
 
+
 def close_db_conn():
-    """
-    Closes the thread-local connection if it exists.
-    """
+    """يغلق الاتصال الحالي للـ thread."""
     conn = getattr(_local, "conn", None)
     if conn:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+        with _CONNECTIONS_LOCK:
+            ACTIVE_CONNECTIONS.discard(conn)
         _local.conn = None
+
+
+def close_all_connections():
+    """
+    يُغلق جميع الاتصالات النشطة عبر كل الـ threads.
+    استدعِه قبل حذف ملف DB.
+    """
+    # أغلق اتصال الـ thread الحالي أولاً
+    close_db_conn()
+    # ثم أغلق كل الاتصالات المسجّلة
+    with _CONNECTIONS_LOCK:
+        conns = list(ACTIVE_CONNECTIONS)
+        ACTIVE_CONNECTIONS.clear()
+    for conn in conns:
+        try:
+            conn.close()
+        except Exception:
+            pass

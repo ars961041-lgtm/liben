@@ -39,7 +39,7 @@ def open_troop_store(message, user_id: int, city_id: int):
 def _hub_text(balance: float) -> str:
     return (
         f"🪖 القوات العسكرية\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"💰 رصيدك: {balance:.0f} Liben\n\n"
         f"اختر القسم:"
     )
@@ -78,12 +78,12 @@ def handle_open_troop_list(call, data):
     balance = get_user_balance(call.from_user.id)
 
     if not troops:
-        bot.answer_callback_query(call.id, "❌ لا توجد قوات متاحة", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ لتوجد قوات متاحة", show_alert=True)
         return
 
     text = (
         f"🪖 متجر الجنود\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"💰 رصيدك: {balance:.0f} Liben\n\n"
         f"اختر نوع الجنود:"
     )
@@ -110,7 +110,7 @@ def handle_troop_item(call, data):
 
     troop_type = get_troop_type_by_id(troop_id)
     if not troop_type:
-        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
         return
 
     balance   = get_user_balance(call.from_user.id)
@@ -119,7 +119,7 @@ def handle_troop_item(call, data):
 
     text = (
         f"{troop_type['emoji']} {troop_type['name_ar']}\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"⚔️ الهجوم:  {troop_type['attack']}\n"
         f"🛡 الدفاع:  {troop_type['defense']}\n"
         f"❤️ الصحة:   {troop_type['hp']}\n"
@@ -144,7 +144,7 @@ def handle_troop_buy(call, data):
 
     troop_type = get_troop_type_by_id(troop_id)
     if not troop_type:
-        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
         return
 
     total_cost = troop_type["base_cost"] * quantity
@@ -179,12 +179,12 @@ def handle_open_equipment_list(call, data):
     balance   = get_user_balance(call.from_user.id)
 
     if not equipment:
-        bot.answer_callback_query(call.id, "❌ لا توجد معدات متاحة", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ لتوجد معدات متاحة", show_alert=True)
         return
 
     text = (
         f"🛡 متجر المعدات\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"💰 رصيدك: {balance:.0f} Liben\n\n"
         f"اختر نوع المعدات:"
     )
@@ -210,7 +210,7 @@ def handle_equipment_item(call, data):
 
     eq = get_equipment_type_by_id(eq_id)
     if not eq:
-        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
         return
 
     balance   = get_user_balance(call.from_user.id)
@@ -225,11 +225,11 @@ def handle_equipment_item(call, data):
         effects.append(f"🛡 دفاع +{eq['defense_bonus']}")
     if eq["special_effect"]:
         effects.append(f"✨ {eq['special_effect']}")
-    effects_text = " | ".join(effects) if effects else "لا تأثيرات خاصة"
+    effects_text = " | ".join(effects) if effects else "لتأثيرات خاصة"
 
     text = (
         f"{eq['emoji']} {eq['name_ar']}\n"
-        f"ا {get_lines()}\n"
+        f"{get_lines()}\n"
         f"📊 التأثيرات: {effects_text}\n"
         f"💰 السعر:     {eq['base_cost']:.0f} Liben / وحدة\n"
         f"🛡 تمتلك:    {owned_qty} وحدة\n"
@@ -252,7 +252,7 @@ def handle_equipment_buy(call, data):
 
     eq = get_equipment_type_by_id(eq_id)
     if not eq:
-        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
         return
 
     total_cost = eq["base_cost"] * quantity

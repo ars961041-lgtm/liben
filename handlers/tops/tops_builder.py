@@ -1,6 +1,7 @@
 # database/utils/tops_builder.py
 
 import random
+from utils.helpers import get_lines
 
 # -----------------------------
 # 🏆 إيموجيات المراتب الأولى
@@ -103,7 +104,7 @@ def design_fancy(title, rows, note=""):
 # -----------------------------
 def design_pro(title, rows, note=""):
     text = f"🏆 {title}\n"
-    text += "━━━━━━━━━━━━━━━\n\n"
+    text += f"{get_lines()}\n\n"
 
     if note:
         text += f"💡 {note}\n\n"
@@ -113,7 +114,7 @@ def design_pro(title, rows, note=""):
         text += f"{medal} ⟫ {r['name']}\n"
         text += f"   ↳ 📊 {r['value']}\n\n"
 
-    text += "━━━━━━━━━━━━━━━"
+    text += f"{get_lines()}"
     return text
 
 

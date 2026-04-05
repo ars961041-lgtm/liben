@@ -23,9 +23,10 @@ TAFSEER_TYPES = {
 
 def _get_conn() -> sqlite3.Connection:
     if getattr(_local, "conn", None) is None:
-        conn = sqlite3.connect(DB_CONTENT, check_same_thread=False)
+        conn = sqlite3.connect(DB_CONTENT, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA synchronous = NORMAL")
         conn.row_factory = sqlite3.Row
         _local.conn = conn
     return _local.conn
