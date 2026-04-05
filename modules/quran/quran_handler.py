@@ -437,7 +437,7 @@ def handle_dev_quran_input(message) -> bool:
         return True
 
     # ── تعديل تفسير ──
-    if s == "qr_dev_edit_tafseer":
+    if s in ("qr_dev_edit_tafseer", "qr_dev_edit_tafseer_text"):
         ayah_id    = sdata.get("aid")
         tafseer_col = sdata.get("col")
         if not raw:
@@ -570,7 +570,8 @@ def on_dev_choose_tafseer(call, data):
     current = ayah.get(col) or "(لا يوجد تفسير)"
 
     set_state(uid, cid, "qr_dev_edit_tafseer",
-              data={"aid": ayah_id, "col": col, "_mid": call.message.message_id})
+              data={"aid": ayah_id, "col": col, "_mid": call.message.message_id,
+                    "_step": "await_text"})
     bot.answer_callback_query(call.id)
 
     cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)

@@ -16,7 +16,6 @@ BULK_SEPARATOR = "---"
 TAFSEER_TYPES = {
     "المختصر":  "tafseer_mukhtasar",
     "السعدي":   "tafseer_saadi",
-    "ابن كثير": "tafseer_ibn_kathir",
     "الميسر":   "tafseer_muyassar",
 }
 
@@ -46,7 +45,6 @@ def create_tables():
         text_without_tashkeel TEXT   NOT NULL,
         tafseer_mukhtasar    TEXT    DEFAULT NULL,
         tafseer_saadi        TEXT    DEFAULT NULL,
-        tafseer_ibn_kathir   TEXT    DEFAULT NULL,
         tafseer_muyassar     TEXT    DEFAULT NULL,
         UNIQUE(sura_name, ayah_number)
     )

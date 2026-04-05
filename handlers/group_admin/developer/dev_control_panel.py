@@ -260,7 +260,7 @@ def on_hub_dev_random(call, data):
         btn("✏️ تعديل",   "hub_dev_edit",   {"table": table, "row_id": row["id"]}, color=_B, owner=owner),
         btn("🗑 حذف",     "hub_dev_delete_confirm", {"table": table, "row_id": row["id"]}, color=_R, owner=owner),
         btn("📤 مشاركة", "hub_dev_share",  {"table": table, "row_id": row["id"]}, color=_G, owner=owner),
-        btn("⬅️ رجوع",   "hub_dev_type",   {"type": list(CONTENT_TYPES.keys())[list(CONTENT_TYPES.values()).index(table)]}, color=_R, owner=owner),
+        btn("⬅️ رجوع",   "hub_dev_type",   {"type": table}, color=_R, owner=owner),
     ]
 
     bot.answer_callback_query(call.id)
@@ -348,14 +348,9 @@ def on_hub_dev_share(call, data):
 @register_action("hub_dev_cancel")
 def on_hub_dev_cancel(call, data):
     """إلغاء العملية الحالية"""
-    uid = call.from_user.id
-    cid = call.message.chat.id
-    clear_state(uid, cid)
+    clear_state(call.from_user.id, call.message.chat.id)
     bot.answer_callback_query(call.id, "تم الإلغاء.")
-    try:
-        bot.delete_message(cid, call.message.message_id)
-    except Exception:
-        pass
+    _show_content_hub_panel(call)
 
 
 # ══════════════════════════════════════════
@@ -555,14 +550,9 @@ def on_qr_dev_stats(call, data):
 @register_action("qr_dev_cancel")
 def on_qr_dev_cancel(call, data):
     """إلغاء العملية الحالية في القرآن"""
-    uid = call.from_user.id
-    cid = call.message.chat.id
-    clear_state(uid, cid)
+    clear_state(call.from_user.id, call.message.chat.id)
     bot.answer_callback_query(call.id, "تم الإلغاء.")
-    try:
-        bot.delete_message(cid, call.message.message_id)
-    except Exception:
-        pass
+    _show_quran_dev_panel(call)
 
 
 # ══════════════════════════════════════════
@@ -787,10 +777,11 @@ def on_qr_dev_choose_tafseer(call, data):
     name_ar = next((k for k, v in qr_db.TAFSEER_TYPES.items() if v == col), col)
     current = ayah.get(col) or "(لا يوجد تفسير)"
 
-    set_state(uid, cid, "qr_dev_edit_tafseer_text", data={
+    set_state(uid, cid, "qr_dev_edit_tafseer", data={
         "aid": aid,
         "col": col,
         "_mid": call.message.message_id,
+        "_step": "await_text",
     })
 
     bot.answer_callback_query(call.id)

@@ -100,6 +100,14 @@ def _dispatch(message):
         return
 
     # ══════════════════════════════════════════
+    # 0.5. Flow Engine Priority (for dev inputs)
+    # ══════════════════════════════════════════
+    if StateManager.exists(uid, cid):
+        from handlers.group_admin.developer.dev_flows import dispatch
+        if dispatch(message, uid, cid):
+            return
+
+    # ══════════════════════════════════════════
     # 1. فحص الكتم — أولوية قصوى
     # ══════════════════════════════════════════
     if is_globally_muted(uid):
@@ -382,9 +390,10 @@ def receive_responses(message):
 
     try:
         _in_private(message)
+        
+        # just in groups
         if is_group(message):
             _dispatch(message)
-        
     except Exception as e:
         StateManager.clear(uid, cid)
         log_event("flow_error", user=uid, chat=cid, error=str(e), state=state)

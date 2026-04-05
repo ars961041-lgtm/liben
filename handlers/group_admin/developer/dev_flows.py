@@ -366,6 +366,8 @@ def _qr_edit_ayah_text(message, state: dict, ctx: dict):
 # ══════════════════════════════════════════
 
 def _qr_edit_tafseer_text(message, state: dict, ctx: dict):
+    # from utils.logger import log_event
+    # log_event("tafseer_input_received", text=message.text)
     raw   = ctx["raw"]
     extra = state.get("extra") or ctx["sdata"]
     aid   = extra.get("aid")
@@ -397,7 +399,15 @@ FLOW_QURAN_DEV: dict[str, callable] = {
     # تدفق الإضافة — الخطوات مُوحَّدة تحت نوع واحد "qr_dev_add"
     "qr_dev_awaiting_sura":         _qr_add_sura,    # legacy key
     "qr_dev_edit_ayah_text":        _qr_edit_ayah_text,
+    # تفسير — step-based: type="qr_dev_edit_tafseer", step="await_text"
+    "qr_dev_edit_tafseer":          _qr_edit_tafseer_text,
+    # legacy key — kept for backward compat
     "qr_dev_edit_tafseer_text":     _qr_edit_tafseer_text,
+}
+
+# تدفق التفسير متعدد الخطوات — مُفهرَس بالخطوة
+FLOW_QR_TAFSEER_STEPS: dict[str, callable] = {
+    "await_text": _qr_edit_tafseer_text,
 }
 
 # تدفق الإضافة متعدد الخطوات — مُفهرَس بالخطوة
@@ -455,21 +465,73 @@ def dispatch(message, uid: int, cid: int) -> bool:
         "sdata": sdata,
     }
 
+    # ── تدفق التفسير متعدد الخطوات ──
+    if state_type == "qr_dev_edit_tafseer":
+        from utils.logger import log_event
+        log_event("tafseer_input", text=message.text)
+        handler = FLOW_QR_TAFSEER_STEPS.get(step) if step else _qr_edit_tafseer_text
+        if handler:
+            log_event("flow_step", type=state_type, step=step)
+            try:
+                return handler(message, state, ctx)
+            except Exception as e:
+                log_event("flow_error", error=str(e))
+                StateManager.clear(uid, cid)
+                send_result(
+                    chat_id=cid,
+                    text="❌ حدث خطأ، تم إلغاء العملية",
+                )
+                return True
+        return False
+
     # ── تدفق الإضافة متعدد الخطوات ──
     if state_type == "qr_dev_add":
         handler = FLOW_QR_ADD_STEPS.get(step)
         if handler:
-            return handler(message, state, ctx)
+            from utils.logger import log_event
+            log_event("flow_step", type=state_type, step=step)
+            try:
+                return handler(message, state, ctx)
+            except Exception as e:
+                log_event("flow_error", error=str(e))
+                StateManager.clear(uid, cid)
+                send_result(
+                    chat_id=cid,
+                    text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
+                )
+                return True
         return False
 
     # ── تدفقات Hub ──
     handler = FLOW_HUB_DEV.get(state_type)
     if handler:
-        return handler(message, state, ctx)
+        from utils.logger import log_event
+        log_event("flow_step", type=state_type, step=step)
+        try:
+            return handler(message, state, ctx)
+        except Exception as e:
+            log_event("flow_error", error=str(e))
+            StateManager.clear(uid, cid)
+            send_result(
+                chat_id=cid,
+                text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
+            )
+            return True
 
     # ── تدفقات Quran ──
     handler = FLOW_QURAN_DEV.get(state_type)
     if handler:
-        return handler(message, state, ctx)
+        from utils.logger import log_event
+        log_event("flow_step", type=state_type, step=step)
+        try:
+            return handler(message, state, ctx)
+        except Exception as e:
+            log_event("flow_error", error=str(e))
+            StateManager.clear(uid, cid)
+            send_result(
+                chat_id=cid,
+                text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
+            )
+            return True
 
     return False
