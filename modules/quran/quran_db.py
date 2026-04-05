@@ -19,6 +19,22 @@ TAFSEER_TYPES = {
     "الميسر":   "tafseer_muyassar",
 }
 
+# ── أسماء السور (بدون تشكيل) ──
+SURAS_NAMES = [
+    "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس",
+    "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه",
+    "الأنبياء", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم",
+    "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر",
+    "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق",
+    "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة",
+    "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج",
+    "نوح", "الجن", "المزمل", "المدثر", "القيامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس",
+    "التكوير", "الانفطار", "المطففين", "الانشقاق", "البروج", "الطارق", "الأعلى", "الغاشية", "الفجر", "البلد",
+    "الشمس", "الليل", "الضحى", "الشرح", "التين", "العلق", "القدر", "البينة", "الزلزلة", "العاديات",
+    "القارعة", "التكاثر", "العصر", "الهمزة", "الفيل", "قريش", "الماعون", "الكوثر", "الكافرون", "النصر",
+    "المسد", "الإخلاص", "الفلق", "الناس"
+]
+
 
 def _get_conn() -> sqlite3.Connection:
     if getattr(_local, "conn", None) is None:
@@ -31,22 +47,45 @@ def _get_conn() -> sqlite3.Connection:
     return _local.conn
 
 
+def auto_insert_suras():
+    """إدراج جميع السور تلقائياً إذا لم تكن موجودة."""
+    conn = _get_conn()
+    cur  = conn.cursor()
+
+    for i, name in enumerate(SURAS_NAMES, 1):
+        cur.execute(
+            "INSERT OR IGNORE INTO suras (id, name) VALUES (?, ?)",
+            (i, name)
+        )
+
+    conn.commit()
+
+
 def create_tables():
     conn = _get_conn()
     cur  = conn.cursor()
+
+    # ── السور ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS suras (
+        id   INTEGER PRIMARY KEY,
+        name TEXT    NOT NULL UNIQUE
+    )
+    """)
 
     # ── الآيات ──
     cur.execute("""
     CREATE TABLE IF NOT EXISTS ayat (
         id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-        sura_name            TEXT    NOT NULL,
+        sura_id              INTEGER NOT NULL,
         ayah_number          INTEGER NOT NULL,
         text_with_tashkeel   TEXT    NOT NULL,
         text_without_tashkeel TEXT   NOT NULL,
         tafseer_mukhtasar    TEXT    DEFAULT NULL,
         tafseer_saadi        TEXT    DEFAULT NULL,
         tafseer_muyassar     TEXT    DEFAULT NULL,
-        UNIQUE(sura_name, ayah_number)
+        FOREIGN KEY (sura_id) REFERENCES suras(id),
+        UNIQUE(sura_id, ayah_number)
     )
     """)
 
@@ -71,11 +110,14 @@ def create_tables():
     """)
 
     # ── فهارس ──
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_ayat_sura ON ayat(sura_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ayat_sura ON ayat(sura_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ayat_search ON ayat(text_without_tashkeel)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_fav_user ON user_favorites(user_id)")
 
     conn.commit()
+
+    # ── إدراج السور تلقائياً ──
+    auto_insert_suras()
 
 
 # ══════════════════════════════════════════
@@ -84,38 +126,60 @@ def create_tables():
 
 def get_ayah(ayah_id: int) -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute("SELECT * FROM ayat WHERE id=?", (ayah_id,))
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.id=?
+    """, (ayah_id,))
     row = cur.fetchone()
     return dict(row) if row else None
 
 
-def get_ayah_by_sura_number(sura_name: str, ayah_number: int) -> Optional[dict]:
+def get_ayah_by_sura_number(sura_id: int, ayah_number: int) -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute(
-        "SELECT * FROM ayat WHERE sura_name=? AND ayah_number=?",
-        (sura_name, ayah_number),
-    )
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.sura_id=? AND a.ayah_number=?
+    """, (sura_id, ayah_number))
     row = cur.fetchone()
     return dict(row) if row else None
 
 
 def get_first_ayah() -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute("SELECT * FROM ayat ORDER BY id ASC LIMIT 1")
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        ORDER BY a.id ASC LIMIT 1
+    """)
     row = cur.fetchone()
     return dict(row) if row else None
 
 
 def get_next_ayah(current_id: int) -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute("SELECT * FROM ayat WHERE id > ? ORDER BY id ASC LIMIT 1", (current_id,))
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.id > ? ORDER BY a.id ASC LIMIT 1
+    """, (current_id,))
     row = cur.fetchone()
     return dict(row) if row else None
 
 
 def get_prev_ayah(current_id: int) -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute("SELECT * FROM ayat WHERE id < ? ORDER BY id DESC LIMIT 1", (current_id,))
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.id < ? ORDER BY a.id DESC LIMIT 1
+    """, (current_id,))
     row = cur.fetchone()
     return dict(row) if row else None
 
@@ -129,21 +193,24 @@ def get_total_ayat() -> int:
 def search_ayat(normalized_query: str) -> list[dict]:
     """يبحث في النص بدون تشكيل."""
     cur = _get_conn().cursor()
-    cur.execute(
-        "SELECT * FROM ayat WHERE text_without_tashkeel LIKE ? ORDER BY id ASC LIMIT 50",
-        (f"%{normalized_query}%",),
-    )
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.text_without_tashkeel LIKE ?
+        ORDER BY a.id ASC LIMIT 50
+    """, (f"%{normalized_query}%",))
     return [dict(r) for r in cur.fetchall()]
 
 
-def insert_ayah(sura_name: str, ayah_number: int,
+def insert_ayah(sura_id: int, ayah_number: int,
                 text_with: str, text_without: str) -> int:
     conn = _get_conn()
     cur  = conn.cursor()
     cur.execute("""
-        INSERT OR IGNORE INTO ayat (sura_name, ayah_number, text_with_tashkeel, text_without_tashkeel)
+        INSERT OR IGNORE INTO ayat (sura_id, ayah_number, text_with_tashkeel, text_without_tashkeel)
         VALUES (?,?,?,?)
-    """, (sura_name, ayah_number, text_with.strip(), text_without.strip()))
+    """, (sura_id, ayah_number, text_with.strip(), text_without.strip()))
     conn.commit()
     return cur.lastrowid or 0
 
@@ -172,10 +239,35 @@ def update_tafseer(ayah_id: int, tafseer_col: str, content: str) -> bool:
     return cur.rowcount > 0
 
 
-def get_all_suras() -> list[str]:
+def get_sura(sura_id: int) -> Optional[dict]:
     cur = _get_conn().cursor()
-    cur.execute("SELECT DISTINCT sura_name FROM ayat ORDER BY id ASC")
-    return [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT * FROM suras WHERE id=?", (sura_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_sura_by_name(name: str) -> Optional[dict]:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM suras WHERE name=?", (name,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_all_suras() -> list[dict]:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM suras ORDER BY id ASC")
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_ayat_by_sura(sura_id: int) -> list[dict]:
+    cur = _get_conn().cursor()
+    cur.execute("""
+        SELECT a.*, s.name as sura_name
+        FROM ayat a
+        JOIN suras s ON a.sura_id = s.id
+        WHERE a.sura_id=? ORDER BY a.ayah_number ASC
+    """, (sura_id,))
+    return [dict(r) for r in cur.fetchall()]
 
 
 # ══════════════════════════════════════════
@@ -245,8 +337,10 @@ def is_favorite(user_id: int, ayah_id: int) -> bool:
 def get_favorites(user_id: int) -> list[dict]:
     cur = _get_conn().cursor()
     cur.execute("""
-        SELECT a.* FROM user_favorites f
+        SELECT a.*, s.name as sura_name
+        FROM user_favorites f
         JOIN ayat a ON f.ayah_id = a.id
+        JOIN suras s ON a.sura_id = s.id
         WHERE f.user_id=?
         ORDER BY f.added_at ASC
     """, (user_id,))

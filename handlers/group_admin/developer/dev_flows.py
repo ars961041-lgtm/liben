@@ -366,8 +366,17 @@ def _qr_edit_ayah_text(message, state: dict, ctx: dict):
 # ══════════════════════════════════════════
 
 def _qr_edit_tafseer_text(message, state: dict, ctx: dict):
-    # from utils.logger import log_event
-    # log_event("tafseer_input_received", text=message.text)
+    from utils.logger import log_event
+    log_event("tafseer_input_received", text=message.text)
+
+    # هذه الميزة تعمل فقط داخل المجموعات
+    if message.chat.type == "private":
+        send_result(
+            chat_id=ctx["cid"],
+            text="❌ هذه الميزة تعمل فقط داخل القروبات",
+        )
+        return True
+
     raw   = ctx["raw"]
     extra = state.get("extra") or ctx["sdata"]
     aid   = extra.get("aid")
@@ -425,6 +434,7 @@ def dispatch(message, uid: int, cid: int) -> bool:
     """
     from core.state_manager import StateManager
     from core.admin import is_any_dev
+    from utils.logger import log_event
 
     if not is_any_dev(uid):
         return False
@@ -442,19 +452,9 @@ def dispatch(message, uid: int, cid: int) -> bool:
             state_type == "qr_dev_add"):
         return False
 
-    raw  = (message.text or "").strip()
-    mid  = state.get("mid")
-    # sdata: دعم الصيغة القديمة والجديدة
+    raw   = (message.text or "").strip()
+    mid   = state.get("mid")
     sdata = state.get("extra") or {}
-
-    # مسح الحالة قبل المعالجة
-    StateManager.clear(uid, cid)
-
-    # حذف رسالة المستخدم
-    try:
-        bot.delete_message(cid, message.message_id)
-    except Exception:
-        pass
 
     ctx = {
         "uid":   uid,
@@ -465,73 +465,39 @@ def dispatch(message, uid: int, cid: int) -> bool:
         "sdata": sdata,
     }
 
-    # ── تدفق التفسير متعدد الخطوات ──
+    # ── تحديد الـ handler أولاً قبل أي مسح ──
+    handler = None
+
     if state_type == "qr_dev_edit_tafseer":
-        from utils.logger import log_event
         log_event("tafseer_input", text=message.text)
         handler = FLOW_QR_TAFSEER_STEPS.get(step) if step else _qr_edit_tafseer_text
-        if handler:
-            log_event("flow_step", type=state_type, step=step)
-            try:
-                return handler(message, state, ctx)
-            except Exception as e:
-                log_event("flow_error", error=str(e))
-                StateManager.clear(uid, cid)
-                send_result(
-                    chat_id=cid,
-                    text="❌ حدث خطأ، تم إلغاء العملية",
-                )
-                return True
-        return False
 
-    # ── تدفق الإضافة متعدد الخطوات ──
-    if state_type == "qr_dev_add":
+    elif state_type == "qr_dev_add":
         handler = FLOW_QR_ADD_STEPS.get(step)
-        if handler:
-            from utils.logger import log_event
-            log_event("flow_step", type=state_type, step=step)
-            try:
-                return handler(message, state, ctx)
-            except Exception as e:
-                log_event("flow_error", error=str(e))
-                StateManager.clear(uid, cid)
-                send_result(
-                    chat_id=cid,
-                    text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
-                )
-                return True
+
+    else:
+        handler = FLOW_HUB_DEV.get(state_type) or FLOW_QURAN_DEV.get(state_type)
+
+    # إذا لم يوجد handler → لا نمسح الحالة، نتركها لـ handle_dev_quran_input
+    if not handler:
+        log_event("flow_no_handler", type=state_type, step=step)
         return False
 
-    # ── تدفقات Hub ──
-    handler = FLOW_HUB_DEV.get(state_type)
-    if handler:
-        from utils.logger import log_event
-        log_event("flow_step", type=state_type, step=step)
-        try:
-            return handler(message, state, ctx)
-        except Exception as e:
-            log_event("flow_error", error=str(e))
-            StateManager.clear(uid, cid)
-            send_result(
-                chat_id=cid,
-                text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
-            )
-            return True
+    # ── الآن فقط: مسح الحالة + حذف رسالة المستخدم ──
+    StateManager.clear(uid, cid)
+    try:
+        bot.delete_message(cid, message.message_id)
+    except Exception:
+        pass
 
-    # ── تدفقات Quran ──
-    handler = FLOW_QURAN_DEV.get(state_type)
-    if handler:
-        from utils.logger import log_event
-        log_event("flow_step", type=state_type, step=step)
-        try:
-            return handler(message, state, ctx)
-        except Exception as e:
-            log_event("flow_error", error=str(e))
-            StateManager.clear(uid, cid)
-            send_result(
-                chat_id=cid,
-                text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
-            )
-            return True
-
-    return False
+    log_event("flow_step", type=state_type, step=step)
+    try:
+        return handler(message, state, ctx)
+    except Exception as e:
+        log_event("flow_error", error=str(e))
+        StateManager.clear(uid, cid)
+        send_result(
+            chat_id=cid,
+            text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية",
+        )
+        return True

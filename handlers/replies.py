@@ -100,14 +100,6 @@ def _dispatch(message):
         return
 
     # ══════════════════════════════════════════
-    # 0.5. Flow Engine Priority (for dev inputs)
-    # ══════════════════════════════════════════
-    if StateManager.exists(uid, cid):
-        from handlers.group_admin.developer.dev_flows import dispatch
-        if dispatch(message, uid, cid):
-            return
-
-    # ══════════════════════════════════════════
     # 1. فحص الكتم — أولوية قصوى
     # ══════════════════════════════════════════
     if is_globally_muted(uid):
@@ -389,9 +381,18 @@ def receive_responses(message):
     state = StateManager.get(uid, cid)
 
     try:
+        # ══════════════════════════════════════════
+        # Flow Engine — أولوية مطلقة قبل أي فلتر
+        # يجب أن يعمل في المجموعات والخاص على حد سواء
+        # ══════════════════════════════════════════
+        if StateManager.exists(uid, cid):
+            from handlers.group_admin.developer.dev_flows import dispatch as _flow_dispatch
+            if _flow_dispatch(message, uid, cid):
+                return
+
         _in_private(message)
-        
-        # just in groups
+
+        # الأوامر العادية — مجموعات فقط
         if is_group(message):
             _dispatch(message)
     except Exception as e:
