@@ -92,14 +92,15 @@ def _show_content_hub_panel(call_or_message):
 
     buttons = [
         btn("📜 اقتباسات", "hub_dev_type", {"type": "quotes"},    color=_B, owner=owner),
-        btn("😂 نوادر",     "hub_dev_type", {"type": "anecdotes"}, color=_B, owner=owner),
+        btn("📔 نوادر",     "hub_dev_type", {"type": "anecdotes"}, color=_B, owner=owner),
         btn("📖 قصص",      "hub_dev_type", {"type": "stories"},   color=_B, owner=owner),
         btn("🧠 حكم",      "hub_dev_type", {"type": "wisdom"},    color=_B, owner=owner),
+        btn("📜 شعر",      "hub_dev_type", {"type": "poetry"},    color=_B, owner=owner),
         btn("⬅️ رجوع",     "dev_back_main", {},                   color=_R, owner=owner),
     ]
 
     if hasattr(call_or_message, 'message'):
-        edit_ui(call_or_message, text=text, buttons=buttons, layout=[2, 2, 1])
+        edit_ui(call_or_message, text=text, buttons=buttons, layout=[2, 2, 1, 1])
     else:
         send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 1], owner_id=uid)
 
@@ -754,7 +755,7 @@ def _show_tafseer_selection(message, uid, cid, ayah, mid):
             bot.edit_message_text(
                 text, cid, mid,
                 parse_mode="HTML",
-                reply_markup=build_keyboard(buttons, [2, 2, 1], uid),
+                reply_markup=build_keyboard(buttons, layout=[3,1], owner_id=uid),
             )
         except Exception:
             pass

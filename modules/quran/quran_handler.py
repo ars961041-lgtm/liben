@@ -47,7 +47,8 @@ def handle_tilawa(message) -> bool:
 
 
 def _send_ayah(message_or_none, uid: int, cid: int, ayah: dict,
-               reply_to: int = None, edit_call=None):
+               reply_to: int = None, edit_call=None,
+               source: str = None, fav_page: int = 0):
     """يرسل أو يعدّل رسالة الآية."""
     total    = db.get_total_ayat()
     is_fav   = db.is_favorite(uid, ayah["id"])
@@ -56,16 +57,18 @@ def _send_ayah(message_or_none, uid: int, cid: int, ayah: dict,
 
     text, (buttons, layout) = (
         ui.build_ayah_text(ayah, total),
-        ui.build_ayah_buttons(uid, cid, ayah, is_fav, has_prev, has_next),
+        ui.build_ayah_buttons(uid, cid, ayah, is_fav, has_prev, has_next,
+                              source=source, fav_page=fav_page),
     )
 
     if edit_call:
         edit_ui(edit_call, text=text, buttons=buttons, layout=layout)
-        svc.save_position(uid, ayah["id"], edit_call.message.message_id)
+        if source != "favorites":
+            svc.save_position(uid, ayah["id"], edit_call.message.message_id)
     else:
         sent = send_ui(cid, text=text, buttons=buttons, layout=layout,
                        owner_id=uid, reply_to=reply_to)
-        if sent:
+        if sent and source != "favorites":
             svc.save_position(uid, ayah["id"], sent.message_id)
 
 
@@ -81,7 +84,8 @@ def on_next(call, data):
         bot.answer_callback_query(call.id, "✅ وصلت لآخر آية!", show_alert=True)
         return
     bot.answer_callback_query(call.id)
-    _send_ayah(None, uid, cid, ayah, edit_call=call)
+    _send_ayah(None, uid, cid, ayah, edit_call=call,
+               source=data.get("src"), fav_page=data.get("fp", 0))
 
 
 @register_action("qr_prev")
@@ -94,7 +98,8 @@ def on_prev(call, data):
         bot.answer_callback_query(call.id, "⬅️ هذه أول آية.", show_alert=True)
         return
     bot.answer_callback_query(call.id)
-    _send_ayah(None, uid, cid, ayah, edit_call=call)
+    _send_ayah(None, uid, cid, ayah, edit_call=call,
+               source=data.get("src"), fav_page=data.get("fp", 0))
 
 
 @register_action("qr_goto_ayah")
@@ -107,7 +112,8 @@ def on_goto(call, data):
         bot.answer_callback_query(call.id, "❌ الآية غير موجودة.", show_alert=True)
         return
     bot.answer_callback_query(call.id)
-    _send_ayah(None, uid, cid, ayah, edit_call=call)
+    _send_ayah(None, uid, cid, ayah, edit_call=call,
+               source=data.get("src"), fav_page=data.get("fp", 0))
 
 
 @register_action("qr_back_to_ayah")
@@ -120,7 +126,8 @@ def on_back_to_ayah(call, data):
         bot.answer_callback_query(call.id, "❌ الآية غير موجودة.", show_alert=True)
         return
     bot.answer_callback_query(call.id)
-    _send_ayah(None, uid, cid, ayah, edit_call=call)
+    _send_ayah(None, uid, cid, ayah, edit_call=call,
+               source=data.get("src"), fav_page=data.get("fp", 0))
 
 
 @register_action("qr_close")
@@ -145,10 +152,10 @@ def on_fav(call, data):
     is_now_fav, msg = svc.toggle_favorite(uid, aid)
     bot.answer_callback_query(call.id, msg, show_alert=False)
 
-    # أعد رسم الأزرار لتحديث زر المفضلة
     ayah = db.get_ayah(aid)
     if ayah:
-        _send_ayah(None, uid, cid, ayah, edit_call=call)
+        _send_ayah(None, uid, cid, ayah, edit_call=call,
+                   source=data.get("src"), fav_page=data.get("fp", 0))
 
 
 def handle_my_favorites(message) -> bool:
@@ -191,6 +198,19 @@ def on_fav_page(call, data):
     _show_favorites(None, uid, cid, favs, page, edit_call=call)
 
 
+@register_action("qr_back_favorites")
+def on_back_favorites(call, data):
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    page = int(data.get("fp", 0))
+    favs = svc.get_user_favorites(uid)
+    bot.answer_callback_query(call.id)
+    if not favs:
+        bot.answer_callback_query(call.id, "⭐️ مفضلتك فارغة.", show_alert=True)
+        return
+    _show_favorites(None, uid, cid, favs, page, edit_call=call)
+
+
 # ══════════════════════════════════════════
 # 📖 التفسير
 # ══════════════════════════════════════════
@@ -215,11 +235,13 @@ def on_tafseer(call, data):
         )
         return
 
-    # الحصول على اسم السورة
-    sura = db.get_sura(ayah["sura_id"])
+    sura      = db.get_sura(ayah["sura_id"])
     sura_name = sura["name"] if sura else f"سورة {ayah['sura_id']}"
+    source    = data.get("src")
+    fav_page  = data.get("fp", 0)
 
-    buttons, layout = ui.build_tafseer_buttons(uid, cid, ayah)
+    buttons, layout = ui.build_tafseer_buttons(uid, cid, ayah,
+                                               source=source, fav_page=fav_page)
     bot.answer_callback_query(call.id)
     edit_ui(
         call,
@@ -252,15 +274,18 @@ def on_show_tafseer(call, data):
         bot.answer_callback_query(call.id, "لم يتم إضافة هذا التفسير بعد.", show_alert=True)
         return
 
-    # اسم التفسير العربي
-    name_ar = next((k for k, v in db.TAFSEER_TYPES.items() if v == col), col)
-
-    # الحصول على اسم السورة
-    sura = db.get_sura(ayah["sura_id"])
+    name_ar   = next((k for k, v in db.TAFSEER_TYPES.items() if v == col), col)
+    sura      = db.get_sura(ayah["sura_id"])
     sura_name = sura["name"] if sura else f"سورة {ayah['sura_id']}"
-    
-    owner = (uid, cid)
-    
+    source    = data.get("src")
+    fav_page  = data.get("fp", 0)
+    owner     = (uid, cid)
+
+    back_ctx = {"aid": aid}
+    if source:
+        back_ctx["src"] = source
+        back_ctx["fp"]  = fav_page
+
     bot.answer_callback_query(call.id)
     edit_ui(
         call,
@@ -272,7 +297,7 @@ def on_show_tafseer(call, data):
             f"{get_lines()}\n"
             f"📝 <b>التفسير:</b>\n{content}"
         ),
-        buttons=[btn("🔙 رجوع للتفاسير", "qr_tafseer", {"aid": aid}, color=_R, owner=owner)],
+        buttons=[btn("🔙 رجوع للتفاسير", "qr_tafseer", back_ctx, color=_R, owner=owner)],
         layout=[1],
     )
 
@@ -652,7 +677,7 @@ def handle_dev_quran_command(message) -> bool:
                 f"اختر نوع التفسير:"
             ),
             buttons=tafseer_buttons,
-            layout=[2, 2, 1],
+            layout=[3] + [1],
             owner_id=uid,
             reply_to=message.message_id,
         )
@@ -793,7 +818,7 @@ def _show_sura_selection(message_or_call, page: int, reply_to: int = None, edit_
             bot.send_message(cid, text)
         return
 
-    items, total_pages = paginate_list(suras, page, per_page=25)
+    items, total_pages = paginate_list(suras, page, per_page=60)
     text = ui.build_sura_selection_text(page, total_pages)
     buttons, layout = ui.build_sura_buttons(items, uid, cid, page, total_pages)
 

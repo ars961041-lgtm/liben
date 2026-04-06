@@ -263,7 +263,7 @@ def _qr_edit_tafseer_find(message, state: dict, ctx: dict):
         for name_ar, col in qr_db.TAFSEER_TYPES.items()
     ]
     buttons.append(btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner))
-    send_result(cid, text, message_id=mid, buttons=buttons, layout=[2, 2, 1], owner_id=uid)
+    send_result(cid, text, message_id=mid, buttons=buttons, layout=[3,1], owner_id=uid)
     return True
 
 

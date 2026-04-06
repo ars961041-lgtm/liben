@@ -20,14 +20,16 @@ CONTENT_TYPES = {
     "نوادر":   "anecdotes",
     "قصص":    "stories",
     "حكمة":   "wisdom",
+    "شعر":    "poetry",
 }
 
 # ── أسماء عربية للعرض ──
 TYPE_LABELS = {
     "quotes":    "💬 اقتباس",
-    "anecdotes": "😄 نادرة",
+    "anecdotes": "📔 نادرة",
     "stories":   "📖 قصة",
     "wisdom":    "🌟 حكمة",
+    "poetry":    "📜 شعر",
 }
 
 

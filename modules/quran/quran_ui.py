@@ -22,35 +22,55 @@ def build_ayah_text(ayah: dict, total: int) -> str:
         f"‏━━━━━━━━━━━━━━━\n\n"
         f"{ayah['text_with_tashkeel']}\n\n"
         f"‏━━━━━━━━━━\n"
-        f"<i>آية {ayah['id']} من {total}</i>"
-    )
+        f"<tg-spoiler><i>آية {ayah['id']} من {total}</i></tg-spoiler>"    
+        )
 
 
 def build_ayah_buttons(uid: int, cid: int, ayah: dict,
-                       is_fav: bool, has_prev: bool, has_next: bool) -> tuple[list, list]:
+                       is_fav: bool, has_prev: bool, has_next: bool,
+                       source: str = None, fav_page: int = 0) -> tuple[list, list]:
     """يبني أزرار عرض الآية."""
     owner = (uid, cid)
     aid   = ayah["id"]
 
+    # بيانات السياق لتمريرها لأزرار التنقل
+    ctx = {"aid": aid}
+    if source:
+        ctx["src"] = source
+        ctx["fp"]  = fav_page
+
     nav = []
     if has_next:
-        nav.append(btn("⬅️ التالية", "qr_next", {"aid": aid}, color=_B, owner=owner))
+        nav.append(btn("⬅️ التالية", "qr_next", ctx, color=_B, owner=owner))
     if has_prev:
-        nav.append(btn("➡️ السابقة", "qr_prev", {"aid": aid}, color=_B, owner=owner))
+        nav.append(btn("➡️ السابقة", "qr_prev", ctx, color=_B, owner=owner))
 
     fav_label = "💛 إزالة من المفضلة" if is_fav else "⭐️ المفضلة"
+    fav_ctx   = {"aid": aid}
+    if source:
+        fav_ctx["src"] = source
+        fav_ctx["fp"]  = fav_page
+
     action_row = [
-        btn("📖 تفسير",    "qr_tafseer",  {"aid": aid}, color=_B, owner=owner),
-        btn(fav_label,     "qr_fav",      {"aid": aid}, color=_G, owner=owner),
-        btn("❌ إغلاق",    "qr_close",    {},            color=_R, owner=owner),
+        btn("📖 تفسير", "qr_tafseer", {"aid": aid, **({"src": source, "fp": fav_page} if source else {})}, color=_B, owner=owner),
+        btn(fav_label,  "qr_fav",     fav_ctx,                                                              color=_G, owner=owner),
+        btn("❌ إغلاق", "qr_close",   {},                                                                   color=_R, owner=owner),
     ]
 
     buttons = nav + action_row
     layout  = ([len(nav)] if nav else []) + [3]
+
+    # زر الرجوع للمفضلة — فقط إذا جاء المستخدم من المفضلة
+    if source == "favorites":
+        buttons.append(btn("⬅️ رجوع للمفضلة", "qr_back_favorites",
+                           {"fp": fav_page}, color=_G, owner=owner))
+        layout.append(1)
+
     return buttons, layout
 
 
-def build_tafseer_buttons(uid: int, cid: int, ayah: dict) -> tuple[list, list]:
+def build_tafseer_buttons(uid: int, cid: int, ayah: dict,
+                          source: str = None, fav_page: int = 0) -> tuple[list, list]:
     """يبني أزرار اختيار التفسير."""
     owner     = (uid, cid)
     aid       = ayah["id"]
@@ -59,17 +79,29 @@ def build_tafseer_buttons(uid: int, cid: int, ayah: dict) -> tuple[list, list]:
     if not available:
         return [], []
 
-    buttons = [
+    tafseer_buttons = [
         btn(name_ar, "qr_show_tafseer",
-            {"aid": aid, "col": col}, color=_B, owner=owner)
+            {"aid": aid, "col": col, **({"src": source, "fp": fav_page} if source else {})},
+            color=_B, owner=owner)
         for name_ar, col in available
     ]
-    buttons.append(btn("🔙 رجوع", "qr_back_to_ayah", {"aid": aid}, color=_R, owner=owner))
 
-    n      = len(buttons)
-    layout = [2] * (n // 2) + ([1] if n % 2 else [])
+    back_ctx = {"aid": aid}
+    if source:
+        back_ctx["src"] = source
+        back_ctx["fp"]  = fav_page
+
+    back_btn = btn("🔙 رجوع", "qr_back_to_ayah", back_ctx, color=_R, owner=owner)
+
+    buttons = tafseer_buttons + [back_btn]
+    n = len(tafseer_buttons)
+
+    if n >= 3:
+        layout = [3] + ([n - 3] if n > 3 else []) + [1]
+    else:
+        layout = [n] + [1]
+
     return buttons, layout
-
 
 def build_search_result_text(results: list[dict], page: int, total_pages: int) -> str:
     """يبني نص نتائج البحث."""
@@ -92,7 +124,7 @@ def build_search_buttons(uid: int, cid: int, query: str,
     owner   = (uid, cid)
     buttons = []
 
-    # زر لكل نتيجة للانتقال إليها
+    # أزرار النتائج
     for r in results:
         buttons.append(btn(
             f"📖 {r['sura_name']} {r['ayah_number']}",
@@ -101,20 +133,35 @@ def build_search_buttons(uid: int, cid: int, query: str,
             color=_B, owner=owner,
         ))
 
+    # أزرار التنقل
     nav = []
-    if page > 0:
-        nav.append(btn("◀️", "qr_search_page",
-                       {"q": query, "p": page - 1}, owner=owner))
+
     if page < total_pages - 1:
-        nav.append(btn("▶️", "qr_search_page",
-                       {"q": query, "p": page + 1}, owner=owner))
+        nav.append(btn("◀️", "qr_search_page",
+                       {"q": query, "p": page + 1}, color=_G,owner=owner))
+
     nav.append(btn("❌ إغلاق", "qr_close", {}, color=_R, owner=owner))
 
+    if page > 0:
+        nav.append(btn("▶️", "qr_search_page",
+                       {"q": query, "p": page - 1}, color=_G,owner=owner))
     buttons += nav
-    n_results = len(results)
-    layout    = [1] * n_results + ([len(nav)] if nav else [1])
-    return buttons, layout
 
+    # --- layout ---
+    n_results = len(results)
+
+    rows = n_results // 3
+    remainder = n_results % 3
+
+    layout = [3] * rows
+    if remainder:
+        layout.append(remainder)
+
+    # صف التنقل
+    if nav:
+        layout.append(len(nav))
+
+    return buttons, layout
 
 def build_favorites_text(favs: list[dict], page: int, total_pages: int) -> str:
 
@@ -128,26 +175,59 @@ def build_favorites_text(favs: list[dict], page: int, total_pages: int) -> str:
         )
     return text
 
-
 def build_favorites_buttons(uid: int, cid: int, favs: list[dict],
                              page: int, total_pages: int) -> tuple[list, list]:
-    owner   = (uid, cid)
-    buttons = [
-        btn(f"📖 {f['sura_name']} {f['ayah_number']}", "qr_goto_ayah",
-            {"aid": f["id"]}, color=_B, owner=owner)
-        for f in favs
-    ]
+    owner = (uid, cid)
+
+    buttons = []
+    row = []
+
+    # --- أزرار المفضلة (3 في الصف مع RTL) ---
+    for f in favs:
+        row.append(
+            btn(
+                f"📖 {f['sura_name']} {f['ayah_number']}",
+                "qr_goto_ayah",
+                {"aid": f["id"], "src": "favorites", "fp": page},
+                color=_B,
+                owner=owner
+            )
+        )
+
+        if len(row) == 3:
+            buttons.extend(reversed(row))  # عكس الصف
+            row = []
+
+    if row:
+        buttons.extend(reversed(row))
+
+    # --- أزرار التنقل ---
     nav = []
-    if page > 0:
-        nav.append(btn("◀️", "qr_fav_page", {"p": page - 1}, owner=owner))
+
     if page < total_pages - 1:
-        nav.append(btn("▶️", "qr_fav_page", {"p": page + 1}, owner=owner))
+        nav.append(btn("◀️", "qr_fav_page", {"p": page + 1}, color=_G, owner=owner))
+
     nav.append(btn("❌ إغلاق", "qr_close", {}, color=_R, owner=owner))
 
-    buttons += nav
-    layout   = [1] * len(favs) + ([len(nav)] if nav else [1])
-    return buttons, layout
+    if page > 0:
+        nav.append(btn("▶️", "qr_fav_page", {"p": page - 1}, color=_G, owner=owner))
 
+    buttons.extend(nav)
+
+    # --- layout ---
+    fav_count = len(favs)
+
+    rows = fav_count // 3
+    remainder = fav_count % 3
+
+    layout = [3] * rows
+    if remainder:
+        layout.append(remainder)
+
+    if nav:
+        layout.append(len(nav))
+
+    return buttons, layout
 
 def build_sura_selection_text(page: int, total_pages: int) -> str:
     """نص اختيار السورة."""
@@ -159,23 +239,61 @@ def build_sura_buttons(suras: list[dict], uid: int, cid: int, page: int, total_p
     owner = (uid, cid)
     buttons = []
 
+    # --- بناء أزرار السور مع عكس الصفوف ليظهر RTL ---
+    row = []
     for sura in suras:
-        buttons.append(btn(
-            f"{sura['id']}. {sura['name']}",
-            "qr_dev_tafseer_select_sura",
-            {"sura_id": sura["id"]},
-            color=_B, owner=owner
-        ))
+        row.append(
+            btn(
+                f"{sura['name']}",
+                "qr_dev_tafseer_select_sura",
+                {"sura_id": sura["id"]},
+                color=_B,
+                owner=owner
+            )
+        )
 
+        if len(row) == 4:
+            buttons.extend(reversed(row))  # عكس الصف ليظهر من اليمين
+            row = []
+
+    # لو بقي صف غير مكتمل
+    if row:
+        buttons.extend(reversed(row))
+
+    # --- أزرار التنقل ---
     nav = []
-    if page > 0:
-        nav.append(btn("◀️", "qr_dev_tafseer_sura_page", {"p": page - 1}, owner=owner))
-    if page < total_pages - 1:
-        nav.append(btn("▶️", "qr_dev_tafseer_sura_page", {"p": page + 1}, owner=owner))
-    nav.append(btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner))
 
-    buttons += nav
-    layout = [1] * len(suras) + ([len(nav)] if nav else [1])
+    if page < total_pages - 1:
+        nav.append(
+            btn("التالي ◀️", "qr_dev_tafseer_sura_page", {"p": page + 1}, color=_G, owner=owner)
+        )
+
+    nav.append(
+        btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)
+    )
+
+
+    if page > 0:
+        nav.append(
+            btn("▶️ السابق", "qr_dev_tafseer_sura_page", {"p": page - 1}, color=_G,owner=owner)
+        )
+    # إضافة أزرار التنقل بعد السور
+    buttons.extend(nav)
+
+    # --- layout ---
+    sura_count = len(suras)
+
+    rows = sura_count // 4
+    remainder = sura_count % 4
+
+    layout = [4] * rows
+    if remainder:
+        layout.append(remainder)
+
+    # صف مستقل للتنقل
+    if nav:
+        layout.append(len(nav))
+
     return buttons, layout
 
 
@@ -193,7 +311,7 @@ def build_tafseer_type_buttons(uid: int, cid: int, sura: dict) -> tuple[list, li
         ))
 
     buttons.append(btn("🔙 رجوع للسور", "qr_dev_tafseer_back_to_suras", {}, color=_R, owner=owner))
-    layout = [2, 2, 1]
+    layout = layout=[3,1]
     return buttons, layout
 
 
