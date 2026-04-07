@@ -100,13 +100,15 @@ def send_gendered_welcome(msg, gender):
 
 def send_welcome(message):
     from utils.helpers import send_bot_profile, get_lines
+    from utils.keyboards import ui_btn, build_keyboard
+    from core.config import bot_name
     from core import memory as _mem
     _mem.set_last_command(message.from_user.id, "/start")
 
     caption = (
         f"<b>أهلاً وسهلاً! 👋</b>\n"
         f"{get_lines()}\n\n"
-        f"أنا <b>{CURRENCY_ARABIC_NAME}</b> — بوت متكامل يجمع بين الترفيه والفائدة.\n\n"
+        f"أنا <b>Belo | بيلو</b> — بوت متكامل يجمع بين الترفيه والفائدة.\n\n"
         f"🕌 <b>الميزات الدينية:</b>\n"
         f"أذكار الصباح والمساء، القرآن الكريم، تذكير يومي\n\n"
         f"🎮 <b>الألعاب:</b>\n"
@@ -116,16 +118,40 @@ def send_welcome(message):
         f"✨ <b>أدوات أخرى:</b>\n"
         f"تنسيق النصوص، الوقت والتاريخ، المجلة اليومية\n\n"
         f"{get_lines()}\n"
-        f"اكتب <code>مميزات ليبن</code> لاستعراض كل الميزات\n"
+        f"اكتب <code>مميزات بيلو</code> لاستعراض كل الميزات\n"
         f"اكتب <code>الألعاب</code> لعرض الألعاب المتاحة"
     )
 
-    send_bot_profile(
-        chat_id=message.chat.id,
-        caption=caption,
-        reply_to=message.message_id,
-        open_pm_button=(message.chat.type != "private"),
-    )
+    # Build buttons: PM button (groups only) + channel button
+    from utils.helpers import get_bot_username
+    buttons = []
+    if message.chat.type != "private":
+        username = get_bot_username()
+        if username:
+            buttons.append(ui_btn(bot_name, url=f"https://t.me/{username}", style="primary"))
+    buttons.append(ui_btn("📢 قناة التحديثات", url="https://t.me/BotBeloPro", style="success"))
+
+    markup = build_keyboard(buttons, [len(buttons)]) if buttons else None
+
+    import os
+    from core.bot import bot as _bot
+    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
+    kwargs = {
+        "caption":      caption,
+        "parse_mode":   "HTML",
+        "reply_markup": markup,
+        "reply_to_message_id": message.message_id,
+    }
+    try:
+        if os.path.exists(photo_path):
+            with open(photo_path, "rb") as f:
+                _bot.send_photo(message.chat.id, f, **kwargs)
+        else:
+            _bot.send_message(message.chat.id, caption,
+                              parse_mode="HTML", reply_markup=markup,
+                              reply_to_message_id=message.message_id)
+    except Exception as e:
+        print(f"[send_welcome] error: {e}")
 
 # =========================
 # LEVEL SYSTEM
