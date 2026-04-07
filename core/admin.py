@@ -169,6 +169,10 @@ def demote_developer(user_id: int) -> bool:
 # ══════════════════════════════════════════
 # 🔇 نظام الكتم
 # ══════════════════════════════════════════
+# نظامان مستقلان تماماً:
+# 1. global_mutes  — كتم عالمي (المطور فقط) — يمنع المستخدم في كل مكان
+# 2. group_mutes   — كتم في مجموعة (المطور) — يمنع المستخدم في مجموعة محددة
+# 3. group_members.is_muted — كتم المشرف — نظام منفصل لا يتداخل مع الأعلى
 
 def is_globally_muted(user_id: int) -> bool:
     try:
@@ -181,19 +185,21 @@ def is_globally_muted(user_id: int) -> bool:
 
 
 def is_group_muted(user_id: int, group_id: int) -> bool:
+    """يتحقق من group_mutes فقط (نظام المطور) — لا يتحقق من group_members"""
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT user_id FROM group_mutes WHERE user_id = ? AND group_id = ?
-        """, (user_id, group_id))
+        cursor.execute(
+            "SELECT user_id FROM group_mutes WHERE user_id = ? AND group_id = ?",
+            (user_id, group_id)
+        )
         return cursor.fetchone() is not None
     except Exception:
         return False
 
 
 def is_muted_anywhere(user_id: int, group_id: int = None) -> bool:
-    """يتحقق من الكتم العالمي أو في مجموعة محددة"""
+    """يتحقق من الكتم العالمي أو في مجموعة محددة (نظام المطور فقط)"""
     if is_globally_muted(user_id):
         return True
     if group_id and is_group_muted(user_id, group_id):
@@ -201,7 +207,16 @@ def is_muted_anywhere(user_id: int, group_id: int = None) -> bool:
     return False
 
 
+def get_mute_status(user_id: int, group_id: int = None) -> dict:
+    """يرجع حالة الكتم الكاملة للمستخدم"""
+    return {
+        "globally_muted": is_globally_muted(user_id),
+        "group_muted":    is_group_muted(user_id, group_id) if group_id else False,
+    }
+
+
 def global_mute(user_id: int, muted_by: int, reason: str = "") -> bool:
+    """كتم عالمي — يؤثر على جميع المجموعات، لا يمس group_mutes"""
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
@@ -215,18 +230,37 @@ def global_mute(user_id: int, muted_by: int, reason: str = "") -> bool:
         return False
 
 
-def global_unmute(user_id: int) -> bool:
+def global_unmute(user_id: int, reason: str = "") -> tuple[bool, str]:
+    """
+    رفع الكتم العالمي فقط — لا يمس group_mutes.
+    إذا أُعطي reason، يتحقق من تطابقه قبل الحذف.
+    يرجع (True, reason_was) عند النجاح، أو (False, سبب_الفشل).
+    """
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
+        cursor.execute(
+            "SELECT reason FROM global_mutes WHERE user_id = ?", (user_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False, "not_found"
+
+        stored_reason = (row[0] or "").strip()
+
+        # إذا أُعطي سبب، تحقق من التطابق
+        if reason and stored_reason.lower() != reason.strip().lower():
+            return False, f"reason_mismatch:{stored_reason}"
+
         cursor.execute("DELETE FROM global_mutes WHERE user_id = ?", (user_id,))
         conn.commit()
-        return cursor.rowcount > 0
+        return True, stored_reason
     except Exception:
-        return False
+        return False, "error"
 
 
 def group_mute(user_id: int, group_id: int, muted_by: int, reason: str = "") -> bool:
+    """كتم في مجموعة محددة — لا يمس global_mutes"""
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
@@ -241,11 +275,14 @@ def group_mute(user_id: int, group_id: int, muted_by: int, reason: str = "") -> 
 
 
 def group_unmute(user_id: int, group_id: int) -> bool:
+    """رفع الكتم في مجموعة محددة فقط — لا يمس global_mutes"""
     try:
         conn = get_db_conn()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM group_mutes WHERE user_id = ? AND group_id = ?",
-                       (user_id, group_id))
+        cursor.execute(
+            "DELETE FROM group_mutes WHERE user_id = ? AND group_id = ?",
+            (user_id, group_id)
+        )
         conn.commit()
         return cursor.rowcount > 0
     except Exception:

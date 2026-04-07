@@ -10,6 +10,7 @@ from database.db_queries.war_queries import (
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 # ══════════════════════════════════════════
@@ -50,9 +51,17 @@ def buy_troops(user_id: int, country_id: int, troop_type_id: int,
     troop = dict(troop)
 
     total_cost = troop["base_cost"] * quantity
+    # ─── تطبيق حدث خصم تكلفة الجنود ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        discount = get_event_effect("troop_cost_discount")
+        if discount > 0:
+            total_cost = round(total_cost * (1 - discount))
+    except Exception:
+        pass
     balance = get_user_balance(user_id)
     if balance < total_cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {total_cost:.0f} Liben (رصيدك: {balance:.0f})"
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
 
     # إضافة للعاصمة (أول مدينة)
     city_id = _get_capital_city(country_id)
@@ -64,7 +73,7 @@ def buy_troops(user_id: int, country_id: int, troop_type_id: int,
 
     return True, (
         f"✅ تم شراء {quantity} × {troop['emoji']} {troop['name_ar']}\n"
-        f"💰 التكلفة: {total_cost:.0f} Liben"
+        f"💰 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 
@@ -92,7 +101,7 @@ def buy_equipment(user_id: int, country_id: int, eq_type_id: int,
     total_cost = eq["base_cost"] * quantity
     balance = get_user_balance(user_id)
     if balance < total_cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {total_cost:.0f} Liben (رصيدك: {balance:.0f})"
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
 
     city_id = _get_capital_city(country_id)
     if not city_id:
@@ -103,7 +112,7 @@ def buy_equipment(user_id: int, country_id: int, eq_type_id: int,
 
     return True, (
         f"✅ تم شراء {quantity} × {eq['emoji']} {eq['name_ar']}\n"
-        f"💰 التكلفة: {total_cost:.0f} Liben"
+        f"💰 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 

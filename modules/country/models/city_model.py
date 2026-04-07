@@ -2,6 +2,7 @@
 
 from database.connection import get_db_conn
 from modules.country.services.building_config import get_building_info
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 # -----------------------------
 # ⚡️ تمثيل المدينة
@@ -34,7 +35,7 @@ class City:
             return False, "❌ هذا المبنى غير موجود"
         total_cost = config.get("price", 0) * quantity
         if user_balance < total_cost:
-            return False, f"❌ رصيدك غير كافي ({total_cost} Liben مطلوب)"
+            return False, f"❌ رصيدك غير كافي ({total_cost} {CURRENCY_ARABIC_NAME} مطلوب)"
         return True, total_cost
 
     # -----------------------------
@@ -88,7 +89,7 @@ class City:
         # مثال: التحقق من رصيد المستخدم قبل الترقية يمكن إضافته هنا
         # total_cost = config.get("upgrade_price", 100)
         # if user_balance < total_cost:
-        #     return False, f"❌ رصيدك غير كافي لترقية المبنى ({total_cost} Liben مطلوب)"
+        #     return False, f"❌ رصيدك غير كافي لترقية المبنى ({total_cost} {CURRENCY_ARABIC_NAME} مطلوب)"
 
         return True, row['level']
 

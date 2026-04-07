@@ -17,11 +17,17 @@ def ui_btn(text, action=None, data=None, url=None, style="primary"):
     """
     if url:
         # زر رابط ما يحتاج callback_data
-        return types.InlineKeyboardButton(
-            text=text,
-            url=url,
-            style=style
-        )
+        if style == "default":
+            return types.InlineKeyboardButton(
+                text=text,
+                url=url
+            )
+        else:
+            return types.InlineKeyboardButton(
+                text=text,
+                url=url,
+                style=style
+            )
 
     # إذا action موجود
     payload = {"a": action}
@@ -29,6 +35,11 @@ def ui_btn(text, action=None, data=None, url=None, style="primary"):
         payload.update(data)
 
     callback_data = json.dumps(payload, separators=(',', ':'))
+    if style == "default":
+        return types.InlineKeyboardButton(
+            text=text,
+            callback_data=callback_data,
+        )
 
     return types.InlineKeyboardButton(
         text=text,

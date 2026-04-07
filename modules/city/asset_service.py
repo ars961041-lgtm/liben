@@ -8,6 +8,7 @@ from database.db_queries.assets_queries import (
     get_city_asset, upsert_city_asset, upgrade_city_asset,
     log_asset_action, calculate_city_effects
 )
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 MAX_LEVEL = 10  # can be overridden per-asset via assets.max_level
 
@@ -49,7 +50,7 @@ def buy_asset(user_id: int, city_id: int, asset_name: str,
     cost = calc_buy_cost(asset, quantity)
     balance = get_user_balance(user_id)
     if balance < cost:
-        return False, f"❌ رصيدك {balance:.0f} Liben — تحتاج {cost:.0f} Liben"
+        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME}"
 
     # insert into city_assets FIRST — if this fails, no money is lost
     try:
@@ -70,8 +71,8 @@ def buy_asset(user_id: int, city_id: int, asset_name: str,
     branch_label = f" {branch['emoji']} {branch['name_ar']}" if branch else ""
     return True, (
         f"✅ تم شراء {quantity} × {asset['emoji']} {asset['name_ar']}{branch_label}\n"
-        f"💸 التكلفة: {cost:.0f} Liben\n"
-        f"💰 الرصيد المتبقي: {balance - cost:.0f} Liben"
+        f"💸 التكلفة: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💰 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 
@@ -100,7 +101,7 @@ def upgrade_asset(user_id: int, city_id: int, asset_name: str,
     cost = calc_upgrade_cost(asset, from_level, quantity)
     balance = get_user_balance(user_id)
     if balance < cost:
-        return False, f"❌ رصيدك {balance:.0f} Liben — تحتاج {cost:.0f} Liben"
+        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME}"
 
     if not deduct_user_balance(user_id, cost):
         return False, "❌ فشل خصم الرصيد"
@@ -112,8 +113,8 @@ def upgrade_asset(user_id: int, city_id: int, asset_name: str,
     return True, (
         f"⬆️ تمت ترقية {quantity} × {asset['emoji']} {asset['name_ar']}\n"
         f"المستوى: {from_level} → {from_level + 1}\n"
-        f"💸 التكلفة: {cost:.0f} Liben\n"
-        f"💰 الرصيد المتبقي: {balance - cost:.0f} Liben"
+        f"💸 التكلفة: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💰 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 

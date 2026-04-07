@@ -27,11 +27,12 @@ from modules.war.power_calculator import (
 )
 from modules.war.war_simulator import simulate_battle
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 TRAVEL_TIME  = 20 * 60
 BATTLE_TIME  = 5  * 60
 SUDDEN_TRAVEL = 5 * 60
-HIDDEN_COST  = 200   # Liben يومياً للإخفاء
+HIDDEN_COST  = 200   # Bito يومياً للإخفاء
 
 
 # ══════════════════════════════════════════
@@ -53,11 +54,11 @@ def set_country_visibility(user_id, mode):
         from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
         bal = get_user_balance(user_id)
         if bal < HIDDEN_COST:
-            return False, f"❌ تحتاج {HIDDEN_COST} Liben لتفعيل الإخفاء."
+            return False, f"❌ تحتاج {HIDDEN_COST} {CURRENCY_ARABIC_NAME} لتفعيل الإخفاء."
         deduct_user_balance(user_id, HIDDEN_COST)
         from database.db_queries.advanced_war_queries import set_visibility_mode
         set_visibility_mode(cid, "hidden")
-        return True, f"🌑 دولتك الآن مخفية! تكلفة: {HIDDEN_COST} Liben\nكود هجومك اليومي: {get_visibility(cid)['daily_attack_code']}"
+        return True, f"🌑 دولتك الآن مخفية! تكلفة: {HIDDEN_COST} {CURRENCY_ARABIC_NAME}\nكود هجومك اليومي: {get_visibility(cid)['daily_attack_code']}"
     else:
         from database.db_queries.advanced_war_queries import set_visibility_mode
         set_visibility_mode(cid, "public")
@@ -155,7 +156,7 @@ def launch_attack(attacker_user_id, defender_country_id,
         if row2 and row2[0] >= debt_block:
             return False, (
                 f"⚠️ <b>دين الصيانة مرتفع جداً!</b>\n"
-                f"الدين: {row2[0]:.0f} Liben\n"
+                f"الدين: {row2[0]:.0f} {CURRENCY_ARABIC_NAME}\n"
                 f"ادفع الدين أولاً قبل الهجوم.\n"
                 f"اكتب: <code>مدينتي</code> لعرض الصيانة."
             )
@@ -298,7 +299,36 @@ def _resolve_battle(battle_id):
     def_power += max(0, get_total_support_power(battle_id, "defender"))
 
     if battle["battle_type"] == "sudden":
-        atk_power = max(0, atk_power * 0.70)
+        sudden_mult = 0.70
+        try:
+            from modules.progression.global_events import get_event_effect
+            sb = get_event_effect("sudden_bonus")
+            if sb > 0:
+                sudden_mult = min(1.0, sudden_mult + sb)
+        except Exception:
+            pass
+        atk_power = max(0, atk_power * sudden_mult)
+
+    # ─── تأثيرات الأحداث العالمية (atk_bonus / def_bonus) ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        atk_event = get_event_effect("atk_bonus")
+        def_event = get_event_effect("def_bonus")
+        if atk_event:
+            atk_power = max(0, atk_power * (1 + atk_event))
+        if def_event:
+            def_power = max(0, def_power * (1 + def_event))
+    except Exception:
+        pass
+
+    # ─── عقوبة فارق الفئة + مضاعف المكافأة ───
+    from modules.war.country_level import get_country_tier, get_attack_penalty, get_reward_multiplier
+    atk_tier = get_country_tier(attacker_cid)
+    def_tier = get_country_tier(defender_cid)
+    attack_penalty  = get_attack_penalty(atk_tier, def_tier)
+    reward_mult     = get_reward_multiplier(atk_tier, def_tier)
+    if attack_penalty < 1.0:
+        atk_power = max(0, atk_power * attack_penalty)
 
     # محاكاة الخسائر
     atk_troops, atk_eq = aggregate_country_forces(attacker_cid)
@@ -307,6 +337,9 @@ def _resolve_battle(battle_id):
 
     winner_cid = attacker_cid if atk_power >= def_power else defender_cid
     loot = max(0, _calculate_loot(winner_cid, attacker_cid, defender_cid))
+
+    # تطبيق مضاعف المكافأة على الغنائم
+    loot = round(loot * reward_mult)
 
     # تطبيق الخسائر — المدافع يتلقى خسائر أثقل ×1.3
     _apply_country_losses(attacker_cid, result["attacker_losses"])
@@ -319,7 +352,8 @@ def _resolve_battle(battle_id):
             update_city_resources(cap, loot)
 
     finish_battle(battle_id, winner_cid, loot, max(0, atk_power), max(0, def_power))
-    _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result)
+    _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result,
+                          attack_penalty=attack_penalty, reward_mult=reward_mult)
     _update_supporter_reputation(battle_id)
 
     winner_uid = battle["attacker_user_id"] if winner_cid == attacker_cid else battle["defender_user_id"]
@@ -335,7 +369,7 @@ def _resolve_battle(battle_id):
 def send_spies(attacker_user_id, target_country_id, extra_card=False):
     """
     يرسل جواسيس مع:
-    - خصم تكلفة Liben
+    - خصم تكلفة Bito
     - كولداون لكل هدف (120 ثانية افتراضياً)
     - نتائج مخزنة — لا إعادة توليد مجانية
     يرجع (result_type, message)
@@ -375,7 +409,7 @@ def send_spies(attacker_user_id, target_country_id, extra_card=False):
     from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
     balance = get_user_balance(attacker_user_id)
     if balance < spy_cost:
-        return "failed", f"❌ رصيدك غير كافٍ للتجسس!\nالتكلفة: {spy_cost} Liben (رصيدك: {balance:.0f})"
+        return "failed", f"❌ رصيدك غير كافٍ للتجسس!\nالتكلفة: {spy_cost} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
 
     deduct_user_balance(attacker_user_id, spy_cost)
 
@@ -389,7 +423,7 @@ def send_spies(attacker_user_id, target_country_id, extra_card=False):
             msg = (
                 "💀 <b>تم اكتشاف جاسوسك وتصفيته!</b>\n"
                 "📉 خصم نقاط سمعة\n"
-                f"💸 خسرت {spy_cost} Liben"
+                f"💸 خسرت {spy_cost} {CURRENCY_ARABIC_NAME}"
             )
             add_spy_operation(attacker_cid, target_country_id, "detected", msg)
             # ─── فحص إنجاز الاكتشاف ───
@@ -452,7 +486,7 @@ def send_spies(attacker_user_id, target_country_id, extra_card=False):
 
 def _build_spy_report(target_country_id, result, camo_lvl, spy_cost=0):
     real_power = get_country_power(target_country_id)
-    cost_note  = f"\n💸 تكلفة العملية: {spy_cost} Liben" if spy_cost else ""
+    cost_note  = f"\n💸 تكلفة العملية: {spy_cost} {CURRENCY_ARABIC_NAME}" if spy_cost else ""
 
     if result == "success":
         vis = get_visibility(target_country_id)
@@ -746,7 +780,8 @@ def _notify_fake_attack_end(battle):
     _safe_send(bot, battle["attacker_user_id"], "🎭 <b>الهجوم الوهمي نجح!</b>\nأربكت العدو.")
 
 
-def _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result):
+def _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result,
+                          attack_penalty=1.0, reward_mult=1.0):
     from core.bot import bot
     from core.personality import war_win_msg, war_lose_msg, send_with_delay_async
     conn = get_db_conn()
@@ -763,6 +798,17 @@ def _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result
     atk_losses = sum(max(0, l.get("lost", 0)) for l in result.get("attacker_losses", []))
     def_losses = sum(max(0, l.get("lost", 0)) for l in result.get("defender_losses", []))
 
+    # سطر عقوبة الهجوم (إن وجدت)
+    penalty_line = ""
+    if attack_penalty < 1.0:
+        pct = int((1 - attack_penalty) * 100)
+        penalty_line = f"\n⚖️ فرق المستوى أثر على قوة الهجوم (-{pct}%)"
+
+    # سطر مضاعف المكافأة (إن كان مختلفاً عن 1.0)
+    reward_line = ""
+    if reward_mult != 1.0:
+        reward_line = f"\n🏆 مكافأة معدلة حسب مستوى الخصم (×{reward_mult})"
+
     report = (
         f"⚔️ <b>نتيجة المعركة #{battle['id']}</b>\n"
         f"{get_lines()}\n"
@@ -774,7 +820,8 @@ def _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result
         f"💀 الخسائر:\n"
         f"  المهاجم: {atk_losses} وحدة\n"
         f"  المدافع: {def_losses} وحدة\n\n"
-        f"💰 الغنائم: {max(0, loot):.0f} Liben"
+        f"💰 الغنائم: {max(0, loot):.0f} {CURRENCY_ARABIC_NAME}"
+        f"{penalty_line}{reward_line}"
     )
 
     atk_uid = battle["attacker_user_id"]

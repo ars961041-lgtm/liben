@@ -12,6 +12,7 @@ from database.db_queries.war_queries import (
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
 from utils.pagination import btn, send_ui, edit_ui, register_action, grid
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 GREEN = "su"
 RED   = "d"
@@ -40,7 +41,7 @@ def _hub_text(balance: float) -> str:
     return (
         f"🪖 القوات العسكرية\n"
         f"{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر القسم:"
     )
 
@@ -84,7 +85,7 @@ def handle_open_troop_list(call, data):
     text = (
         f"🪖 متجر الجنود\n"
         f"{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر نوع الجنود:"
     )
 
@@ -123,9 +124,9 @@ def handle_troop_item(call, data):
         f"⚔️ الهجوم:  {troop_type['attack']}\n"
         f"🛡 الدفاع:  {troop_type['defense']}\n"
         f"❤️ الصحة:   {troop_type['hp']}\n"
-        f"💰 السعر:   {troop_type['base_cost']:.0f} Liben / وحدة\n"
+        f"💰 السعر:   {troop_type['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
         f"🪖 تمتلك:  {owned_qty} وحدة\n"
-        f"💰 رصيدك:  {balance:.0f} Liben\n\n"
+        f"💰 رصيدك:  {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للشراء:"
     )
     qty_btns = _qty_buttons("troop_buy", {"tid": troop_id, "cid": city_id},
@@ -152,7 +153,7 @@ def handle_troop_buy(call, data):
 
     if total_cost > balance:
         bot.answer_callback_query(call.id,
-            f"❌ رصيدك {balance:.0f} — تحتاج {total_cost:.0f} Liben", show_alert=True)
+            f"❌ رصيدك {balance:.0f} — تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME}", show_alert=True)
         return
 
     deduct_user_balance(call.from_user.id, total_cost)
@@ -160,8 +161,8 @@ def handle_troop_buy(call, data):
 
     msg = (
         f"✅ تم شراء {quantity} × {troop_type['emoji']} {troop_type['name_ar']}\n"
-        f"💸 التكلفة: {total_cost:.0f} Liben\n"
-        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} Liben"
+        f"💸 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
     back = [btn("رجوع", "open_troop_list", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])
@@ -185,7 +186,7 @@ def handle_open_equipment_list(call, data):
     text = (
         f"🛡 متجر المعدات\n"
         f"{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر نوع المعدات:"
     )
     buttons = [
@@ -231,9 +232,9 @@ def handle_equipment_item(call, data):
         f"{eq['emoji']} {eq['name_ar']}\n"
         f"{get_lines()}\n"
         f"📊 التأثيرات: {effects_text}\n"
-        f"💰 السعر:     {eq['base_cost']:.0f} Liben / وحدة\n"
+        f"💰 السعر:     {eq['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
         f"🛡 تمتلك:    {owned_qty} وحدة\n"
-        f"💰 رصيدك:    {balance:.0f} Liben\n\n"
+        f"💰 رصيدك:    {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للشراء:"
     )
     qty_btns = _qty_buttons("equipment_buy", {"eid": eq_id, "cid": city_id},
@@ -260,7 +261,7 @@ def handle_equipment_buy(call, data):
 
     if total_cost > balance:
         bot.answer_callback_query(call.id,
-            f"❌ رصيدك {balance:.0f} — تحتاج {total_cost:.0f} Liben", show_alert=True)
+            f"❌ رصيدك {balance:.0f} — تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME}", show_alert=True)
         return
 
     deduct_user_balance(call.from_user.id, total_cost)
@@ -268,8 +269,8 @@ def handle_equipment_buy(call, data):
 
     msg = (
         f"✅ تم شراء {quantity} × {eq['emoji']} {eq['name_ar']}\n"
-        f"💸 التكلفة: {total_cost:.0f} Liben\n"
-        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} Liben"
+        f"💸 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
     back = [btn("رجوع", "open_equipment_list", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])

@@ -3,6 +3,7 @@
 """
 import time
 from database.connection import get_db_conn
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 def _c(name, default):
@@ -63,11 +64,11 @@ def check_and_award(user_id: int, condition_type: str, current_value: int):
 
 def _give_rewards(user_id: int, ach: dict, cursor):
     """يُعطي مكافآت الإنجاز"""
-    # مكافأة Liben
-    if ach.get("reward_liben", 0) > 0:
+    # مكافأة Bito
+    if ach.get("reward_conis", 0) > 0:
         try:
             from database.db_queries.bank_queries import update_bank_balance
-            update_bank_balance(user_id, ach["reward_liben"])
+            update_bank_balance(user_id, ach["reward_conis"])
         except Exception:
             pass
 
@@ -101,8 +102,8 @@ def _notify_achievement(user_id: int, ach: dict):
             f"🎁 <b>المكافأة:</b>\n"
         )
         rewards = []
-        if ach.get("reward_liben", 0) > 0:
-            rewards.append(f"💰 {ach['reward_liben']:.0f} Liben")
+        if ach.get("reward_conis", 0) > 0:
+            rewards.append(f"💰 {ach['reward_conis']:.0f} {CURRENCY_ARABIC_NAME}")
         if ach.get("reward_card_name"):
             rewards.append(f"🃏 بطاقة {ach['reward_card_name']}")
         if ach.get("reward_reputation", 0) > 0:

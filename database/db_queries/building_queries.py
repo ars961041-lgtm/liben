@@ -39,8 +39,30 @@ def buy_building(user_id: int, city_id: int, building_type: str, quantity: int):
             (city_id, building_type, quantity)
         )
 
+    # تسجيل الإنفاق بالسعر الأصلي (قبل أي خصومات أو أحداث)
+    original_cost = config["base_cost"] * quantity
+    record_city_spending(city_id, original_cost, cursor)
+
     conn.commit()
     return True, f"✅ تم شراء {quantity} {config['emoji']} {config['name_ar']}"
+
+
+def record_city_spending(city_id: int, amount: float, cursor=None):
+    """يسجل الإنفاق بالسعر الأصلي في city_spending."""
+    _own_cursor = cursor is None
+    if _own_cursor:
+        conn = get_db_conn()
+        cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO city_spending (city_id, total_spent)
+            VALUES (?, ?)
+            ON CONFLICT(city_id) DO UPDATE SET total_spent = total_spent + excluded.total_spent
+        """, (city_id, amount))
+        if _own_cursor:
+            cursor.connection.commit()
+    except Exception:
+        pass
 
 # -----------------------------
 # ترقية مبنى معين بالمدينة
@@ -149,12 +171,15 @@ def calculate_city_economy(city_id: int):
     except Exception:
         pass
 
-    # ─── تطبيق حدث الازدهار الاقتصادي ───
+    # ─── تطبيق أحداث الاقتصاد العالمية ───
     try:
         from modules.progression.global_events import get_event_effect
         income_event = get_event_effect("income_bonus")
         if income_event > 0:
             total_income = total_income * (1 + income_event)
+        income_penalty = get_event_effect("income_penalty")
+        if income_penalty > 0:
+            total_income = total_income * (1 - income_penalty)
         maintenance_event = get_event_effect("maintenance_increase")
         if maintenance_event > 0:
             total_maintenance = total_maintenance * (1 + maintenance_event)

@@ -211,6 +211,59 @@ def on_back_favorites(call, data):
     _show_favorites(None, uid, cid, favs, page, edit_call=call)
 
 
+@register_action("qr_fav_clear_prompt")
+def on_fav_clear_prompt(call, data):
+    """يعرض أزرار تأكيد مسح المفضلة"""
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    page  = int(data.get("p", 0))
+    owner = (uid, cid)
+    bot.answer_callback_query(call.id)
+    edit_ui(call,
+            text="🗑 <b>مسح المفضلة</b>\n\nهل أنت متأكد أنك تريد حذف جميع الآيات المحفوظة؟\n⚠️ لا يمكن التراجع عن هذا الإجراء.",
+            buttons=[
+                btn("✅ تأكيد المسح", "qr_fav_clear_confirm", {"p": page},
+                    color="d", owner=owner),
+                btn("❌ إلغاء", "qr_fav_clear_cancel", {"p": page},
+                    color="su", owner=owner),
+            ],
+            layout=[2])
+
+
+@register_action("qr_fav_clear_confirm")
+def on_fav_clear_confirm(call, data):
+    """يحذف جميع مفضلات المستخدم"""
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    page = int(data.get("p", 0))
+    deleted = db.clear_favorites(uid)
+    bot.answer_callback_query(call.id,
+                              f"✅ تم مسح {deleted} آية من مفضلتك." if deleted
+                              else "⭐️ مفضلتك كانت فارغة.",
+                              show_alert=True)
+    try:
+        bot.delete_message(cid, call.message.message_id)
+    except Exception:
+        pass
+
+
+@register_action("qr_fav_clear_cancel")
+def on_fav_clear_cancel(call, data):
+    """يرجع لقائمة المفضلة بدون حذف"""
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    page = int(data.get("p", 0))
+    favs = svc.get_user_favorites(uid)
+    bot.answer_callback_query(call.id)
+    if not favs:
+        try:
+            bot.delete_message(cid, call.message.message_id)
+        except Exception:
+            pass
+        return
+    _show_favorites(None, uid, cid, favs, page, edit_call=call)
+
+
 # ══════════════════════════════════════════
 # 📖 التفسير
 # ══════════════════════════════════════════

@@ -46,11 +46,14 @@ def _send_main_panel(chat_id, user_id):
         btn("👨‍💻 المطورون",       "adm_devs",        data={},          owner=owner, color=_BLUE),
         btn("🔇 الكتم العالمي",   "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
         btn("🔕 كتم المجموعة",    "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
+        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
+        btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
+        btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
     ]
     send_ui(chat_id,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 1], owner_id=user_id)
+            buttons=buttons, layout=[2, 2, 2, 1, 1], owner_id=user_id)
 
 
 # ══════════════════════════════════════════
@@ -71,23 +74,32 @@ def show_constants(call, data):
     items, total_pages = paginate_list(all_consts, page, per_page=8)
     owner = (user_id, chat_id)
 
-    text = f"⚙️ <b>ثوابت البوت</b> (صفحة {page+1}/{total_pages})\n{get_lines()}\n\n"
+    # أرقام عربية للعرض
+    _nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣"]
+
+    text = f"⚙️ ثوابت البوت (صفحة {page+1}/{total_pages})\n‏• ━━━━━━━━━━━━ •\n\n"
     buttons = []
-    for c in items:
-        text += f"🔹 <b>{c['name']}</b> = <code>{c['value']}</code>\n   {c['description']}\n\n"
+    for i, c in enumerate(items):
+        num = _nums[i]
+        text += f"{num} {c['name']} = <code>{c['value']}</code>\n{c['description']}\n\n"
         if is_primary_dev(user_id):
-            buttons.append(btn(f"✏️ {c['name']}", "adm_edit_const",
+            buttons.append(btn(f"{i+1}", "adm_edit_const",
                                data={"name": c["name"], "page": page},
                                owner=owner, color=_BLUE))
 
     nav = []
-    if page > 0:
-        nav.append(btn("◀️", "adm_constants", data={"page": page-1}, owner=owner))
     if page < total_pages - 1:
-        nav.append(btn("▶️", "adm_constants", data={"page": page+1}, owner=owner))
+        nav.append(btn("التالي", "adm_constants", data={"page": page+1}, owner=owner))
     nav.append(_back("adm_main_back", {}, owner))
+    if page > 0:
+        nav.append(btn("السابق", "adm_constants", data={"page": page-1}, owner=owner))
 
-    layout = [1] * len(buttons) + ([len(nav)] if nav else [1])
+    # أزرار الثوابت: 4 في كل صف
+    btn_rows = [4] * (len(buttons) // 4)
+    if len(buttons) % 4:
+        btn_rows.append(len(buttons) % 4)
+    layout = btn_rows + ([len(nav)] if nav else [1])
+
     edit_ui(call, text=text, buttons=buttons + nav, layout=layout)
 
 
@@ -226,8 +238,9 @@ def show_global_mutes(call, data):
     text = f"🔇 <b>الكتم العالمي</b> ({len(mutes)} مكتوم)\n{get_lines()}\n\n"
     buttons = []
     for m in items:
-        text += f"🔇 ID: <code>{m['user_id']}</code> | {m.get('reason','') or 'بدون سبب'}\n"
-        buttons.append(btn(f"🔊 رفع كتم {m['user_id']}", "adm_global_unmute",
+        reason_label = m.get('reason', '') or 'بدون سبب'
+        text += f"🔇 <code>{m['user_id']}</code> — {reason_label}\n"
+        buttons.append(btn(f"🔊 {m['user_id']}", "adm_global_unmute",
                            data={"uid": m["user_id"], "page": page},
                            owner=owner, color=_GRN))
 
@@ -251,8 +264,10 @@ def do_global_unmute(call, data):
     if not is_any_dev(call.from_user.id):
         bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
         return
-    global_unmute(int(data["uid"]))
-    bot.answer_callback_query(call.id, "✅ تم رفع الكتم العالمي", show_alert=True)
+    ok, _ = global_unmute(int(data["uid"]))
+    bot.answer_callback_query(call.id,
+                              "✅ تم رفع الكتم العالمي" if ok else "❌ المستخدم غير مكتوم",
+                              show_alert=True)
     show_global_mutes(call, {"page": data.get("page", 0)})
 
 
@@ -321,8 +336,11 @@ def do_group_unmute(call, data):
     if not is_any_dev(call.from_user.id):
         bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
         return
-    group_unmute(int(data["uid"]), int(data["gid"]))
-    bot.answer_callback_query(call.id, "✅ تم رفع الكتم", show_alert=True)
+    ok = group_unmute(int(data["uid"]), int(data["gid"]))
+    bot.answer_callback_query(call.id,
+                              f"🔊 تم رفع الكتم عن المستخدم {data['uid']}" if ok
+                              else "❌ المستخدم غير مكتوم في هذه المجموعة.",
+                              show_alert=True)
     show_group_mutes(call, {"page": data.get("page", 0)})
 
 
@@ -362,11 +380,14 @@ def back_to_main(call, data):
         btn("👨‍💻 المطورون",       "adm_devs",        data={},          owner=owner, color=_BLUE),
         btn("🔇 الكتم العالمي",   "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
         btn("🔕 كتم المجموعة",    "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
+        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
+        btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
+        btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
     ]
     edit_ui(call,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 1])
+            buttons=buttons, layout=[2, 2, 2, 1, 1])
 
 
 # ══════════════════════════════════════════
@@ -448,9 +469,12 @@ def handle_admin_input(message) -> bool:
         reason  = parts[1] if len(parts) > 1 else ""
         if uid_str.isdigit():
             global_mute(int(uid_str), user_id, reason)
-            _edit(f"🔇 تم الكتم العالمي للمستخدم <code>{uid_str}</code>")
+            _edit(
+                f"🔇 تم كتم المستخدم <code>{uid_str}</code> عالمياً."
+                + (f"\n📝 السبب: {reason}" if reason else "")
+            )
         else:
-            _edit("❌ ID غير صالح")
+            _edit("❌ ID غير صالح.")
         return True
 
     # ─── كتم في المجموعة ───
@@ -461,12 +485,198 @@ def handle_admin_input(message) -> bool:
         reason  = parts[1] if len(parts) > 1 else ""
         if uid_str.isdigit():
             group_mute(int(uid_str), int(gid), user_id, reason)
-            _edit(f"🔕 تم الكتم في المجموعة للمستخدم <code>{uid_str}</code>")
+            _edit(
+                f"🔕 تم كتم المستخدم <code>{uid_str}</code> في هذه المجموعة."
+                + (f"\n📝 السبب: {reason}" if reason else "")
+            )
         else:
-            _edit("❌ ID غير صالح")
+            _edit("❌ ID غير صالح.")
         return True
 
     return False
+
+
+# ══════════════════════════════════════════
+# 📿 إدارة الأذكار
+# ══════════════════════════════════════════
+
+@register_action("adm_azkar_panel")
+def adm_azkar_panel(call, data):
+    if not is_any_dev(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+    from modules.azkar.azkar_handler import _send_admin_panel
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    owner = (uid, cid)
+    bot.answer_callback_query(call.id)
+    _send_admin_panel(cid, uid, owner, call=call)
+
+
+@register_action("adm_magazine_panel")
+def adm_magazine_panel(call, data):
+    if not is_any_dev(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+    from modules.magazine.magazine_handler import open_magazine_admin
+    uid = call.from_user.id
+    cid = call.message.chat.id
+    bot.answer_callback_query(call.id)
+    open_magazine_admin(cid, uid, call=call)
+
+
+# ══════════════════════════════════════════
+# 🎮 إعادة تعيين بيانات الألعاب
+# ══════════════════════════════════════════
+
+@register_action("adm_reset_games_confirm")
+def reset_games_confirm(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if not is_primary_dev(user_id):
+        bot.answer_callback_query(call.id, "❌ فقط المطور الأساسي.", show_alert=True)
+        return
+
+    owner = (user_id, chat_id)
+    edit_ui(call,
+        text=(
+            "⚠️ <b>إعادة تعيين بيانات الألعاب</b>\n"
+            f"{get_lines()}\n\n"
+            "سيتم حذف بيانات اللعب فقط:\n"
+            "• إنجازات اللاعبين وتقدمهم\n"
+            "• سجل المعارك والحروب\n"
+            "• نقاط النفوذ والمواسم\n"
+            "• صيانة الجيش والتعب والتعافي\n"
+            "• القروض والكولداون البنكي\n"
+            "• المهام اليومية\n\n"
+            "✅ <b>لن يُمس:</b> المستخدمون، الأرصدة، الدول، المدن، المباني، التحالفات.\n\n"
+            "⚠️ <b>هذا الإجراء لا يمكن التراجع عنه!</b>\n\nهل أنت متأكد؟"
+        ),
+        buttons=[
+            btn("✅ تأكيد الإعادة", "adm_reset_games_execute", data={},
+                owner=owner, color=_RED),
+            btn("❌ إلغاء", "adm_main_back", data={},
+                owner=owner, color=_GRN),
+        ],
+        layout=[1, 1]
+    )
+
+
+@register_action("adm_reset_games_execute")
+def reset_games_execute(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if not is_primary_dev(user_id):
+        bot.answer_callback_query(call.id, "❌ للمطور الأساسي فقط.", show_alert=True)
+        return
+
+    bot.answer_callback_query(call.id, "⏳ جاري إعادة التعيين...")
+
+    ok, summary = _execute_games_reset(user_id)
+
+    try:
+        bot.edit_message_text(
+            f"{'✅' if ok else '❌'} <b>إعادة تعيين الألعاب</b>\n{get_lines()}\n\n{summary}",
+            chat_id, call.message.message_id, parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+def _execute_games_reset(executed_by: int) -> tuple[bool, str]:
+    """
+    يحذف جميع بيانات اللعب بشكل transactional.
+    يحافظ على: users, user_accounts, countries, cities, buildings,
+               alliances, bot_constants, bot_developers, mutes.
+    """
+    from database.connection import get_db_conn
+    from utils.logger import log_event
+
+    # الجداول التي تُحذف بالكامل (بيانات اللعب فقط)
+    GAME_TABLES = [
+        # تقدم اللاعبين
+        "user_achievements",
+        "season_history",
+        "season_titles",
+        "country_influence",
+        # معارك وحروب
+        "country_battles",
+        "battle_state",
+        "battle_effects",
+        "battle_events",
+        "battle_action_cooldowns",
+        "battle_history",
+        "battle_losses",
+        "battles",
+        "war_costs_log",
+        "support_requests",
+        # جيش وصيانة
+        "army_maintenance",
+        "army_fatigue",
+        "country_recovery",
+        "injured_troops",
+        "damaged_equipment",
+        "repair_queue",
+        "city_troops",
+        "city_equipment",
+        # تجسس واستكشاف
+        "spy_operations",
+        "discovered_countries",
+        "exploration_log",
+        "spy_agents",
+        # اقتصاد
+        "loans",
+        "bank_cooldowns",
+        "user_cooldowns",
+        "city_budget",
+        "alliance_support_stats",
+        # مهام وكولداون
+        "daily_tasks",
+        "action_cooldowns",
+        # أحداث عالمية
+        "global_events",
+    ]
+
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    deleted = {}
+    errors  = []
+
+    try:
+        cursor.execute("BEGIN")
+
+        for table in GAME_TABLES:
+            try:
+                cursor.execute(f"DELETE FROM {table}")
+                deleted[table] = cursor.rowcount
+            except Exception as e:
+                # الجدول قد لا يوجد — تجاهل بأمان
+                errors.append(f"{table}: {e}")
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        return False, f"❌ فشلت العملية: {e}"
+
+    # تسجيل الحدث
+    log_event("games_reset", user=executed_by,
+              tables_cleared=len(deleted),
+              total_rows=sum(deleted.values()))
+
+    total_rows = sum(deleted.values())
+    summary = (
+        f"✅ تمت إعادة التعيين بنجاح!\n\n"
+        f"📊 الجداول المُعادة: {len(deleted)}\n"
+        f"🗑 الصفوف المحذوفة: {total_rows}\n"
+        f"👤 بواسطة: <code>{executed_by}</code>"
+    )
+    if errors:
+        summary += f"\n\n⚠️ تجاهل {len(errors)} جدول غير موجود."
+
+    return True, summary
 
 
 # ══════════════════════════════════════════

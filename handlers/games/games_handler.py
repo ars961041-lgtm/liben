@@ -3,7 +3,7 @@
 """
 from core.bot import bot
 from database.db_queries.bank_queries import update_bank_balance
-from handlers.games.games_data import GAMES
+from handlers.games.games_guide import GAMES
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.constants import lines
 from utils.helpers import get_lines
@@ -50,12 +50,12 @@ def _send_games_menu(message):
             layout=layout, owner_id=uid,
             # رد على الرسالة الأصلية
             )
-    # حذف رسالة الأمر لتقليل الفوضى في المجموعات
-    try:
-        if message.chat.type != "private":
-            bot.delete_message(chat_id, message.message_id)
-    except Exception:
-        pass
+    # # حذف رسالة الأمر لتقليل الفوضى في المجموعات
+    # try:
+    #     if message.chat.type != "private":
+    #         bot.delete_message(chat_id, message.message_id)
+    # except Exception:
+    #     pass
 
 
 # ══════════════════════════════════════════

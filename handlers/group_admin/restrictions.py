@@ -3,13 +3,36 @@ from database.db_queries.group_punishments_queries import delete_group_punishmen
 from handlers.group_admin.permissions import is_admin, sender_can_restrict
 from utils.pagination import btn, register_action, send_ui
 from utils.constants import lines
+
+# ── رسائل العقوبات الموحدة ──
+_MSGS = {
+    # field: (already_applied, already_removed, applied, removed)
+    "is_muted": (
+        "❌ المستخدم مكتوم مسبقاً.",
+        "❌ المستخدم غير مكتوم.",
+        "🔇 تم كتم {name}",
+        "🔊 تم رفع الكتم عن {name}",
+    ),
+    "is_banned": (
+        "❌ المستخدم محظور مسبقاً.",
+        "❌ المستخدم غير محظور.",
+        "🚫 تم حظر {name}",
+        "✅ تم رفع الحظر عن {name}",
+    ),
+    "is_restricted": (
+        "❌ المستخدم مقيد مسبقاً.",
+        "❌ المستخدم غير مقيد.",
+        "⚠️ تم تقييد {name}",
+        "🔓 تم رفع التقييد عن {name}",
+    ),
+}
+
 # ---------------------------- Core Punishment Handler
 def handle_punishment(message, field, action_name, apply_func=None, reverse=False, require_admin=True):
     if require_admin:
         if not is_admin(message):
             bot.reply_to(message, "❌ أنت لست مشرفاً في هذه المجموعة.", parse_mode="HTML")
             return
-        # For restrict/mute/ban, also verify the sender holds can_restrict_members
         if field in ("is_restricted", "is_muted", "is_banned"):
             ok, err = sender_can_restrict(message)
             if not ok:
@@ -18,20 +41,35 @@ def handle_punishment(message, field, action_name, apply_func=None, reverse=Fals
 
     user_id, name = get_target_user(message)
     if not user_id:
-        bot.reply_to(message, "حدد المستخدم بالرد أو الايدي أو اليوزر")
+        bot.reply_to(message, "❌ حدد المستخدم بالرد أو الآيدي أو اليوزر.")
         return
 
+    # ── تحقق من أن الهدف عضو حالي وليس بوتاً ──
+    if not reverse:
+        try:
+            member = bot.get_chat_member(message.chat.id, user_id)
+            if member.user.is_bot:
+                bot.reply_to(message, "❌ لا يمكن تطبيق هذا الأمر على بوت.")
+                return
+            if member.status in ("left", "kicked"):
+                bot.reply_to(message, "❌ المستخدم ليس في المجموعة.")
+                return
+        except Exception:
+            bot.reply_to(message, "❌ تعذّر التحقق من المستخدم.")
+            return
+
     group_id = message.chat.id
+    msgs = _MSGS.get(field)
 
     try:
         current_status = is_user_status(user_id, group_id, field)
 
         if not reverse and current_status:
-            bot.reply_to(message, f"المستخدم {action_name} مسبقاً")
+            bot.reply_to(message, msgs[0] if msgs else f"❌ المستخدم {action_name} مسبقاً.")
             return
 
         if reverse and not current_status:
-            bot.reply_to(message, f"المستخدم غير {action_name}")
+            bot.reply_to(message, msgs[1] if msgs else f"❌ المستخدم غير {action_name}.")
             return
 
         if apply_func:
@@ -39,20 +77,21 @@ def handle_punishment(message, field, action_name, apply_func=None, reverse=Fals
 
         set_user_status(user_id, group_id, field, 0 if reverse else 1)
 
-        # ===== تسجيل الحدث في Log =====
         ACTION_TYPE_MAPPING = {"is_banned": 0, "is_muted": 1, "is_restricted": 2}
         action_type = ACTION_TYPE_MAPPING.get(field)
         if action_type is not None:
-            executor_id = message.from_user.id
-            log_punishment(group_id, user_id, action_type, executor_id, reverse)
+            log_punishment(group_id, user_id, action_type, message.from_user.id, reverse)
 
-        if reverse:
-            bot.reply_to(message, f"تم رفع {action_name}")
+        if msgs:
+            template = msgs[3] if reverse else msgs[2]
+            text = template.format(name=f"<a href='tg://user?id={user_id}'>{name}</a>")
         else:
-            bot.reply_to(message, f"تم {action_name} <a href='tg://user?id={user_id}'>{name}</a>", parse_mode="HTML")
+            text = f"تم رفع {action_name}" if reverse else f"تم {action_name} <a href='tg://user?id={user_id}'>{name}</a>"
+
+        bot.reply_to(message, text, parse_mode="HTML")
 
     except Exception as e:
-        bot.reply_to(message, f"خطأ:\n{e}")
+        bot.reply_to(message, f"❌ خطأ:\n{e}")
 
 # ---------------------------- Actions
 def restrict_action(group_id, user_id, reverse):
@@ -92,19 +131,13 @@ def unmute_user(message):
 
 
 # ---------------------------- Handle Muted Messages
-def handle_muted_users(message):
+def handle_muted_users(message) -> bool:
+    """يتحقق فقط إذا كان المستخدم مكتوماً في group_members — لا يحذف الرسالة بنفسه"""
     if message.chat.type == "private":
         return False
-
-    user_id = message.from_user.id
+    user_id  = message.from_user.id
     group_id = message.chat.id
-
-    if is_user_status(user_id, group_id, 'is_muted'):
-        try:
-            bot.delete_message(group_id, message.message_id)
-        except:
-            pass
-        return True
+    return bool(is_user_status(user_id, group_id, 'is_muted'))
 
 
 # ---------------------------- Get Target User

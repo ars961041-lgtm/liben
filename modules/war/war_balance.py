@@ -7,6 +7,7 @@ import random
 
 from database.connection import get_db_conn
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 # ══════════════════════════════════════════
 # ⚙️ ثوابت التوازن
@@ -280,10 +281,10 @@ def pay_and_start_repair(user_id: int, country_id: int) -> tuple:
     from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
     balance = get_user_balance(user_id)
     if balance < total_cost:
-        return False, f"❌ تحتاج {total_cost:.0f} Liben للإصلاح (رصيدك: {balance:.0f})"
+        return False, f"❌ تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME} للإصلاح (رصيدك: {balance:.0f})"
 
     deduct_user_balance(user_id, total_cost)
-    return True, f"🔧 بدأ الإصلاح! {len(queue)} نوع معدات | تكلفة: {total_cost:.0f} Liben"
+    return True, f"🔧 بدأ الإصلاح! {len(queue)} نوع معدات | تكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}"
 
 
 # ══════════════════════════════════════════
@@ -307,6 +308,16 @@ def counter_intelligence_check(attacker_cid: int, target_cid: int) -> dict:
 
     # احتمال الاكتشاف يرتفع مع قوة الاستخبارات المضادة
     detect_chance = max(0.0, min(0.8, (counter_lvl - spy_lvl) * 0.15))
+
+    # ─── تطبيق حدث مكافحة التجسس ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        ci_bonus = get_event_effect("counter_intel_bonus")
+        if ci_bonus > 0:
+            detect_chance = min(0.9, detect_chance + ci_bonus)
+    except Exception:
+        pass
+
     roll = random.random()
 
     if roll < detect_chance:

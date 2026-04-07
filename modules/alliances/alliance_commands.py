@@ -4,6 +4,7 @@
 from core.bot import bot
 from database.db_queries.countries_queries import get_country_by_owner
 from modules.alliances.alliance_handler import open_alliance_menu
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 ALLIANCE_COMMANDS = {
@@ -69,7 +70,7 @@ def _create_alliance(message, text):
 
     COST = 500
     if get_user_balance(user_id) < COST:
-        bot.reply_to(message, f"❌ تحتاج {COST} Liben لإنشاء تحالف.")
+        bot.reply_to(message, f"❌ تحتاج {COST:,} {CURRENCY_ARABIC_NAME} لإنشاء تحالف.")
         return
 
     deduct_user_balance(user_id, COST)

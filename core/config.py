@@ -28,7 +28,7 @@ else:
 # =========================
 # OTHER
 # =========================
-developers_id = {7632471789}
-bot_name = "𝐋𝐈𝐁𝐄𝐍 | ليبن"
+developers_id = {7632471789, 8168497909}
+bot_name = "𝑩𝒆𝒍𝒐 | بيلو"
 
 print("🧪 TEST MODE" if IS_TEST else "🚀 PRODUCTION MODE")

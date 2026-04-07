@@ -13,6 +13,7 @@ from modules.city.asset_service import buy_asset, upgrade_asset, calc_buy_cost, 
 from modules.war.war_store_integration import open_troop_store
 from utils.pagination import  btn, edit_ui, paginate_list, register_action, send_ui, grid
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 # color codes
 GREEN  = "su"   # 🟢 green  → buy / confirm
@@ -34,7 +35,7 @@ def open_city_store(message, user_id: int, city_id: int):
     text = (
         f"🏪 متجر المدينة\n"
         f"{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر القطاع:"
     )
     buttons = [
@@ -69,9 +70,9 @@ def handle_store_sector(call, data):
     paged, total_pages = paginate_list(assets, page, per_page=6)
     balance = get_user_balance(call.from_user.id)
 
-    text = f"🏪 عناصر القطاع\nا {get_lines()}\n💰 رصيدك: {balance:.0f} Liben\n\n"
+    text = f"🏪 عناصر القطاع\nا {get_lines()}\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     for a in paged:
-        text += f"{a['emoji']} {a['name_ar']} — {a['base_price']:.0f} Liben\n"
+        text += f"{a['emoji']} {a['name_ar']} — {a['base_price']:.0f} {CURRENCY_ARABIC_NAME}\n"
 
     buttons = [
         btn(f"{a['emoji']} {a['name_ar']}", "store_item",
@@ -183,12 +184,12 @@ def handle_store_item(call, data):
     text = (
         f"{asset['emoji']} <b>{asset['name_ar']}</b>\n"
         f"{get_lines()}\n"
-        f"<blockquote>💰 السعر: {asset['base_price']:.0f} Liben / وحدة\n"
+        f"<blockquote>💰 السعر: {asset['base_price']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
         f"🔧 الصيانة: {asset['maintenance']:.0f} / وحدة\n"
         f"📈 الدخل الأساسي: {asset['income']:.0f} / وحدة\n"
         f"📊 التأثيرات:\n{_stat_lines(asset)}"
         f"🏗 تمتلك: {owned_qty} وحدة\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n</blockquote>\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n</blockquote>\n"
     )
 
     text += _profit_block(asset)
@@ -259,9 +260,9 @@ def handle_store_item_branch(call, data):
         f"{get_lines()}\n"
         f"فرع: {branch['emoji']} {branch['name_ar']}\n"
         f"📈 الدخل المتوقع: {income_per_unit:.0f} / وحدة\n"
-        f"💰 السعر: {asset['base_price']:.0f} Liben / وحدة\n"
+        f"💰 السعر: {asset['base_price']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
         f"🔧 الصيانة: {asset['maintenance']:.0f} / وحدة\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للشراء:"
     )
     qty_btns = _qty_buttons("store_buy",
@@ -319,7 +320,7 @@ def open_upgrade_menu(message, user_id: int, city_id: int):
     balance = get_user_balance(user_id)
     text = (
         f"🔼 ترقية العناصر\n{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\nاختر العنصر للترقية:"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\nاختر العنصر للترقية:"
     )
 
     buttons = []
@@ -360,11 +361,11 @@ def handle_upgrade_item(call, data):
     branch_label = f" - {rows[0]['branch_emoji']} {branch_name}" if branch_name else ""
     text = (
         f"🔼 ترقية {asset['emoji']} {asset['name_ar']}{branch_label}\n"
-        f"{get_lines()}\n💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"{get_lines()}\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     )
     for r in rows:
         cost_1 = calc_upgrade_cost(asset, r["level"], 1)
-        text += f"مستوى {r['level']}: {r['quantity']} وحدة | ترقية وحدة = {cost_1:.0f} Liben\n"
+        text += f"مستوى {r['level']}: {r['quantity']} وحدة | ترقية وحدة = {cost_1:.0f} {CURRENCY_ARABIC_NAME}\n"
     text += "\nاختر المستوى للترقية:"
 
     level_btns = [
@@ -401,7 +402,7 @@ def handle_upgrade_level(call, data):
         f"المستوى: {from_level} → {from_level + 1}\n"
         f"{get_lines()}\n"
         f"تمتلك: {max_qty} وحدة\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للترقية:"
     )
     qty_btns = _qty_buttons("upgrade_confirm",
@@ -443,7 +444,7 @@ def handle_back_sectors(call, data):
 
     text = (
         f"🏪 متجر المدينة\nا {get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\nاختر القطاع:"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\nاختر القطاع:"
     )
 
     buttons = [
@@ -468,7 +469,7 @@ def handle_upgrade_back(call, data):
     balance = get_user_balance(call.from_user.id)
     text = (
         f"🔼 ترقية العناصر\n{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} Liben\n\nاختر العنصر:"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\nاختر العنصر:"
     )
 
     buttons = []

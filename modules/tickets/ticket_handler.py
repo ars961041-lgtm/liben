@@ -147,36 +147,23 @@ def handle_ticket_message_input(message):
         set_ticket_group_msg(ticket_id, group_msg_id)
 
     # تأكيد للمستخدم
-    from core.personality import send_with_delay, success_msg
+    from core.personality import success_msg
     from core import memory as _mem
-    from utils.keyboards import ui_btn
+    from utils.helpers import send_bot_profile
     _mem.increment_daily_reports(user_id)
-    from telebot.types import InlineKeyboardMarkup
 
-    bot_user = bot.get_me()
-    bot_username = bot_user.username
-
-    buttons = [
-        ui_btn(
-            text="📩 راسل البوت",
-            url=f"https://t.me/{bot_username}",
-            style="primary"
-        )
-    ]
-
-    markup = InlineKeyboardMarkup()
-    markup.add(*buttons)
-
-    send_with_delay(
-        chat_id,
+    caption = (
         f"{success_msg()}\n\n"
         f"🎫 رقم التذكرة: <b>#{ticket_id}</b>\n"
         f"📂 النوع: {CATEGORIES[cat]}\n\n"
         f"📨 سيتم إرسال الرد إليك في <b>خاص البوت</b>.\n"
-        f"⚠️ إذا لم تكن قد راسلت البوت من قبل، اضغط الزر بالأسفل واضغط على بدء.",
-        delay=0.6,
+        f"⚠️ إذا لم تكن قد راسلت البوت من قبل، اضغط الزر بالأسفل واضغط على بدء."
+    )
+    send_bot_profile(
+        chat_id=chat_id,
+        caption=caption,
         reply_to=message.message_id,
-        markup=markup
+        open_pm_button=True,
     )
 
     return True

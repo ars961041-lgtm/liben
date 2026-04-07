@@ -1,5 +1,6 @@
 from ..connection import get_db_conn
 from core.config import developers_id
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 def create_admin_tables():
@@ -66,7 +67,7 @@ def _seed_defaults(conn):
     # ─── الثوابت الافتراضية ───
     defaults = [
         ("dev_group_id",          "-1003505563946",  "معرف مجموعة المطورين"),
-        ("attack_cost",           "500",           "تكلفة إطلاق هجوم (Liben)"),
+        ("attack_cost",           "500",           f"تكلفة إطلاق هجوم ({CURRENCY_ARABIC_NAME})"),
         ("support_send_cost",     "100",           "تكلفة إرسال طلب دعم"),
         ("card_use_cost",         "50",            "تكلفة استخدام بطاقة في المعركة"),
         ("recovery_minutes",      "30",            "دقائق التعافي بعد المعركة"),
@@ -84,14 +85,15 @@ def _seed_defaults(conn):
         ("travel_time_sudden",    "300",           "وقت الهجوم المباغت (ثانية)"),
         ("country_creation_cost", "100",           "تكلفة إنشاء دولة"),
         ("alliance_creation_cost","500",           "تكلفة إنشاء تحالف"),
-        ("bot_name",              "ليبن",          "اسم البوت"),
-        ("welcome_msg",           "مرحباً بك في بوت ليبن! 🤖", "رسالة الترحيب"),
-        ("spy_cost",              "150",           "تكلفة عملية التجسس (Liben)"),
+        ("bot_name",              "بيلو",          "اسم البوت"),
+        ("welcome_msg",           "مرحباً بك في بوت بيلو! 🤖", "رسالة الترحيب"),
+        ("spy_cost",              "150",           f"تكلفة عملية التجسس ({CURRENCY_ARABIC_NAME})"),
         ("spy_cooldown_sec",      "120",           "كولداون التجسس على نفس الهدف (ثانية)"),
         ("initial_balance",       "10000",          "رصيد الحساب البنكي الافتراضي"),
         ("transfer_fee_pct",      "0.05",          "رسوم التحويل البنكي (نسبة مئوية)"),
         ("transfer_min_amount",   "10",            "الحد الأدنى للتحويل البنكي"),
         ("transfer_max_amount",   "100000",        "الحد الأقصى للتحويل البنكي"),
+        ("max_loan_amount",       "10000",         "الحد الأقصى لمبلغ القرض"),
     ]
 
     cursor.executemany("""

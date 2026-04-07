@@ -34,11 +34,17 @@ def build_keyboard(buttons: list, layout: list, owner_id: int):
                 "style": b.get("style"),
             }
             key = store_cache(uid, cid, payload, owner=btn_owner)
-            row.append(InlineKeyboardButton(
+            if b.get("style") == "default":
+                row.append(InlineKeyboardButton(
                 text=b["text"],
                 callback_data=f"k:{key}",
-                style=b.get("style")
-            ))
+                ))
+            else:
+                row.append(InlineKeyboardButton(
+                    text=b["text"],
+                    callback_data=f"k:{key}",
+                    style=b.get("style")
+                ))
             index += 1
         if row:
             markup.row(*row)

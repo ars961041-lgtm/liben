@@ -20,8 +20,14 @@ def update_daily_bonuses():
 
 
 def refresh_city_resources():
-    """تحديث الموارد اليومية لكل المدن"""
-    pass
+    """تحديث الموارد اليومية لكل المدن — جمع الدخل وتطبيقه على أرصدة اللاعبين"""
+    if not _table_exists("city_budget") or not _table_exists("countries"):
+        return
+    try:
+        from modules.economy.economy_service import collect_income_for_all
+        collect_income_for_all()
+    except Exception as e:
+        print(f"[Economy] فشل جمع الدخل اليومي: {e}")
 
 
 def assign_tasks_to_all_users():
@@ -132,3 +138,10 @@ try:
         schedule_event_checker()
 except Exception as e:
     print(f"[GlobalEvents] فشل التشغيل: {e}")
+
+# ─── مُجدوِل تذكيرات الأذكار ───
+try:
+    from modules.azkar.azkar_reminder import start_reminder_scheduler
+    start_reminder_scheduler()
+except Exception as e:
+    print(f"[AzkarReminder] فشل التشغيل: {e}")

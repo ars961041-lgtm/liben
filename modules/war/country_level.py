@@ -43,9 +43,40 @@ ALLOWED_ATTACKS = {
     ("medium", "medium"): True,
     ("medium", "strong"): True,
     ("strong", "weak"):   False,   # ❌ قوي لا يهاجم ضعيف
-    ("strong", "medium"): True,
+    ("strong", "medium"): True,    # ✅ مسموح لكن بعقوبة
     ("strong", "strong"): True,
 }
+
+# عقوبة الهجوم غير المتكافئ (قوي → متوسط)
+ATTACK_PENALTIES = {
+    ("strong", "medium"): 0.8,   # 20% تقليل في الضرر
+}
+
+
+def get_attack_penalty(attacker_tier: str, defender_tier: str) -> float:
+    """يرجع معامل الضرر (1.0 = كامل، 0.8 = 20% عقوبة)"""
+    return ATTACK_PENALTIES.get((attacker_tier, defender_tier), 1.0)
+
+
+# ══════════════════════════════════════════
+# 🏆 مضاعفات المكافآت الذكية
+# ══════════════════════════════════════════
+
+REWARD_MULTIPLIERS = {
+    ("weak",   "strong"):  1.5,   # 🔥 مخاطرة عالية = مكافأة عالية
+    ("weak",   "medium"):  1.2,
+    ("medium", "strong"):  1.2,
+    ("medium", "weak"):    0.9,
+    ("strong", "medium"):  0.8,
+    ("strong", "strong"):  1.0,
+    ("weak",   "weak"):    1.0,
+    ("medium", "medium"):  1.0,
+}
+
+
+def get_reward_multiplier(attacker_tier: str, defender_tier: str) -> float:
+    """يرجع مضاعف المكافأة بناءً على فئتي المهاجم والمدافع"""
+    return REWARD_MULTIPLIERS.get((attacker_tier, defender_tier), 1.0)
 
 
 def get_country_tier(country_id: int) -> str:
@@ -178,6 +209,7 @@ def check_attack_level(attacker_id: int, defender_id: int) -> tuple:
     """
     يتحقق من إمكانية الهجوم بناءً على الفئات الثلاث.
     يرجع (True, None) إذا مسموح، أو (False, رسالة_خطأ)
+    يرجع (True, تحذير) إذا مسموح مع عقوبة
     """
     atk_tier = get_country_tier(attacker_id)
     def_tier = get_country_tier(defender_id)
@@ -201,6 +233,11 @@ def check_attack_level(attacker_id: int, defender_id: int) -> tuple:
             f"🟡 متوسط ↔ 🔴 قوي ✔\n"
             f"🟢 ضعيف → 🔴 قوي ❌"
         )
+
+    # تحذير عقوبة strong → medium
+    penalty = ATTACK_PENALTIES.get((atk_tier, def_tier))
+    if penalty:
+        return True, f"⚠️ هجوم بفعالية مخفضة {int((1-penalty)*100)}% (قوي → متوسط)"
     return True, None
 
 

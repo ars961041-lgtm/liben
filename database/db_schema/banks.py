@@ -25,16 +25,15 @@ def create_banks_tables():
     );
     ''')
     
-    # ⏱️ نظام التوقيت (Cooldowns)
+    # 💵 نظام القروض
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS loans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         amount REAL NOT NULL,
-        interest REAL DEFAULT 0.15,   -- 15% افتراضياً
-        due_date INTEGER,             -- توقيت السداد بالثواني
-        repaid REAL DEFAULT 0,        -- المبلغ الذي تم سداده
-        status TEXT DEFAULT 'active', -- active / repaid / overdue
+        due_date INTEGER,
+        repaid REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
         created_at INTEGER DEFAULT (strftime('%s','now'))
     );
     ''')

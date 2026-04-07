@@ -60,6 +60,21 @@ def get_influence(country_id: int) -> dict:
 def add_influence(country_id: int, points: int, reason: str = ""):
     """يُضيف نقاط نفوذ ويُحدّث المكافآت"""
     ensure_influence(country_id)
+
+    # ─── تطبيق حدث العصر الذهبي / أسبوع التحالفات ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        xp_bonus = get_event_effect("xp_bonus")
+        if xp_bonus > 0:
+            points = round(points * (1 + xp_bonus))
+        # alliance_xp_bonus يُطبق فقط على مكاسب التحالف
+        if reason and "alliance" in reason:
+            alliance_bonus = get_event_effect("alliance_xp_bonus")
+            if alliance_bonus > 0:
+                points = round(points * (1 + alliance_bonus))
+    except Exception:
+        pass
+
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""

@@ -15,6 +15,7 @@ from database.db_queries.alliances_queries import (
 )
 from database.db_queries.bank_queries import get_user_balance
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 # ══════════════════════════════════════════
@@ -391,13 +392,13 @@ def show_buy_upgrade(call, data):
     balance = get_user_balance(user_id)
 
     items, total_pages = paginate_list(all_types, page, per_page=4)
-    text = f"🛒 <b>شراء ترقية</b>\n💰 رصيدك: {balance:.0f} Liben\n\n"
+    text = f"🛒 <b>شراء ترقية</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     buttons = []
     for t in items:
         lvl = owned.get(t["name"], 0)
         cost = t["price"] * (lvl + 1)
         if lvl < t["max_level"]:
-            text += f"{t['emoji']} <b>{t['name_ar']}</b> مستوى {lvl}→{lvl+1} | {cost:.0f} Liben\n"
+            text += f"{t['emoji']} <b>{t['name_ar']}</b> مستوى {lvl}→{lvl+1} | {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
             buttons.append(btn(f"{t['emoji']} شراء {t['name_ar']}", "alliance_do_buy_upgrade",
                                data={"aid": alliance_id, "upg_id": t["id"]},
                                owner=(user_id, chat_id), color="su"))

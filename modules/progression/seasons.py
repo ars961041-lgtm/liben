@@ -3,6 +3,7 @@
 """
 import time
 from database.connection import get_db_conn
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME, WARRIOR_OF_SEASON_AWARD, KNIGHT_OF_SEASON_AWARD, SEASON_CHAMPION_AWARD
 
 
 def _c(name, default):
@@ -140,9 +141,9 @@ def _distribute_season_rewards(season_id: int, cursor):
     """يوزع مكافآت الموسم على الفائزين ويمنح الألقاب"""
     top_n = _c("season_top_rewards", 3)
     reward_map = {
-        1: _c("season_reward_liben_1", 5000),
-        2: _c("season_reward_liben_2", 3000),
-        3: _c("season_reward_liben_3", 1500),
+        1: _c("season_reward_conis_1", f"{SEASON_CHAMPION_AWARD:,}"),
+        2: _c("season_reward_conis_2", f"{WARRIOR_OF_SEASON_AWARD:,}"),
+        3: _c("season_reward_conis_3", f"{KNIGHT_OF_SEASON_AWARD:,}"),
     }
     title_map = {
         ("battles", 1): "👑 بطل الموسم",
@@ -163,7 +164,7 @@ def _distribute_season_rewards(season_id: int, cursor):
             if not uid:
                 continue
 
-            # مكافأة Liben (للمعارك فقط)
+            # مكافأة belo (للمعارك فقط)
             if category == "battles":
                 reward = reward_map.get(rank, 0)
                 if reward > 0:
@@ -173,7 +174,7 @@ def _distribute_season_rewards(season_id: int, cursor):
                         cursor.execute("""
                             UPDATE season_history SET reward_given = ?
                             WHERE season_id = ? AND user_id = ? AND category = ?
-                        """, (f"{reward} Liben", season_id, uid, category))
+                        """, (f"{reward} {CURRENCY_ARABIC_NAME}", season_id, uid, category))
                     except Exception:
                         pass
 

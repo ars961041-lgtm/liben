@@ -7,6 +7,7 @@ from modules.bank.services.bank_service import (
 )
 from database.db_queries.bank_queries import check_bank_account, create_bank_account
 from core.bot import bot
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 # أوامر تحتاج حساب بنكي
 _NEEDS_ACCOUNT = {"راتب", "مهمة", "يومي", "مخاطرة", "استثمر", "استثمار",
@@ -27,7 +28,7 @@ def bank_commands(message):
             bot.reply_to(message, "❌ ليس لديك حساب بنكي.\nاكتب '<code>انشاء حساب بنكي</code>' أولاً.", parse_mode='HTML')
             return True
         balance = get_user_balance(user_id)
-        bot.reply_to(message, f"💰 رصيدك الحالي: {balance:.2f} Liben")
+        bot.reply_to(message, f"💰 رصيدك الحالي: {balance:.2f} {CURRENCY_ARABIC_NAME}")
         return True
 
     # إنشاء حساب بنكي
@@ -38,7 +39,7 @@ def bank_commands(message):
             create_bank_account(user_id)
             from core.admin import get_const_int
             bal = get_const_int("initial_balance", 10000)
-            bot.reply_to(message, f"✅ تم إنشاء حسابك البنكي برصيد {bal:,} Liben")
+            bot.reply_to(message, f"✅ تم إنشاء حسابك البنكي برصيد {bal:,} {CURRENCY_ARABIC_NAME}")
         return True
 
     # تحقق من وجود حساب قبل أي أمر مالي

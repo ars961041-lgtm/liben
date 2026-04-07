@@ -14,6 +14,7 @@ from database.db_queries.advanced_war_queries import (
 )
 from database.db_queries.countries_queries import get_country_by_owner
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance, update_bank_balance
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 TRANSFER_PENALTY = 0.20   # 20%
 FREEZE_DURATION  = 86400  # 24 ساعة
@@ -87,7 +88,7 @@ def transfer_country(from_user_id, to_user_id):
 
     return True, (
         f"✅ تم نقل دولة <b>{country['name']}</b> بنجاح!\n"
-        f"💸 خصم: {penalty:.0f} Liben (20%)\n"
+        f"💸 خصم: {penalty:.0f} {CURRENCY_ARABIC_NAME} (20%)\n"
         f"🧊 الدولة مجمدة لمدة 24 ساعة\n"
         f"↩️ يمكنك التراجع خلال 24 ساعة بكتابة: <code>تراجع نقل الدولة</code>"
     )
@@ -149,7 +150,7 @@ def rollback_country_transfer(original_owner_id):
 
     return True, (
         f"↩️ تم التراجع عن النقل!\n"
-        f"💸 خصم إضافي: {penalty:.0f} Liben (20%)\n"
+        f"💸 خصم إضافي: {penalty:.0f} {CURRENCY_ARABIC_NAME} (20%)\n"
         f"🧊 تم رفع التجميد عن الدولة."
     )
 

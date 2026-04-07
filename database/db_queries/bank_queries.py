@@ -1,7 +1,7 @@
 import sqlite3
 import time
 from ..connection import get_db_conn
-
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 # ================================
 # ⚡️ الحسابات البنكية
 # ================================
@@ -95,32 +95,46 @@ def set_cooldown(user_id, action):
 # ================================
 # 💵 القروض
 # ================================
-MAX_LOAN_AMOUNT = 10000
+LATE_PENALTY_RATE = 0.05  # 5% غرامة تأخير لمرة واحدة فقط
 
-def create_loan(user_id, amount, interest=0.15, due_seconds=86400*7):
-    """منح قرض للمستخدم"""
-    if amount > MAX_LOAN_AMOUNT:
-        return False, f"❌ الحد الأقصى للقرض هو {MAX_LOAN_AMOUNT} Liben"
+def create_loan(user_id, amount, due_seconds=86400*7):
+    """منح قرض للمستخدم بدون فوائد"""
+    from core.admin import get_const_int
+    max_loan = get_const_int("max_loan_amount", 10000)
+    if amount > max_loan:
+        return False, f"❌ الحد الأقصى للقرض هو {max_loan} {CURRENCY_ARABIC_NAME}"
     conn = get_db_conn()
     cursor = conn.cursor()
     due_date = int(time.time()) + due_seconds
     cursor.execute("""
-        INSERT INTO loans (user_id, amount, interest, due_date, repaid, status)
-        VALUES (?, ?, ?, ?, 0, 'active')
-    """, (user_id, amount, interest, due_date))
+        INSERT INTO loans (user_id, amount, due_date, repaid, status)
+        VALUES (?, ?, ?, 0, 'active')
+    """, (user_id, amount, due_date))
     update_bank_balance(user_id, amount)
     conn.commit()
-    return True, f"💵 تم منحك قرضًا بقيمة {amount} Liben بفائدة {interest*100:.0f}%"
+    return True, f"💵 تم منحك قرضًا بقيمة {amount} {CURRENCY_ARABIC_NAME}\n📅 موعد السداد: {time.strftime('%Y-%m-%d', time.localtime(due_date))}"
 
 def repay_loan(user_id, loan_id, amount):
     """سداد قرض"""
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT amount, repaid, interest, status FROM loans WHERE id=? AND user_id=?", (loan_id, user_id))
+    cursor.execute("SELECT amount, repaid, due_date, status FROM loans WHERE id=? AND user_id=?", (loan_id, user_id))
     loan = cursor.fetchone()
     if not loan:
         return False, "❌ لا يوجد قرض بهذا الرقم"
-    total_due = loan[0] * (1 + loan[2]) - loan[1]
+
+    loan_amount, repaid, due_date, status = loan
+    now = int(time.time())
+
+    # تحديث الحالة إلى overdue إذا تأخر
+    if now > due_date and status == 'active':
+        cursor.execute("UPDATE loans SET status='overdue' WHERE id=?", (loan_id,))
+        status = 'overdue'
+
+    # حساب المبلغ المستحق (مع غرامة التأخير إن وجدت — مرة واحدة فقط)
+    penalty = round(loan_amount * LATE_PENALTY_RATE, 2) if status == 'overdue' else 0
+    total_due = round(loan_amount + penalty - repaid, 2)
+
     if amount > get_user_balance(user_id):
         return False, "❌ رصيدك غير كافٍ"
 
@@ -130,15 +144,17 @@ def repay_loan(user_id, loan_id, amount):
     if repay_amount >= total_due:
         cursor.execute("UPDATE loans SET status='repaid' WHERE id=?", (loan_id,))
     conn.commit()
-    return True, f"✅ دفعت {repay_amount:.2f} Liben من القرض"
+    return True, f"✅ دفعت {repay_amount:.2f} {CURRENCY_ARABIC_NAME} من القرض"
 
 def get_active_loans(user_id):
-    """إرجاع القروض النشطة للمستخدم"""
+    """إرجاع القروض النشطة والمتأخرة للمستخدم"""
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, amount, interest, due_date, repaid FROM loans WHERE user_id=? AND status='active'", (user_id,))
-    loans = cursor.fetchall()
-    return loans
+    cursor.execute(
+        "SELECT id, amount, due_date, repaid, status FROM loans WHERE user_id=? AND status IN ('active','overdue')",
+        (user_id,)
+    )
+    return cursor.fetchall()
 
 def get_last_daily_claim(user_id: int) -> int:
     """Returns the last_daily_claim timestamp for the user."""
@@ -177,9 +193,9 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
         fee_pct, min_amount, max_amount = 0.05, 10, 100000
 
     if amount < min_amount:
-        return False, f"❌ الحد الأدنى للتحويل هو {min_amount} Liben"
+        return False, f"❌ الحد الأدنى للتحويل هو {min_amount} {CURRENCY_ARABIC_NAME}"
     if amount > max_amount:
-        return False, f"❌ الحد الأقصى للتحويل هو {max_amount} Liben"
+        return False, f"❌ الحد الأقصى للتحويل هو {max_amount} {CURRENCY_ARABIC_NAME}"
     if from_user_id == to_user_id:
         return False, "❌ لا يمكنك التحويل لنفسك"
 
@@ -187,6 +203,15 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
         return False, "❌ ليس لديك حساب بنكي"
     if not check_bank_account(to_user_id):
         return False, "❌ المستخدم المستهدف لا يملك حساباً بنكياً"
+
+    # ─── تطبيق حدث خصم رسوم التحويل ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        fee_discount = get_event_effect("transfer_fee_discount")
+        if fee_discount > 0:
+            fee_pct = max(0.0, fee_pct * (1 - fee_discount))
+    except Exception:
+        pass
 
     fee   = round(amount * fee_pct, 2)
     total = amount + fee
@@ -196,7 +221,7 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
     cursor.execute("SELECT balance FROM user_accounts WHERE user_id = ?", (from_user_id,))
     row = cursor.fetchone()
     if not row or row[0] < total:
-        return False, f"❌ رصيدك غير كافٍ\nالمطلوب: {total:.2f} Liben (شامل رسوم {fee:.2f})"
+        return False, f"❌ رصيدك غير كافٍ\nالمطلوب: {total:.2f} {CURRENCY_ARABIC_NAME} (شامل رسوم {fee:.2f})"
 
     # خصم من المرسل
     cursor.execute(
@@ -216,7 +241,7 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
     conn.commit()
     return True, (
         f"✅ <b>تم التحويل بنجاح!</b>\n"
-        f"💸 المبلغ: {amount:.2f} Liben\n"
-        f"💳 الرسوم: {fee:.2f} Liben\n"
-        f"📤 المجموع المخصوم: {total:.2f} Liben"
+        f"💸 المبلغ: {amount:.2f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرسوم: {fee:.2f} {CURRENCY_ARABIC_NAME}\n"
+        f"📤 المجموع المخصوم: {total:.2f} {CURRENCY_ARABIC_NAME}"
     )

@@ -38,4 +38,16 @@ def create_all_tables():
     from modules.tickets.ticket_db import create_ticket_tables
     create_ticket_tables()
 
+    from modules.magazine.magazine_db import create_magazine_tables
+    create_magazine_tables()
+
+    from database.db_schema.azkar import create_azkar_tables
+    create_azkar_tables()
+
+    from modules.azkar.seed_azkar import seed as seed_azkar
+    seed_azkar()
+
+    from modules.rules.rules_db import create_rules_table
+    create_rules_table()
+
     print("✅ تم إنشاء جميع جداول قاعدة البيانات بنجاح.")

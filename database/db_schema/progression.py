@@ -1,4 +1,5 @@
 from ..connection import get_db_conn
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 def create_progression_tables():
@@ -15,7 +16,7 @@ def create_progression_tables():
         category TEXT NOT NULL,
         condition_type TEXT NOT NULL,
         condition_value INTEGER DEFAULT 1,
-        reward_liben REAL DEFAULT 0,
+        reward_conis REAL DEFAULT 0,
         reward_card_name TEXT,
         reward_reputation INTEGER DEFAULT 0,
         description_ar TEXT,
@@ -140,8 +141,8 @@ def _seed_achievements(conn):
         ("top_supporter",   "أفضل داعم",         "🌟", "support","battles_helped", 30,  1000, "berserker_rage",30,"ساعد في 30 معركة"),
 
         # ─── اقتصاد ───
-        ("rich_1k",         "ثري",               "💰", "economy","balance",        1000, 0,   None,           5,  "اجمع 1000 Liben"),
-        ("rich_10k",        "مليونير",           "💎", "economy","balance",        10000,500, None,           10, "اجمع 10,000 Liben"),
+        ("rich_1k",         "ثري",               "💰", "economy","balance",        1000, 0,   None,           5,  f"اجمع 1000 {CURRENCY_ARABIC_NAME}"),
+        ("rich_10k",        "مليونير",           "💎", "economy","balance",        10000,500, None,           10, f"اجمع 10,000 {CURRENCY_ARABIC_NAME}"),
         ("investor",        "المستثمر",          "📈", "economy","investments",    10,  200,  None,           5,  "استثمر 10 مرات"),
 
         # ─── تحالف ───
@@ -155,7 +156,7 @@ def _seed_achievements(conn):
     cursor.executemany("""
         INSERT OR IGNORE INTO achievements
         (name, name_ar, emoji, category, condition_type, condition_value,
-         reward_liben, reward_card_name, reward_reputation, description_ar)
+         reward_conis, reward_card_name, reward_reputation, description_ar)
         VALUES (?,?,?,?,?,?,?,?,?,?)
     """, achievements)
     conn.commit()
@@ -165,14 +166,14 @@ def _seed_achievements(conn):
         ("ghost_spy",    "الشبح",           "👻", "spy",     "spy_success",    50,  2000, "satellite",    50, "نجح 50 عملية تجسس"),
         ("iron_will",    "إرادة حديدية",    "🔩", "battle",  "battles_won",    50,  3000, "double_strike", 60, "فز بـ 50 معركة"),
         ("lone_wolf",    "الذئب المنفرد",   "🐺", "battle",  "no_retreat_wins",10,  800,  None,            20, "فز بـ 10 معارك بدون دعم"),
-        ("economist",    "الاقتصادي",       "🏦", "economy", "balance",        50000,2000, None,           30, "اجمع 50,000 Liben"),
+        ("economist",    "الاقتصادي",       "🏦", "economy", "balance",        50000,2000, None,           30, f"اجمع 50,000 {CURRENCY_ARABIC_NAME}"),
         ("spy_betrayal", "الخيانة المزدوجة","🎭", "spy",     "detected",       3,   0,    None,           -10, "اكتُشف 3 جواسيس"),
         ("influencer_1k","قوة عظمى",        "🌟", "influence","influence_points",1000,5000,"satellite",   50, "اجمع 1000 نقطة نفوذ"),
     ]
     cursor.executemany("""
         INSERT OR IGNORE INTO achievements
         (name, name_ar, emoji, category, condition_type, condition_value,
-         reward_liben, reward_card_name, reward_reputation, description_ar, is_hidden)
+         reward_conis, reward_card_name, reward_reputation, description_ar, is_hidden)
         VALUES (?,?,?,?,?,?,?,?,?,?,1)
     """, hidden)
     conn.commit()
@@ -190,9 +191,9 @@ def _seed_season_constants(conn):
         constants = [
         ("season_duration_days",  "30",  "مدة الموسم بالأيام"),
         ("season_top_rewards",    "3",   "عدد الفائزين بمكافآت الموسم"),
-        ("season_reward_liben_1", "5000","مكافأة المركز الأول (Liben)"),
-        ("season_reward_liben_2", "3000","مكافأة المركز الثاني (Liben)"),
-        ("season_reward_liben_3", "1500","مكافأة المركز الثالث (Liben)"),
+        ("season_reward_conis_1", "5000",f"مكافأة المركز الأول ({CURRENCY_ARABIC_NAME})"),
+        ("season_reward_conis_2", "3000",f"مكافأة المركز الثاني ({CURRENCY_ARABIC_NAME})"),
+        ("season_reward_conis_3", "1500",f"مكافأة المركز الثالث ({CURRENCY_ARABIC_NAME})"),
         ("influence_per_win",     "10",  "نقاط نفوذ لكل انتصار"),
         ("influence_per_defense", "5",   "نقاط نفوذ لكل دفاع ناجح"),
         ("influence_income_rate", "0.08","معدل الدخل اللوغاريتمي"),
@@ -201,7 +202,7 @@ def _seed_season_constants(conn):
         ("influence_war_cap",     "0.20","الحد الأقصى لميزة الحرب من النفوذ"),
         ("maintenance_debt_block","200", "حد الدين الذي يمنع الهجوم"),
         ("event_check_interval",  "3600","فترة فحص الأحداث العالمية (ثانية)"),
-        ("late_game_upgrade_cost","10000","تكلفة الترقية المتأخرة (Liben)"),
+        ("late_game_upgrade_cost","10000",f"تكلفة الترقية المتأخرة ({CURRENCY_ARABIC_NAME})"),
         ("economy_sink_rate",     "0.05","نسبة الضريبة على الأرصدة الكبيرة"),
         ]
         cursor.executemany("""

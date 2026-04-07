@@ -7,6 +7,7 @@ import time
 from database.connection import get_db_conn
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 from modules.war.power_calculator import get_country_power
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 def _c(name: str, default):
@@ -129,7 +130,7 @@ def process_maintenance(country_id: int, owner_user_id: int) -> dict:
         conn.commit()
         return {
             "paid": total_due, "debt": 0, "power_penalty": 0.0,
-            "message": f"💸 دُفعت صيانة الجيش: {total_due:.0f} Liben"
+            "message": f"💸 دُفعت صيانة الجيش: {total_due:.0f} {CURRENCY_ARABIC_NAME}"
         }
     else:
         # دفع جزئي — تراكم الدين
@@ -153,7 +154,7 @@ def process_maintenance(country_id: int, owner_user_id: int) -> dict:
         if penalty_pct > 0:
             msg = (
                 f"⚠️ <b>تحذير: دين الصيانة!</b>\n"
-                f"الدين: {remaining_debt:.0f} Liben\n"
+                f"الدين: {remaining_debt:.0f} {CURRENCY_ARABIC_NAME}\n"
                 f"عقوبة القوة: -{int(penalty_pct*100)}%\n"
                 f"ادفع الدين لاستعادة قوتك الكاملة!"
             )
@@ -249,15 +250,15 @@ def send_maintenance_warning(country_id: int, owner_user_id: int):
             from core.bot import bot
             msg = (
                 f"⚠️ <b>تحذير: دين الصيانة!</b>\n\n"
-                f"💸 الدين الحالي: {debt:.0f} Liben\n"
-                f"⏱️ التكلفة الساعية: {hourly:.0f} Liben\n"
+                f"💸 الدين الحالي: {debt:.0f} {CURRENCY_ARABIC_NAME}\n"
+                f"⏱️ التكلفة الساعية: {hourly:.0f} {CURRENCY_ARABIC_NAME}\n"
             )
             if penalty > 0:
                 msg += f"📉 عقوبة القوة: -{int(penalty*100)}%\n"
             if debt >= debt_block:
                 msg += f"\n🚫 <b>الهجوم محظور حتى تسديد الدين!</b>"
             else:
-                msg += f"\n⚠️ الهجوم سيُحظر عند {debt_block:.0f} Liben دين."
+                msg += f"\n⚠️ الهجوم سيُحظر عند {debt_block:.0f} {CURRENCY_ARABIC_NAME} دين."
 
             try:
                 bot.send_message(owner_user_id, msg, parse_mode="HTML")

@@ -9,6 +9,7 @@ from utils.pagination import (
     paginate_list, set_state, get_state, clear_state,
 )
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME, CURRENCY_ENGLISH_NAME
 
 # ── ألوان الأزرار ──
 _B = "p"   # أزرق
@@ -153,7 +154,7 @@ def back_to_main(call, data):
 # ══════════════════════════════════════════
 
 _CAT_KEYWORDS = {
-    "economy":   ["balance", "liben", "salary", "invest", "loan", "transfer",
+    "economy":   ["balance", f"{CURRENCY_ENGLISH_NAME}", "salary", "invest", "loan", "transfer",
                   "fee", "reward", "daily", "income", "budget", "sink", "late_game"],
     "war":       ["attack", "defense", "battle", "travel", "sudden", "recovery",
                   "fatigue", "loot", "loss", "repair", "heal", "maintenance",
@@ -293,7 +294,7 @@ def show_alliances(call, data):
     for u in items:
         text += (
             f"{u['emoji']} <b>{u['name_ar']}</b>\n"
-            f"   💵 {u['price']:.0f} Liben | مستوى أقصى: {u['max_level']}\n"
+            f"   💵 {u['price']:.0f} {CURRENCY_ARABIC_NAME} | مستوى أقصى: {u['max_level']}\n"
             f"   تأثير: +{u['effect_value']} ({u['effect_type']})\n\n"
         )
         if is_primary_dev(uid):
@@ -377,7 +378,7 @@ def show_troops(call, data):
                 f"   ⚔️ هجوم: {item.get('attack',0):.0f} | "
                 f"🛡 دفاع: {item.get('defense',0):.0f} | "
                 f"❤️ HP: {item.get('hp',0):.0f}\n"
-                f"   💵 تكلفة: {item.get('base_cost',0):.0f} Liben\n\n"
+                f"   💵 تكلفة: {item.get('base_cost',0):.0f} {CURRENCY_ARABIC_NAME}\n\n"
             )
     else:
         all_items = _safe_query("SELECT * FROM equipment_types ORDER BY base_cost")
@@ -388,7 +389,7 @@ def show_troops(call, data):
                 f"{item.get('emoji','🔧')} <b>{item['name_ar']}</b>\n"
                 f"   ⚔️ هجوم: {item.get('attack_bonus',0):.0f} | "
                 f"🛡 دفاع: {item.get('defense_bonus',0):.0f}\n"
-                f"   💵 تكلفة: {item.get('base_cost',0):.0f} Liben\n\n"
+                f"   💵 تكلفة: {item.get('base_cost',0):.0f} {CURRENCY_ARABIC_NAME}\n\n"
             )
 
     # تبويب التبديل
@@ -546,7 +547,7 @@ def show_cards(call, data):
         text += (
             f"{c['emoji']} <b>{c['name_ar']}</b> [{c['category']}]\n"
             f"   📝 {c['description_ar']}\n"
-            f"   💵 {c['price']:.0f} Liben | تأثير: {c['effect_value']}\n\n"
+            f"   💵 {c['price']:.0f} {CURRENCY_ARABIC_NAME} | تأثير: {c['effect_value']}\n\n"
         )
         if is_primary_dev(uid):
             buttons.append(btn(

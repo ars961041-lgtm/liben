@@ -214,6 +214,10 @@ def build_favorites_buttons(uid: int, cid: int, favs: list[dict],
 
     buttons.extend(nav)
 
+    # --- زر مسح المفضلة ---
+    buttons.append(btn("🗑 مسح المفضلة", "qr_fav_clear_prompt", {"p": page},
+                       color=_R, owner=owner))
+
     # --- layout ---
     fav_count = len(favs)
 
@@ -226,6 +230,8 @@ def build_favorites_buttons(uid: int, cid: int, favs: list[dict],
 
     if nav:
         layout.append(len(nav))
+
+    layout.append(1)  # زر مسح المفضلة
 
     return buttons, layout
 

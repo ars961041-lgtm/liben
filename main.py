@@ -30,6 +30,15 @@ def replies(message):
     except Exception as e:
         print("Error in message handler:", e)
 
+
+@bot.message_handler(content_types=["photo"])
+def photo_handler(message):
+    try:
+        from modules.post_creator import handle_post_creator_photo
+        handle_post_creator_photo(message)
+    except Exception as e:
+        print("Error in photo handler:", e)
+
 def start_bot():
     while True:
         try:
@@ -54,6 +63,10 @@ if __name__ == "__main__":
     
     keep_alive()
     create_all_tables()
+
+    # Register rules callbacks
+    from modules.rules.rules_handler import register_rules_callbacks
+    register_rules_callbacks()
 
     run_daily_tasks()
     

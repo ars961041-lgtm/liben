@@ -20,6 +20,7 @@ from modules.war.services.advanced_war_service import (
 )
 
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 def _back_btn(user_id, chat_id):
     return btn("🔙 رجوع", "adv_war_main_back", data={}, owner=(user_id, chat_id))
@@ -154,7 +155,6 @@ def show_attack_menu(call, data):
     buttons = []
     for c in items:
         vis_icon  = "🌑" if c.get("visibility") == "hidden" else "🏳️"
-        target_power = get_country_power(c["id"])
         target_tier  = get_country_tier(c["id"])
         tier_label   = TIER_LABELS.get(target_tier, "🟡")
 
@@ -163,7 +163,7 @@ def show_attack_menu(call, data):
         allowed = ALLOWED_ATTACKS.get((my_tier, target_tier), True)
         lock_icon = "" if allowed else " 🔒"
 
-        text += f"{vis_icon} <b>{c['name']}</b> {tier_label} — قوة: {target_power:.0f}{lock_icon}\n"
+        text += f"{vis_icon} <b>{c['name']}</b> {tier_label}{lock_icon}\n"
         buttons.append(btn(
             f"{vis_icon} {c['name']} {tier_label}{lock_icon}",
             "adv_war_select_target",
@@ -208,18 +208,25 @@ def show_attack_options(call, data):
     target_id = data["target_id"]
     target_name = data.get("target_name", "الهدف")
 
-    target_power = get_country_power(int(target_id))
-    my_power = get_country_power(dict(get_country_by_owner(user_id))["id"])
-
-    from modules.war.country_level import get_tier_label, get_country_tier, ALLOWED_ATTACKS
-    my_cid = dict(get_country_by_owner(user_id))["id"]
+    from modules.war.country_level import get_tier_label, get_country_tier, ALLOWED_ATTACKS, TIER_LABELS
+    my_cid   = dict(get_country_by_owner(user_id))["id"]
     my_tier  = get_country_tier(my_cid)
     def_tier = get_country_tier(int(target_id))
     allowed  = ALLOWED_ATTACKS.get((my_tier, def_tier), True)
 
-    power_diff = "⚠️ أقوى منك!" if target_power > my_power * 1.2 else ("✅ أضعف منك" if target_power < my_power * 0.8 else "⚖️ متكافئ")
-    tier_info  = f"فئتك: {get_tier_label(my_cid)} | فئة الهدف: {get_tier_label(int(target_id))}"
-    lock_note  = "\n⚠️ <b>تحذير: هذا الهجوم قد يُرفض بسبب فارق الفئة!</b>" if not allowed else ""
+    # مقارنة الفئات فقط — بدون أرقام
+    tier_order = {"weak": 0, "medium": 1, "strong": 2}
+    diff = tier_order.get(def_tier, 1) - tier_order.get(my_tier, 1)
+    if diff > 0:
+        tier_diff = "⚠️ الهدف أقوى منك!"
+    elif diff < 0:
+        tier_diff = "✅ الهدف أضعف منك"
+    else:
+        tier_diff = "⚖️ نفس الفئة"
+
+    tier_info = f"فئتك: {get_tier_label(my_cid)} | فئة الهدف: {get_tier_label(int(target_id))}"
+    penalty_note = "\n⚠️ <b>هجوم بفعالية مخفضة 20% (قوي → متوسط)</b>" if (my_tier == "strong" and def_tier == "medium") else ""
+    lock_note    = "\n🔒 <b>هذا الهجوم غير مسموح!</b>" if not allowed else ""
 
     buttons = [
         btn("⚔️ هجوم عادي",       "adv_war_confirm_attack",
@@ -234,8 +241,8 @@ def show_attack_options(call, data):
     ]
     edit_ui(call,
             text=(f"🎯 الهدف: <b>{target_name}</b>\n"
-                  f"💪 قوته: {target_power:.0f} | {power_diff}\n"
-                  f"🎖 {tier_info}{lock_note}\n\n"
+                  f"🎖 {tier_info}\n"
+                  f"{tier_diff}{penalty_note}{lock_note}\n\n"
                   f"⚔️ <b>عادي</b> — 20 دقيقة، قوة كاملة\n"
                   f"💥 <b>مباغت</b> — 5 دقائق، قوة أقل 30%\n"
                   f"🎭 <b>وهمي</b> — يُربك العدو، لا ضرر\n"
@@ -492,7 +499,7 @@ def show_spy_menu(call, data):
                   f"مستوى جواسيسك: {spy_data['spy_level']}\n"
                   f"مستوى الدفاع: {spy_data['defense_level']}\n"
                   f"مستوى التمويه: {spy_data['camouflage_level']}\n\n"
-                  f"💸 تكلفة العملية: {spy_cost} Liben\n"
+                  f"💸 تكلفة العملية: {spy_cost} {CURRENCY_ARABIC_NAME}\n"
                   f"⏱️ كولداون: {spy_cd // 60} دقيقة لكل هدف\n\n"
                   f"🌑 = مخفية | 🏳️ = ظاهرة\n\nاختر دولة للتجسس:"),
             buttons=buttons + nav, layout=layout)
@@ -524,9 +531,9 @@ def show_cards_shop(call, data):
     all_cards = get_all_cards()
     items, total_pages = paginate_list(all_cards, page, per_page=5)
     balance = get_user_balance(user_id)
-    text = f"🃏 <b>متجر البطاقات</b>\n💰 رصيدك: {balance:.0f} Liben\n\n"
+    text = f"🃏 <b>متجر البطاقات</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     for c in items:
-        text += f"{c['emoji']} <b>{c['name_ar']}</b>\n   📝 {c['description_ar']}\n   💵 {c['price']:.0f} Liben\n\n"
+        text += f"{c['emoji']} <b>{c['name_ar']}</b>\n   📝 {c['description_ar']}\n   💵 {c['price']:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     buttons = [btn(f"{c['emoji']} شراء {c['name_ar']}", "adv_war_buy_card",
                    data={"card_id": c["id"]}, owner=(user_id, chat_id), color="su") for c in items]
     nav = []
@@ -547,7 +554,7 @@ def buy_card(call, data):
         bot.answer_callback_query(call.id, "❌ البطاقة غير موجودة!", show_alert=True)
         return
     if get_user_balance(user_id) < card["price"]:
-        bot.answer_callback_query(call.id, f"❌ رصيدك غير كافٍ! تحتاج {card['price']:.0f} Liben", show_alert=True)
+        bot.answer_callback_query(call.id, f"❌ رصيدك غير كافٍ! تحتاج {card['price']:.0f} {CURRENCY_ARABIC_NAME}", show_alert=True)
         return
     deduct_user_balance(user_id, card["price"])
     add_user_card(user_id, card_id)
@@ -1034,7 +1041,7 @@ def open_hospital_menu(message):
         text += f"🔧 <b>المعدات التالفة ({len(damaged)} نوع):</b>\n"
         for d in damaged[:5]:
             text += f"  {d['emoji']} {d['name_ar']}: {d['quantity']} | تكلفة: {d['repair_cost']:.0f}\n"
-        text += f"\n💰 إجمالي الإصلاح: {total_repair:.0f} Liben"
+        text += f"\n💰 إجمالي الإصلاح: {total_repair:.0f} {CURRENCY_ARABIC_NAME}"
     else:
         text += "✅ لا توجد معدات تالفة"
 
@@ -1284,7 +1291,7 @@ def show_country_status(call, data):
         text += f"🔧 معدات تالفة: {total_dmg} وحدة\n"
     if repair_q:
         total_cost = sum(r["repair_cost"] for r in repair_q)
-        text += f"⚙️ طابور الإصلاح: {len(repair_q)} نوع | {total_cost:.0f} Liben\n"
+        text += f"⚙️ طابور الإصلاح: {len(repair_q)} نوع | {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
 
     buttons = []
     if damaged or repair_q:
@@ -1329,13 +1336,13 @@ def show_force_shop(call, data):
 
     items, total_pages = paginate_list(items_all, page, per_page=5)
 
-    text = f"{title}\n💰 رصيدك: {balance:.0f} Liben\n{get_lines()}\n\n"
+    text = f"{title}\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n{get_lines()}\n\n"
     buttons = []
     for item in items:
         emoji = item.get("emoji", "⚔️")
         name  = item.get("name_ar", item.get("name", ""))
         cost  = item.get("base_cost", 0)
-        text += f"{emoji} <b>{name}</b> — {cost:.0f} Liben/وحدة\n"
+        text += f"{emoji} <b>{name}</b> — {cost:.0f} {CURRENCY_ARABIC_NAME}/وحدة\n"
         buttons.append(btn(f"{emoji} شراء {name}", buy_action,
                            data={id_key: item["id"], "qty": 1},
                            owner=(user_id, chat_id), color="su"))
@@ -1493,7 +1500,7 @@ def show_radar(call, data):
     buttons = []
     for t in targets:
         tier_label = TIER_LABELS.get(t["tier"], "🟡")
-        text += f"🏳️ <b>{t['name']}</b> {tier_label} — قوة: {t['power']:.0f}\n"
+        text += f"🏳️ <b>{t['name']}</b> {tier_label}\n"
         buttons.append(btn(f"🏳️ {t['name']}", "adv_war_select_target",
                            data={"target_id": t["id"], "target_name": t["name"]},
                            owner=(user_id, chat_id), color="d"))
@@ -1610,7 +1617,7 @@ def send_resource_support(call, data):
     from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
     balance = get_user_balance(user_id)
     if balance < amount:
-        bot.answer_callback_query(call.id, f"❌ رصيدك غير كافٍ! تحتاج {amount} Liben", show_alert=True)
+        bot.answer_callback_query(call.id, f"❌ رصيدك غير كافٍ! تحتاج {amount} {CURRENCY_ARABIC_NAME}", show_alert=True)
         return
 
     deduct_user_balance(user_id, amount)
@@ -1637,7 +1644,7 @@ def send_resource_support(call, data):
     except Exception:
         pass
 
-    bot.answer_callback_query(call.id, f"💰 تم إرسال {amount} Liben دعماً مالياً!", show_alert=True)
+    bot.answer_callback_query(call.id, f"💰 تم إرسال {amount} {CURRENCY_ARABIC_NAME} دعماً مالياً!", show_alert=True)
 
 
 # ══════════════════════════════════════════

@@ -31,9 +31,10 @@ from .groups_queries import (
 )
 from .users_queries import get_user_info, get_user_msgs
 from .tops_queries import (
-    get_top_richest, get_top_cities, get_top_cities_by,
-    get_top_countries, get_top_countries_by,
-    get_group_members_stats, get_global_top_activity
+    get_top_richest, get_top_active_users, get_top_active_in_group,
+    get_top_spending_cities, get_top_spending_countries,
+    get_top_alliances, get_top_groups, get_top_betrayals,
+    get_group_members_stats, get_group_stats,
 )
 from .assets_queries import (
     get_all_assets, get_assets_by_sector, get_asset_by_name, get_asset_by_id,

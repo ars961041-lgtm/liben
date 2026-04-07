@@ -112,5 +112,53 @@ def create_countries_tables():
     )
     """)
 
+    # ─── كولداون الأفعال العامة (خيانة، إعادة تسمية، ...) ───
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS action_cooldowns (
+        user_id   INTEGER NOT NULL,
+        action    TEXT    NOT NULL,
+        last_time INTEGER NOT NULL,
+        PRIMARY KEY (user_id, action)
+    )
+    """)
+
+    # ─── إجمالي إنفاق المدن (بالسعر الأصلي قبل الخصومات) ───
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS city_spending (
+        city_id     INTEGER PRIMARY KEY,
+        total_spent REAL    DEFAULT 0
+    )
+    """)
+
+    conn.commit()
+    create_countries_indexes()
+
+
+def create_countries_indexes():
+    """إنشاء الفهارس لتحسين أداء الاستعلامات."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+
+    indexes = [
+        # countries
+        "CREATE INDEX IF NOT EXISTS idx_countries_owner ON countries(owner_id)",
+        # cities
+        "CREATE INDEX IF NOT EXISTS idx_cities_country ON cities(country_id)",
+        "CREATE INDEX IF NOT EXISTS idx_cities_owner ON cities(owner_id)",
+        # buildings
+        "CREATE INDEX IF NOT EXISTS idx_buildings_city ON buildings(city_id)",
+        "CREATE INDEX IF NOT EXISTS idx_buildings_city_type ON buildings(city_id, building_type)",
+        # city_budget
+        "CREATE INDEX IF NOT EXISTS idx_city_budget_city ON city_budget(city_id)",
+        # country_invites
+        "CREATE INDEX IF NOT EXISTS idx_invites_to_user ON country_invites(to_user_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_invites_country ON country_invites(country_id)",
+        # country_transfers
+        "CREATE INDEX IF NOT EXISTS idx_transfers_country ON country_transfers(country_id)",
+    ]
+
+    for sql in indexes:
+        cursor.execute(sql)
+
     conn.commit()
     

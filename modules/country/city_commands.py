@@ -3,14 +3,18 @@ from modules.country.services.city_service import CityService
 from modules.country.services.building_config import BUILDING_CONFIG, get_building_info
 from database.db_queries.bank_queries import get_user_balance
 from database.db_queries.cities_queries import get_user_city
-from database.db_queries.advanced_war_queries import (
-    get_pending_city_invites, update_city_invite_status, is_country_frozen
+from database.db_queries.countries_queries import (
+    get_pending_country_invites, update_invite_status,
+    accept_country_invite_atomic,
 )
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.helpers import send_reply
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
-CITY_COMMANDS = {"مدينتي", "شراء", "ترقية", "متجر", "جيش مدينتي", "جيشي"}
+CITY_COMMANDS = {"مدينتي", "شراء", "ترقية", "متجر", "جيش مدينتي", "جيشي",
+                 "مسح مدينتي", "انضمام",
+                 "تغيير اسم مدينتي", "تغيير اسم دولتي", "تغيير اسم تحالفي"}
 
 
 def city_commands(message):
@@ -32,8 +36,8 @@ def city_commands(message):
         if not city_id:
             bot.reply_to(message, "❌ ليس لديك مدينة.\nأنشئ دولة أولاً: <code>انشاء دولة </code>[الاسم]")
             return True
-        # عرض دعوات المدن المعلقة أولاً
-        pending = get_pending_city_invites(user_id)
+        # عرض دعوات الانضمام المعلقة أولاً
+        pending = get_pending_country_invites(user_id)
         if pending:
             _show_city_invites(message, user_id, chat_id, pending)
         _send_city_overview(message, user_id, chat_id, city_id)
@@ -90,6 +94,34 @@ def city_commands(message):
         from modules.city.asset_service import upgrade_asset
         success, msg = upgrade_asset(user_id, city_id, asset_name, quantity, from_level=1)
         bot.reply_to(message, msg)
+        return True
+
+    # ─── مسح مدينتي ───
+    if text == "مسح مدينتي":
+        from modules.country.city_management import handle_delete_city_cmd
+        handle_delete_city_cmd(message)
+        return True
+
+    # ─── انضمام (رد على رسالة مالك الدولة) ───
+    if text == "انضمام":
+        from modules.country.city_management import handle_join_country_cmd
+        handle_join_country_cmd(message)
+        return True
+
+    # ─── تغيير الأسماء ───
+    if text == "تغيير اسم مدينتي":
+        from modules.country.city_management import handle_rename_cmd
+        handle_rename_cmd(message, "city")
+        return True
+
+    if text == "تغيير اسم دولتي":
+        from modules.country.city_management import handle_rename_cmd
+        handle_rename_cmd(message, "country")
+        return True
+
+    if text == "تغيير اسم تحالفي":
+        from modules.country.city_management import handle_rename_cmd
+        handle_rename_cmd(message, "alliance")
         return True
 
     return False
@@ -157,9 +189,9 @@ def handle_city_detail(call, data):
             f"💰 اقتصاد مدينة {details['name']}\n"
             f"{get_lines()}\n"
             f"نقاط الاقتصاد: {stats.get('economy', 0):.1f}\n"
-            f"الدخل:   {stats.get('income', 0):.0f} Liben\n"
-            f"الصيانة: {stats.get('maintenance', 0):.0f} Liben\n"
-            f"الصافي:  {stats.get('income', 0) - stats.get('maintenance', 0):.0f} Liben\n\n"
+            f"الدخل:   {stats.get('income', 0):.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"الصيانة: {stats.get('maintenance', 0):.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"الصافي:  {stats.get('income', 0) - stats.get('maintenance', 0):.0f} {CURRENCY_ARABIC_NAME}\n\n"
             f"لتحسينه: شراء مصنع أو بنك محلي أو سوق تجاري"
         )
     elif topic == "health":
@@ -181,7 +213,7 @@ def handle_city_detail(call, data):
             f"🪖 قوة مدينة {details['name']}\n"
             f"{get_lines()}\n"
             f"القوة العسكرية: {stats.get('military', 0):.1f}\n\n"
-            f"لتحسينه: شراء قاعدة عسكرية أو ثكنة عسكرية"
+            f"لتحسينه: شراء جنود أو معدات"
         )
     elif topic == "buildings":
         from database.db_queries.assets_queries import get_city_assets
@@ -220,7 +252,7 @@ def handle_city_back(call, data):
 def _buildings_list_text():
     lines = []
     for key, cfg in BUILDING_CONFIG.items():
-        lines.append(f"{cfg['emoji']} {cfg['name_ar']} ({key}) — {cfg['base_cost']} Liben")
+        lines.append(f"{cfg['emoji']} {cfg['name_ar']} ({key}) — {cfg['base_cost']} {CURRENCY_ARABIC_NAME}")
     return "\n".join(lines)
 
 
@@ -231,50 +263,47 @@ def _send_buildings_menu(message, user_id, city_id):
 
 
 # ─────────────────────────────────────────
-# 📨 دعوات المدن
+# 📨 دعوات الانضمام للدولة
 # ─────────────────────────────────────────
 def _show_city_invites(message, user_id, chat_id, pending):
-    text = "📨 <b>دعوات مدن معلقة:</b>\n\n"
+    text = "📨 <b>دعوات انضمام معلقة:</b>\n\n"
     buttons = []
     for inv in pending[:5]:
-        text += f"🏙 <b>{inv['city_name']}</b>\n"
-        buttons.append(btn(f"✅ قبول — {inv['city_name']}", "city_invite_accept",
-                           data={"inv_id": inv["id"], "city_id": inv["city_id"]},
+        text += f"🏙 <b>{inv['city_name']}</b> — 🏳️ {inv.get('country_name', '')}\n"
+        buttons.append(btn(f"✅ قبول — {inv['city_name']}", "country_invite_accept",
+                           data={"inv_id": inv["id"]},
                            owner=(user_id, chat_id), color="su"))
-        buttons.append(btn("❌ رفض", "city_invite_reject",
+        buttons.append(btn("❌ رفض", "country_invite_reject",
                            data={"inv_id": inv["id"]},
                            owner=(user_id, chat_id), color="d"))
     layout = [2] * len(pending[:5])
     send_ui(chat_id, text=text, buttons=buttons, layout=layout, owner_id=user_id)
 
 
-@register_action("city_invite_accept")
-def on_city_invite_accept(call, data):
+@register_action("country_invite_accept")
+def on_country_invite_accept(call, data):
     user_id = call.from_user.id
-    inv_id = int(data["inv_id"])
-    city_id = int(data["city_id"])
+    inv_id  = int(data["inv_id"])
 
-    update_city_invite_status(inv_id, "accepted")
-    # نقل ملكية المدينة للمستخدم
-    from database.connection import get_db_conn
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cities SET owner_id = ? WHERE id = ?", (user_id, city_id))
-    conn.commit()
+    ok, result = accept_country_invite_atomic(inv_id, user_id)
+    if not ok:
+        bot.answer_callback_query(call.id, result, show_alert=True)
+        return
+
     bot.answer_callback_query(call.id, "✅ قبلت الدعوة! المدينة أصبحت لك.", show_alert=True)
     try:
-        bot.edit_message_text("✅ تم قبول دعوة المدينة.", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("✅ تم قبول دعوة الانضمام.", call.message.chat.id, call.message.message_id)
     except Exception:
         pass
 
 
-@register_action("city_invite_reject")
-def on_city_invite_reject(call, data):
+@register_action("country_invite_reject")
+def on_country_invite_reject(call, data):
     inv_id = int(data["inv_id"])
-    update_city_invite_status(inv_id, "rejected")
+    update_invite_status(inv_id, "rejected")
     bot.answer_callback_query(call.id, "❌ تم رفض الدعوة.")
     try:
-        bot.edit_message_text("❌ رفضت دعوة المدينة.", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("❌ رفضت دعوة الانضمام.", call.message.chat.id, call.message.message_id)
     except Exception:
         pass
 

@@ -8,6 +8,7 @@ from database.connection import get_db_conn
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 from database.db_queries.war_queries import get_city_troops, get_city_equipment
 from modules.war.power_calculator import get_country_power, aggregate_country_forces, calc_raw_power
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 # ─── ثوابت ───
 def _c(name, default):
@@ -76,11 +77,11 @@ def charge_war_cost(user_id, action, battle_id=None, amount=None):
 
     balance = get_user_balance(user_id)
     if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost:.0f} Liben (رصيدك: {balance:.0f})"
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
 
     deduct_user_balance(user_id, cost)
     _log_war_cost(user_id, battle_id, action, cost)
-    return True, f"💸 تم خصم {cost:.0f} Liben"
+    return True, f"💸 تم خصم {cost:.0f} {CURRENCY_ARABIC_NAME}"
 
 
 def _log_war_cost(user_id, battle_id, action, amount):
@@ -314,7 +315,19 @@ def get_heal_time_reduction(country_id):
     except Exception:
         pass
 
-    return min(reduction, BASE_HEAL_TIME - 300)  # لا يقل عن 5 دقائق
+    # ─── تأثيرات الأحداث العالمية على الشفاء ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        recovery_bonus = get_event_effect("recovery_bonus")
+        if recovery_bonus > 0:
+            reduction += int(BASE_HEAL_TIME * recovery_bonus)
+        plague_penalty = get_event_effect("troop_recovery_penalty")
+        if plague_penalty > 0:
+            reduction -= int(BASE_HEAL_TIME * plague_penalty)
+    except Exception:
+        pass
+
+    return min(max(reduction, -(BASE_HEAL_TIME - 300)), BASE_HEAL_TIME - 300)
 
 
 # ══════════════════════════════════════════
@@ -371,7 +384,7 @@ def repair_equipment(user_id, country_id, damage_id=None):
     total_cost = sum(r["repair_cost"] for r in rows)
     balance = get_user_balance(user_id)
     if balance < total_cost:
-        return False, f"❌ تحتاج {total_cost:.0f} Liben للإصلاح (رصيدك: {balance:.0f})", 0
+        return False, f"❌ تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME} للإصلاح (رصيدك: {balance:.0f})", 0
 
     deduct_user_balance(user_id, total_cost)
 
@@ -387,7 +400,7 @@ def repair_equipment(user_id, country_id, damage_id=None):
 
     conn.commit()
     _log_war_cost(user_id, None, "repair", total_cost)
-    return True, f"🔧 تم إصلاح {len(rows)} نوع معدات بتكلفة {total_cost:.0f} Liben", total_cost
+    return True, f"🔧 تم إصلاح {len(rows)} نوع معدات بتكلفة {total_cost:.0f} {CURRENCY_ARABIC_NAME}", total_cost
 
 
 # ══════════════════════════════════════════
@@ -658,6 +671,6 @@ def build_loss_report_text(atk_report, def_report, loot, supporters):
         f"    💀 قتلى: {def_report['killed']}\n"
         f"    🏥 مصابون: {def_report['injured']}\n"
         f"    🔧 معدات تالفة: {def_report['eq_damaged']}\n"
-        f"\n💰 الغنائم: {loot:.0f} Liben"
+        f"\n💰 الغنائم: {loot:.0f} {CURRENCY_ARABIC_NAME}"
         f"{sup_text}"
     )

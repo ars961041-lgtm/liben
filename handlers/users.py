@@ -9,6 +9,7 @@ from utils.helpers import limit_text, send_reply, send_error, is_group, send_err
 import random
 import time
 from utils.constants import lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 gender_emojis = {
   "male": ["🧔", "👨‍💼", "🦸‍♂️", "🕺"],
@@ -98,33 +99,33 @@ def send_gendered_welcome(msg, gender):
 
 
 def send_welcome(message):
-    from core.personality import welcome_msg, send_with_delay
+    from utils.helpers import send_bot_profile, get_lines
     from core import memory as _mem
     _mem.set_last_command(message.from_user.id, "/start")
 
-    from core.intelligence import get_suggestion_text
-    suggestion = get_suggestion_text(message.from_user.id)
+    caption = (
+        f"<b>أهلاً وسهلاً! 👋</b>\n"
+        f"{get_lines()}\n\n"
+        f"أنا <b>{CURRENCY_ARABIC_NAME}</b> — بوت متكامل يجمع بين الترفيه والفائدة.\n\n"
+        f"🕌 <b>الميزات الدينية:</b>\n"
+        f"أذكار الصباح والمساء، القرآن الكريم، تذكير يومي\n\n"
+        f"🎮 <b>الألعاب:</b>\n"
+        f"دول، حروب، بنك، تحالفات، ألعاب ترفيهية\n\n"
+        f"⚙️ <b>الإدارة:</b>\n"
+        f"كتم، حظر، ترقية مشرفين، تذاكر دعم\n\n"
+        f"✨ <b>أدوات أخرى:</b>\n"
+        f"تنسيق النصوص، الوقت والتاريخ، المجلة اليومية\n\n"
+        f"{get_lines()}\n"
+        f"اكتب <code>مميزات ليبن</code> لاستعراض كل الميزات\n"
+        f"اكتب <code>الألعاب</code> لعرض الألعاب المتاحة"
+    )
 
-    welcome_text = f"""
-{lines[4]}<b>
-{welcome_msg()}
-
-مرحباً بك في بوت Liben! 🤖
-
-الأوامر المتاحة:
-- /start: لعرض هذه الرسالة
-- عني أو ايدي أو معلوماتي: لعرض معلوماتك الشخصية
-- توب المتفاعلين: لعرض أكثر 10 أعضاء تفاعلاً
-- إنشاء دولة: لبدء إنشاء دولة جديدة
-- دولتي: لعرض معلومات دولتك
-- بنكي: لفتح قائمة البنك الذكية
-- حرب: نظام الحرب المتقدم
-- تحالفي: نظام التحالفات
-- إبلاغ المطور: إرسال تذكرة دعم
-</b>{lines[4]}{suggestion}
-"""
-    send_with_delay(message.chat.id, welcome_text, delay=0.5,
-                    reply_to=message.message_id)
+    send_bot_profile(
+        chat_id=message.chat.id,
+        caption=caption,
+        reply_to=message.message_id,
+        open_pm_button=(message.chat.type != "private"),
+    )
 
 # =========================
 # LEVEL SYSTEM

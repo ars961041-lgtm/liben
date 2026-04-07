@@ -36,7 +36,7 @@ def show_developer(message):
 
         buttons = [
             ui_btn(text=dev_name, url=f"tg://user?id={dev_id}", style="success"),
-            ui_btn(text="تحديثات 𝐋𝐈𝐁𝐄𝐍", url="https://t.me/BotLiben", style="primary")
+            ui_btn(text="تحديثات 𝑩𝒆𝒍𝒐", url="https://t.me/BotBeloPro", style="primary")
         ]
 
         # 6️⃣ إرسال الصورة (لو موجودة) أو مجرد رسالة

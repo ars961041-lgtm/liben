@@ -14,6 +14,7 @@ from database.db_queries.countries_queries import get_country_by_owner
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
 from database.db_queries.advanced_war_queries import update_reputation
 from modules.war.power_calculator import get_country_power
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 # ══════════════════════════════════════════
@@ -104,7 +105,7 @@ def recruit_agent(country_id: int, user_id: int, agent_type: str) -> tuple:
 
     balance = get_user_balance(user_id)
     if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} Liben (رصيدك: {balance:.0f})"
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
 
     deduct_user_balance(user_id, cost)
 
@@ -116,7 +117,7 @@ def recruit_agent(country_id: int, user_id: int, agent_type: str) -> tuple:
     """, (country_id, agent_type))
     conn.commit()
 
-    return True, f"✅ تم تجنيد {info['name_ar']} بتكلفة {cost} Liben"
+    return True, f"✅ تم تجنيد {info['name_ar']} بتكلفة {cost} {CURRENCY_ARABIC_NAME}"
 
 
 def _add_agent_xp(agent_id: int, xp: int):
@@ -191,7 +192,7 @@ def execute_spy_mission(attacker_user_id: int, target_country_id: int,
 
     balance = get_user_balance(attacker_user_id)
     if balance < cost:
-        return "failed", f"❌ رصيدك غير كافٍ! تحتاج {cost} Liben", {}
+        return "failed", f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME}", {}
 
     deduct_user_balance(attacker_user_id, cost)
 
@@ -231,7 +232,7 @@ def execute_spy_mission(attacker_user_id: int, target_country_id: int,
         msg = (
             f"🚨 <b>تم اكتشاف عميلك وتصفيته!</b>\n"
             f"نوع العميل: {info['name_ar']}\n"
-            f"💸 خسرت {cost} Liben\n"
+            f"💸 خسرت {cost} {CURRENCY_ARABIC_NAME}\n"
             f"📉 خصم نقاط سمعة"
         )
         add_spy_operation(attacker_cid, target_country_id, "detected", msg)
@@ -252,7 +253,7 @@ def execute_spy_mission(attacker_user_id: int, target_country_id: int,
     else:
         # فشل
         result = "failed"
-        msg    = f"❌ <b>فشلت المهمة!</b>\n💸 خسرت {cost} Liben"
+        msg    = f"❌ <b>فشلت المهمة!</b>\n💸 خسرت {cost} {CURRENCY_ARABIC_NAME}"
 
     add_spy_operation(attacker_cid, target_country_id, result, msg)
     return result, msg, effects
@@ -278,7 +279,7 @@ def _apply_agent_effect(agent_type: str, attacker_cid: int, target_cid: int,
             msg = (
                 f"🎯 <b>معلومات دقيقة (كشاف مستوى {agent_level}):</b>\n"
                 f"القوة العسكرية: {real_power:.0f}{code_hint}\n"
-                f"💸 تكلفة: {cost} Liben"
+                f"💸 تكلفة: {cost} {CURRENCY_ARABIC_NAME}"
             )
             effects["intel_accuracy"] = 1.0
         else:
@@ -287,7 +288,7 @@ def _apply_agent_effect(agent_type: str, attacker_cid: int, target_cid: int,
             msg = (
                 f"⚠️ <b>معلومات جزئية (كشاف مستوى {agent_level}):</b>\n"
                 f"القوة التقريبية: {shown:.0f}{code_hint}\n"
-                f"💸 تكلفة: {cost} Liben"
+                f"💸 تكلفة: {cost} {CURRENCY_ARABIC_NAME}"
             )
             effects["intel_accuracy"] = 0.7
 
@@ -303,7 +304,7 @@ def _apply_agent_effect(agent_type: str, attacker_cid: int, target_cid: int,
         msg = (
             f"💣 <b>نجح المخرب (مستوى {agent_level})!</b>\n"
             f"قوة العدو انخفضت {int(debuff_pct*100)}% لمدة 30 دقيقة\n"
-            f"💸 تكلفة: {cost} Liben"
+            f"💸 تكلفة: {cost} {CURRENCY_ARABIC_NAME}"
         )
         effects["sabotage_pct"] = debuff_pct
         effects["sabotage_duration"] = duration
@@ -317,13 +318,13 @@ def _apply_agent_effect(agent_type: str, attacker_cid: int, target_cid: int,
         msg = (
             f"☠️ <b>نجح القاتل (مستوى {agent_level})!</b>\n"
             f"تم تصفية {killed} جندي من قوات العدو\n"
-            f"💸 تكلفة: {cost} Liben"
+            f"💸 تكلفة: {cost} {CURRENCY_ARABIC_NAME}"
         )
         effects["troops_killed"] = killed
 
     else:
         result = "partial"
-        msg    = f"⚠️ تأثير غير معروف للعميل\n💸 تكلفة: {cost} Liben"
+        msg    = f"⚠️ تأثير غير معروف للعميل\n💸 تكلفة: {cost} {CURRENCY_ARABIC_NAME}"
 
     return result, msg, effects
 
@@ -412,7 +413,7 @@ def explore_targets(attacker_user_id: int) -> tuple:
     cost = _c("exploration_cost", 200)
     balance = get_user_balance(attacker_user_id)
     if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} Liben للاستكشاف."
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME} للاستكشاف."
 
     deduct_user_balance(attacker_user_id, cost)
 
@@ -438,7 +439,7 @@ def explore_targets(attacker_user_id: int) -> tuple:
 
     if not candidates:
         _log_exploration(cid, "failed", None, cost)
-        return False, f"❌ لم يُعثر على أهداف مناسبة.\n💸 خسرت {cost} Liben"
+        return False, f"❌ لم يُعثر على أهداف مناسبة.\n💸 خسرت {cost} {CURRENCY_ARABIC_NAME}"
 
     # اختيار عشوائي مع تفضيل الأقرب في القوة
     target = random.choice(candidates[:min(5, len(candidates))])
@@ -457,7 +458,7 @@ def explore_targets(attacker_user_id: int) -> tuple:
             f"🔍 <b>اكتشفت هدفاً جديداً!</b>\n\n"
             f"{vis_icon} <b>{target['name']}</b>\n"
             f"💪 القوة: {power:.0f}\n"
-            f"💸 تكلفة الاستكشاف: {cost} Liben\n\n"
+            f"💸 تكلفة الاستكشاف: {cost} {CURRENCY_ARABIC_NAME}\n\n"
             f"✅ تمت إضافته لقائمة أهدافك!"
         )
     }

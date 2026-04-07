@@ -3,11 +3,14 @@ from modules.country.invite_ui import handle_join_command
 from modules.country.services.country_service import CountryService
 from modules.country.services.city_service import CityService
 from modules.country.transfer_service import transfer_country, rollback_country_transfer
-from database.db_queries.countries_queries import get_country_by_user, get_country_by_owner
+from database.db_queries.countries_queries import (
+    get_country_by_user, get_country_by_owner, get_country_cities_count,
+)
 from database.db_queries.advanced_war_queries import is_country_frozen
 from utils.pagination import btn, edit_ui, register_action, send_ui
 from utils.helpers import send_reply
 from utils.helpers import get_lines
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
 def country_commands(message):
@@ -77,6 +80,12 @@ def _handle_transfer(message, text, user_id):
 def _send_country_overview(message, user_id, chat_id):
     country = get_country_by_user(user_id)
     if not country:
+        # ── فحص: هل المستخدم عضو في دولة شخص آخر؟ ──
+        member_country = _get_member_country(user_id)
+        if member_country:
+            _send_member_country_view(message, user_id, chat_id, member_country)
+            return
+
         # قد يكون نقل الدولة مؤخراً — تحقق من إمكانية التراجع
         from database.connection import get_db_conn
         import time as _t
@@ -100,7 +109,7 @@ def _send_country_overview(message, user_id, chat_id):
                           f"💸 التراجع يكلف 20% إضافية من الميزانية"),
                     buttons=buttons, layout=[1], owner_id=user_id)
         else:
-            send_reply(msg=message,text= "❌ ليس لديك دولة.\nاستخدم: <code>انشاء دولة </code>[الاسم]", Shape=False)
+            send_reply(msg=message, text="❌ أنت غير منضم لأي دولة.\nاستخدم: <code>انشاء دولة </code>[الاسم]", Shape=False)
         return
 
     country_id = country["id"]
@@ -111,6 +120,69 @@ def _send_country_overview(message, user_id, chat_id):
 
     stats = _compute_country_stats(country_id)
     text = _country_main_text(country, stats) + freeze_line
+    buttons = _country_buttons(country_id, user_id, chat_id, frozen)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id)
+
+
+def _get_member_country(user_id: int):
+    """يجلب الدولة التي ينتمي إليها المستخدم كعضو (عبر مدينته)."""
+    from database.connection import get_db_conn
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT c.id, c.name, c.owner_id
+        FROM cities ci
+        JOIN countries c ON ci.country_id = c.id
+        WHERE ci.owner_id = ?
+        LIMIT 1
+    """, (user_id,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def _send_member_country_view(message, user_id, chat_id, country):
+    """عرض الدولة لعضو (غير المالك)."""
+    country_id  = country["id"]
+    owner_id    = country["owner_id"]
+    city_count  = get_country_cities_count(country_id)
+    frozen, rem = is_country_frozen(country_id)
+
+    # اسم المالك
+    try:
+        from database.db_queries.users_queries import get_user_name
+        owner_name = get_user_name(owner_id) or str(owner_id)
+    except Exception:
+        owner_name = str(owner_id)
+
+    # تاريخ انضمام المستخدم عبر مدينته
+    from database.connection import get_db_conn
+    import time as _t
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT created_at FROM cities WHERE owner_id = ? AND country_id = ?",
+        (user_id, country_id)
+    )
+    city_row = cursor.fetchone()
+    join_line = ""
+    if city_row and city_row["created_at"]:
+        join_line = f"\n📅 انضممت: {_t.strftime('%Y-%m-%d', _t.localtime(city_row['created_at']))}"
+
+    freeze_line = ""
+    if frozen:
+        freeze_line = f"\n🧊 <b>الدولة مجمدة</b> — متبقي: {rem // 3600}س {(rem % 3600) // 60}د"
+
+    stats  = _compute_country_stats(country_id)
+    text   = _country_main_text(country, stats)
+    text  += (
+        f"\n{get_lines()}\n"
+        f"✨ أنت عضو في هذه الدولة\n"
+        f"👑 مالك الدولة: <b>{owner_name}</b>\n"
+        f"🏙 عدد المدن: <b>{city_count}</b>"
+        f"{join_line}"
+        f"{freeze_line}"
+    )
+
     buttons = _country_buttons(country_id, user_id, chat_id, frozen)
     send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id)
 
@@ -221,9 +293,9 @@ def handle_country_detail(call, data):
         "economy": (
             f"💰 تفاصيل الاقتصاد\n{get_lines()}\n"
             f"نقاط الاقتصاد: {stats.get('economy', 0):.1f}\n"
-            f"الدخل الكلي:   {stats.get('income', 0):.0f} Liben\n"
-            f"الصيانة:       {stats.get('maintenance', 0):.0f} Liben\n"
-            f"الصافي:        {stats.get('income', 0) - stats.get('maintenance', 0):.0f} Liben\n\n"
+            f"الدخل الكلي:   {stats.get('income', 0):.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"الصيانة:       {stats.get('maintenance', 0):.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"الصافي:        {stats.get('income', 0) - stats.get('maintenance', 0):.0f} {CURRENCY_ARABIC_NAME}\n\n"
             f"لتحسينه: شراء مصنع أو بنك محلي أو سوق تجاري في مدينتك"
         ),
         "health": (

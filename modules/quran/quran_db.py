@@ -345,3 +345,12 @@ def get_favorites(user_id: int) -> list[dict]:
         ORDER BY f.added_at ASC
     """, (user_id,))
     return [dict(r) for r in cur.fetchall()]
+
+
+def clear_favorites(user_id: int) -> int:
+    """يحذف جميع مفضلات المستخدم. يرجع عدد الصفوف المحذوفة."""
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM user_favorites WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return cur.rowcount

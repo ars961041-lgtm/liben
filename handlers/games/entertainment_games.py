@@ -1,26 +1,40 @@
 """
-معالج ألعاب الترفيه — إدارة الألعاب التفاعلية
+محرك ألعاب الترفيه الموحد
+- تتبع الحالة بـ (chat_id, game_key) لمنع التداخل بين المجموعات
+- تحقق موحد من الإجابات مع معالجة خاصة لكل نوع
+- سؤال/كت: بدون تحقق، فقط عرض
 """
+import re
 import random
 import time
+import threading
 from core.bot import bot
 from database.db_queries.bank_queries import check_bank_account, update_bank_balance
-from handlers.games.games_data import ALL_GAMES, GAMES_3_LIBEN, GAMES_5_LIBEN, GAMES_NO_REWARD
-from utils.pagination import set_state, get_state, clear_state
+from handlers.games.games_data import ALL_GAMES
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
-# ── الألعاب التي تتطلب ملكية الإجابة (owner-locked) ──
+# ══════════════════════════════════════════
+# حالات الألعاب النشطة
+# key: (chat_id, game_key) → game_info dict
+# ══════════════════════════════════════════
+ACTIVE_GAMES: dict[tuple, dict] = {}
+_LOCK = threading.Lock()
+
+# أنواع الألعاب التي لا تحتاج تحققاً (عرض فقط)
+NO_CHECK_TYPES = {"question", "write"}
+
+# أنواع الألعاب المقيدة بصاحبها فقط
 OWNED_GAME_TYPES = {"unscramble", "reverse", "connect", "country", "capital"}
 
-# تخزين حالات الألعاب النشطة
-# game_id -> {"question", "answer", "start_time", "participants", "owner_uid"}
-ACTIVE_GAMES = {}
+# مهلة انتهاء اللعبة (ثواني)
+GAME_TIMEOUT = 120
 
 
-def entertainment_games_command(message):
-    """
-    معالج أوامر ألعاب الترفيه
-    يرجع True إذا تم التعامل مع الأمر
-    """
+# ══════════════════════════════════════════
+# نقطة الدخول
+# ══════════════════════════════════════════
+
+def entertainment_games_command(message) -> bool:
     if not message.text:
         return False
 
@@ -28,224 +42,287 @@ def entertainment_games_command(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
 
+    # تشغيل لعبة
     for game_key, game_data in ALL_GAMES.items():
         if text == game_key:
             _start_game(message, game_key, game_data)
             return True
 
-    if _handle_game_answer(message):
-        return True
+    # محاولة إجابة
+    return _handle_game_answer(message)
+
+
+# ══════════════════════════════════════════
+# بدء اللعبة
+# ══════════════════════════════════════════
+
+def _start_game(message, game_key: str, game_data: dict):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    key     = (chat_id, game_key)
+
+    with _LOCK:
+        if key in ACTIVE_GAMES:
+            del ACTIVE_GAMES[key]
+
+        questions = game_data.get("data", [])
+        if not questions:
+            bot.reply_to(message, f"❌ لا توجد أسئلة متاحة لـ {game_data['name']} حالياً.")
+            return
+
+        question_data = random.choice(questions)
+        ACTIVE_GAMES[key] = {
+            "game_key":   game_key,
+            "game_data":  game_data,
+            "question":   question_data,
+            "start_time": time.time(),
+            "chat_id":    chat_id,
+            "owner_uid":  user_id,
+        }
+
+    _send_question(message, game_data, question_data)
+
+    # جدولة انتهاء تلقائي لجميع الأنواع
+    threading.Timer(GAME_TIMEOUT, _timeout_game, args=(key,)).start()
+
+
+# ══════════════════════════════════════════
+# إرسال السؤال
+# ══════════════════════════════════════════
+
+def _send_question(message, game_data: dict, question_data):
+    gtype   = game_data["type"]
+    emoji   = game_data["emoji"]
+    name    = game_data["name"]
+    reward  = game_data["reward"]
+    reward_line = f"\n💰 <b>الجائزة:</b> {reward} {CURRENCY_ARABIC_NAME}" if reward > 0 else ""
+
+    if gtype == "quote":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🎯 <b>الحكمة:</b>  {question_data}"
+                f"{reward_line}\n\nاكتب الحكمة كما هي!")
+
+    elif gtype == "unscramble":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🔀 <b>فكك الكلمة:</b> {question_data['scrambled']}"
+                f"{reward_line}")
+
+    elif gtype == "reverse":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🔄 <b>اعكس الكلمة:</b> {question_data['word']}"
+                f"{reward_line}")
+
+    elif gtype == "connect":
+        parts = question_data["parts"]
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🔗 <b>وصل الكلمة:</b> {' + '.join(parts)}"
+                f"{reward_line}")
+
+    elif gtype == "country":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🌍 ما اسم هذه الدولة "
+                f"{question_data['question']} ؟\n\n"
+                f"اكتب اسم الدولة بالعربي"
+                f"{reward_line}")
+        
+    elif gtype == "capital":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"🏛️ <b>عاصمة </b> {question_data['question']}؟"
+                f"{reward_line}")
+    
+    elif gtype == "fastest":
+        text = (f"{emoji} <b>لعبة {name}</b>\n\n"
+                f"⚡ <b>السؤال:</b> {question_data['question']}"
+                f"{reward_line}")
+
+    elif gtype == "question":
+        text = (f"{emoji} {question_data}")
+
+    elif gtype == "write":
+        text = (f"{emoji} {question_data}")
+
+    else:
+        text = f"{emoji} <b>لعبة {name}</b>\n\n{question_data}"
+
+    bot.send_message(message.chat.id, text, parse_mode="HTML",
+                     reply_to_message_id=message.message_id)
+
+
+# ══════════════════════════════════════════
+# معالجة الإجابة
+# ══════════════════════════════════════════
+
+def _handle_game_answer(message) -> bool:
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    with _LOCK:
+        matching = [(k, v) for k, v in ACTIVE_GAMES.items()
+                    if k[0] == chat_id]
+
+    if not matching:
+        return False
+
+    # سرّب الألعاب من الأحدث للأقدم
+    matching.sort(key=lambda x: x[1]["start_time"], reverse=True)
+
+    for key, game_info in matching:
+        game_data = game_info["game_data"]
+        gtype     = game_data["type"]
+
+        # سؤال/كت: لا تحقق — لا تستهلك الرسالة
+        if gtype in NO_CHECK_TYPES:
+            continue
+
+        # فحص الملكية — استهلك الرسالة بصمت (لا تمررها لـ chat_responses)
+        if gtype in OWNED_GAME_TYPES and user_id != game_info["owner_uid"]:
+            return True  # الرسالة تخص لعبة نشطة — ابتلعها
+
+        # استخرج الإجابة الصحيحة لهذه اللعبة تحديداً
+        correct = _get_correct_answer(gtype, game_info["question"])
+        if correct is None:
+            # بيانات اللعبة تالفة — أنهِ اللعبة
+            _end_game(key)
+            continue
+
+        if _is_correct(message.text, correct, gtype):
+            _award_and_end(message, game_info, key, user_id)
+        else:
+            if game_data["reward"] > 0:
+                bot.reply_to(message,
+                             f"❌ إجابة خاطئة! الإجابة الصحيحة: <b>{correct}</b>",
+                             parse_mode="HTML")
+            _end_game(key)
+        return True  # تمت المعالجة — لا تمرر الرسالة
 
     return False
 
 
-def _start_game(message, game_key, game_data):
-    """بدء لعبة جديدة"""
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    game_id = f"{chat_id}_{game_key}"
+# ══════════════════════════════════════════
+# استخراج الإجابة الصحيحة
+# ══════════════════════════════════════════
 
-    if game_id in ACTIVE_GAMES:
-        _end_game(game_id)
+def _get_correct_answer(gtype: str, question_data) -> str | None:
+    """استخراج الإجابة الصحيحة بأمان حسب نوع اللعبة."""
+    try:
+        if gtype == "quote":
+            # question_data هو نص مباشر
+            if isinstance(question_data, str):
+                return question_data
+            return None
+        if gtype in ("unscramble", "reverse", "connect", "country", "capital", "fastest"):
+            if isinstance(question_data, dict):
+                return str(question_data.get("answer", "")) or None
+            return None
+    except Exception:
+        pass
+    return None
 
-    questions = game_data["data"]
-    if not questions:
-        bot.reply_to(message, f"❌ لا توجد أسئلة متاحة للعبة {game_data['name']} حالياً.")
-        return
 
-    question_data = random.choice(questions)
+# ══════════════════════════════════════════
+# التحقق من الإجابة
+# ══════════════════════════════════════════
 
-    game_info = {
-        "game_key":   game_key,
-        "game_data":  game_data,
-        "question":   question_data,
-        "start_time": time.time(),
-        "participants": set(),
-        "chat_id":    chat_id,
-        "message_id": message.message_id,
-        "owner_uid":  user_id,          # ← صاحب اللعبة
-    }
+def _normalize(text: str) -> str:
+    """تنظيف عام: lowercase + إزالة الرموز غير الأبجدية مع الحفاظ على المسافات"""
+    text = text.strip().lower()
+    # أزل الرموز غير الأبجدية وغير المسافات
+    text = re.sub(r'[^\w\s]', '', text, flags=re.UNICODE)
+    # اختزل المسافات المتعددة
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
-    ACTIVE_GAMES[game_id] = game_info
-    _send_question(game_info, message)
 
-def _send_question(game_info, original_message):
-    """إرسال السؤال للمستخدمين"""
-    game_data = game_info["game_data"]
-    question_data = game_info["question"]
-    game_key = game_info["game_key"]
+def _normalize_no_spaces(text: str) -> str:
+    """تنظيف بدون مسافات — للمقارنة الصارمة (وصل، عكس، عاصمة، بلد)"""
+    return re.sub(r'[\s\W]+', '', text.strip().lower(), flags=re.UNICODE)
 
-    if game_data["type"] == "quote":
-        # لعبة الحكم
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🎯 <b>الحكمة:</b>\n<code>{question_data}</code>\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben\n\n"
-        text += f"اكتب الحكمة كما هي لتحصل على الجائزة!"
 
-    elif game_data["type"] == "unscramble":
-        # لعبة فكك
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🔀 <b>فكك الكلمة:</b>\n<code>{question_data['scrambled']}</code>\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben"
+def _normalize_split(text: str) -> str:
+    """
+    تنظيف لعبة فكك: يحافظ على المسافات بين الحروف.
+    يُحوّل المسافات المتعددة إلى مسافة واحدة، ويزيل الرموز غير الأبجدية.
+    "م  ك ت ب ة" → "م ك ت ب ة"
+    """
+    # أزل الرموز غير الأبجدية (غير المسافات)
+    text = re.sub(r'[^\w\s]', '', text.strip(), flags=re.UNICODE)
+    # اختزل المسافات المتعددة إلى مسافة واحدة
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
-    elif game_data["type"] == "reverse":
-        # لعبة عكس
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🔄 <b>اعكس الكلمة:</b>\n<code>{question_data['word']}</code>\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben"
 
-    elif game_data["type"] == "connect":
-        # لعبة وصل
-        parts = question_data['parts']
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🔗 <b>وصل الكلمة:</b>\n<code>{' + '.join(parts)}</code>\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben"
-
-    elif game_data["type"] == "country":
-        # لعبة بلد
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🌍 <b>السؤال:</b>\n{question_data['question']}\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben"
-
-    elif game_data["type"] == "capital":
-        # لعبة عاصمة
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"🏛️ <b>السؤال:</b>\n{question_data['question']}\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben"
-
-    elif game_data["type"] == "fastest":
-        # لعبة الأسرع
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"⚡ <b>السؤال:</b>\n{question_data['question']}\n\n"
-        text += f"💰 <b>الجائزة:</b> {game_data['reward']} Liben للأسرع في الإجابة الصحيحة!"
-
-    elif game_data["type"] == "question":
-        # لعبة سؤال (بدون مكافأة)
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"❓ <b>السؤال:</b>\n{question_data}\n\n"
-        text += f"📝 اكتب إجابتك في الرد!"
-
-    elif game_data["type"] == "write":
-        # لعبة كت (بدون مكافأة)
-        text = f"{game_data['emoji']} <b>لعبة {game_data['name']}</b>\n\n"
-        text += f"📝 <b>الموضوع:</b>\n{question_data}\n\n"
-        text += f"✍️ اكتب إجابتك في الرد!"
-
-    bot.send_message(
-        chat_id=original_message.chat.id,
-        text=text,
-        parse_mode='HTML',
-        reply_to_message_id=original_message.message_id
-    )
-
-def _handle_game_answer(message):
-    """معالجة إجابة المستخدم على لعبة نشطة"""
-    user_id     = message.from_user.id
-    chat_id     = message.chat.id
-    user_answer = message.text.strip()
-
-    # البحث عن لعبة نشطة في هذه المجموعة
-    active_game = None
-    game_id     = None
-    for gid, game_info in ACTIVE_GAMES.items():
-        if game_info["chat_id"] == chat_id:
-            active_game = game_info
-            game_id     = gid
-            break
-
-    if not active_game:
+def _is_correct(user_answer: str, correct: str, gtype: str) -> bool:
+    if not user_answer or not correct:
         return False
 
-    game_data  = active_game["game_data"]
-    game_type  = game_data["type"]
+    # ── فكك: مقارنة بالتنسيق المقسّم (م ك ت ب ة) ──
+    if gtype == "unscramble":
+        return _normalize_split(user_answer) == _normalize_split(correct)
 
-    # ── فحص الملكية للألعاب المقيدة ──
-    if game_type in OWNED_GAME_TYPES:
-        owner_uid = active_game.get("owner_uid")
-        if owner_uid and user_id != owner_uid:
-            # bot.reply_to(message, "❌ هذه اللعبة ليست لك!")
-            return True   # تم التعامل مع الرسالة (رفض)
+    # ── حكيمة: مقارنة مع الحفاظ على المسافات ──
+    if gtype == "quote":
+        return _normalize(user_answer) == _normalize(correct)
 
-    question_data  = active_game["question"]
-    correct_answer = _get_correct_answer(game_type, question_data)
+    # ── باقي الأنواع: بدون مسافات ──
+    return _normalize_no_spaces(user_answer) == _normalize_no_spaces(correct)
 
-    if _is_answer_correct(user_answer, correct_answer, game_type):
-        _handle_correct_answer(message, active_game, game_id, user_id)
-        return True
-    else:
-        if game_data["reward"] > 0:
-            bot.reply_to(message, "❌ إجابة خاطئة! حاول مرة أخرى.")
-            _end_game(game_id)
-        return True
 
-def _get_correct_answer(game_type, question_data):
-    """الحصول على الإجابة الصحيحة بناءً على نوع اللعبة"""
-    if game_type in ["quote", "unscramble", "reverse", "connect"]:
-        return question_data.get("answer", question_data)
-    elif game_type in ["country", "capital", "fastest"]:
-        return question_data["answer"]
-    else:
-        return None
+# ══════════════════════════════════════════
+# منح المكافأة وإنهاء اللعبة
+# ══════════════════════════════════════════
 
-def _is_answer_correct(user_answer, correct_answer, game_type):
-    """التحقق من صحة الإجابة"""
-    if not correct_answer:
-        return False
-
-    user_clean = user_answer.strip().lower()
-    correct_clean = str(correct_answer).strip().lower()
-
-    # إزالة المسافات والعلامات
-    user_clean = ''.join(user_clean.split())
-    correct_clean = ''.join(correct_clean.split())
-
-    return user_clean == correct_clean
-
-def _handle_correct_answer(message, game_info, game_id, user_id):
-    """معالجة الإجابة الصحيحة"""
-    game_data = game_info["game_data"]
-    reward    = game_data["reward"]
+def _award_and_end(message, game_info: dict, key: tuple, user_id: int):
+    reward = game_info["game_data"]["reward"]
 
     if reward > 0:
         if not check_bank_account(user_id):
-            success_msg = (
-                f"✅ <b>إجابة صحيحة!</b>\n\n"
-                f"اكتب <code>انشاء حساب بنكي</code> للحصول على جائزتك 🎁"
-            )
+            msg = "✅ <b>إجابة صحيحة!</b>\n\nاكتب <code>انشاء حساب بنكي</code> للحصول على جائزتك 🎁"
         else:
             update_bank_balance(user_id, reward)
-            success_msg = (
-                f"✅ <b>إجابة صحيحة!</b>\n\n"
-                f"💰 +{reward} Liben أُضيفت لرصيدك!"
-            )
-        bot.reply_to(message, success_msg, parse_mode="HTML")
+            msg = f"✅ <b>إجابة صحيحة!</b>\n\n💰 +{reward} {CURRENCY_ARABIC_NAME} أُضيفت لرصيدك!"
+        bot.reply_to(message, msg, parse_mode="HTML")
 
-    _end_game(game_id)
+    _end_game(key)
 
-def _end_game(game_id):
-    """إنهاء اللعبة وتنظيف البيانات"""
-    if game_id in ACTIVE_GAMES:
-        del ACTIVE_GAMES[game_id]
 
-# تنظيف الألعاب القديمة كل دقيقة
+# ══════════════════════════════════════════
+# إنهاء اللعبة
+# ══════════════════════════════════════════
+
+def _end_game(key: tuple):
+    with _LOCK:
+        ACTIVE_GAMES.pop(key, None)
+
+
+def _timeout_game(key: tuple):
+    with _LOCK:
+        info = ACTIVE_GAMES.pop(key, None)
+    if info:
+        try:
+            bot.send_message(info["chat_id"],
+                             "⏰ انتهى وقت اللعبة! لم يُجب أحد بشكل صحيح.",
+                             parse_mode="HTML")
+        except Exception:
+            pass
+
+
+# ══════════════════════════════════════════
+# تنظيف دوري للألعاب المنتهية
+# ══════════════════════════════════════════
+
 def cleanup_old_games():
-    """تنظيف الألعاب القديمة (أكثر من 10 دقائق)"""
-    current_time = time.time()
-    to_remove = []
+    now = time.time()
+    with _LOCK:
+        expired = [k for k, v in ACTIVE_GAMES.items()
+                   if now - v["start_time"] > GAME_TIMEOUT + 30]
+        for k in expired:
+            del ACTIVE_GAMES[k]
 
-    for game_id, game_info in ACTIVE_GAMES.items():
-        if current_time - game_info["start_time"] > 600:  # 10 دقائق
-            to_remove.append(game_id)
 
-    for game_id in to_remove:
-        del ACTIVE_GAMES[game_id]
-
-# تشغيل التنظيف كل دقيقة
-import threading
 def _periodic_cleanup():
     while True:
-        time.sleep(60)  # كل دقيقة
+        time.sleep(60)
         cleanup_old_games()
 
-cleanup_thread = threading.Thread(target=_periodic_cleanup, daemon=True)
-cleanup_thread.start()
+
+threading.Thread(target=_periodic_cleanup, daemon=True).start()

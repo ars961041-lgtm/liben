@@ -69,4 +69,17 @@ LIGHT_RISK_MAX_AMOUNT = 300
 # ============================================
 # Loans
 # ============================================
-MAX_LOAN_AMOUNT = 10000
+# MAX_LOAN_AMOUNT is stored in bot_constants DB under key "max_loan_amount"
+
+
+# ============================================
+# Season Awards
+# ============================================
+SEASON_CHAMPION_AWARD = 100000
+WARRIOR_OF_SEASON_AWARD = 70000
+KNIGHT_OF_SEASON_AWARD = 50000
+# ============================================
+# Currency Name
+# ============================================
+CURRENCY_ENGLISH_NAME = "Bito"
+CURRENCY_ARABIC_NAME = "بيتو"

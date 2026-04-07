@@ -1,13 +1,15 @@
 from core.bot import bot
-from database.db_queries.cities_queries import city_exists, create_city, get_user_city
+from database.db_queries.cities_queries import city_exists, get_user_city
 from database.db_queries.countries_queries import (
-    attach_user_to_country, create_invite, get_pending_invite,
-    get_user_country, has_pending_invite, update_invite_status
+    create_invite, get_pending_invite,
+    get_user_country, has_pending_invite, update_invite_status,
+    accept_country_invite_atomic, MAX_CITIES_PER_COUNTRY,
+    get_country_cities_count,
 )
 from utils.pagination.buttons import btn
 from utils.pagination.ui import edit_ui, send_ui
 from utils.pagination.router import register_action
-from utils.helpers import get_lines
+from utils.helpers import get_lines, can_contact_user, make_open_bot_button
 
 
 def handle_join_command(message):
@@ -23,6 +25,12 @@ def handle_join_command(message):
     country = get_user_country(from_user)
     if not country:
         bot.reply_to(message, "❌ لازم يكون عندك دولة أولاً")
+        return
+
+    # فحص سعة الدولة قبل إرسال الدعوة
+    if get_country_cities_count(country["id"]) >= MAX_CITIES_PER_COUNTRY:
+        bot.reply_to(message,
+                     f"❌ دولتك وصلت للحد الأقصى ({MAX_CITIES_PER_COUNTRY} مدن)")
         return
 
     if get_user_city(to_user):
@@ -53,9 +61,21 @@ def handle_join_command(message):
         bot.reply_to(message, "❌ المدينة موجودة مسبقاً، اختر اسماً آخر")
         return
 
+    # ─── التحقق من إمكانية التواصل قبل إدراج الدعوة في DB ───
+    if not can_contact_user(to_user):
+        bot.reply_to(
+            message,
+            f"❌ لا يمكن إرسال الدعوة لـ <b>{to_name}</b>\n"
+            f"يجب أن يبدأ المستخدم محادثة مع البوت أولاً.",
+            parse_mode="HTML",
+            reply_markup=make_open_bot_button(),
+        )
+        return
+
     invite_id = create_invite(from_user, to_user, country["id"], city_name)
 
-    owner = (to_user, message.chat.id)
+    # owner = (to_user, None) — دعوة عامة غير مرتبطة بدردشة معينة
+    owner = (to_user, None)
     text = (
         f"📩 <b>دعوة انضمام لدولة</b>\n"
         f"{get_lines()}\n"
@@ -70,33 +90,18 @@ def handle_join_command(message):
         btn("❌ رفض",  "reject_invite", owner=owner, color="d")
     ]
 
-    # ─── محاولة إرسال الدعوة للمستخدم ───
-    sent = False
     try:
         send_ui(to_user, text=text, buttons=buttons, layout=[2], owner_id=to_user)
-        sent = True
-    except Exception as e:
-        err_str = str(e)
-        if "403" in err_str or "Forbidden" in err_str or "bot was blocked" in err_str.lower():
-            # المستخدم حجب البوت أو لم يبدأ محادثة
-            update_invite_status(invite_id, "rejected")
-            bot.reply_to(
-                message,
-                f"❌ لا يمكن إرسال الدعوة لـ <b>{to_name}</b>\n"
-                f"يجب أن يبدأ المستخدم محادثة مع البوت أولاً.",
-                parse_mode="HTML"
-            )
-        else:
-            bot.reply_to(message, f"❌ خطأ أثناء إرسال الدعوة: {e}")
-        return
-
-    if sent:
         bot.reply_to(
             message,
             f"✅ تم إرسال دعوة الانضمام لـ <b>{to_name}</b>\n"
             f"🏙 المدينة: <b>{city_name}</b>",
             parse_mode="HTML"
         )
+    except Exception as e:
+        # فشل الإرسال بعد الإدراج — نلغي الدعوة
+        update_invite_status(invite_id, "rejected")
+        bot.reply_to(message, f"❌ خطأ أثناء إرسال الدعوة: {e}", parse_mode="HTML")
 
 
 @register_action("accept_invite")
@@ -116,14 +121,16 @@ def accept_invite(call, data):
                                   show_alert=True)
         return
 
-    city_id = create_city(invite["city_name"], user_id, invite["country_id"])
-    attach_user_to_country(user_id, city_id, invite["country_id"])
-    update_invite_status(invite["id"], "accepted")
+    # قبول ذري مع فحص السعة داخل معاملة
+    ok, result = accept_country_invite_atomic(invite["id"], user_id)
+    if not ok:
+        bot.answer_callback_query(call.id, result, show_alert=True)
+        return
+
+    city_id = int(result)
 
     # إشعار صاحب الدولة
     try:
-        from database.db_queries.countries_queries import get_user_country
-        country_owner_country = get_user_country(invite["from_user_id"])
         bot.send_message(
             invite["from_user_id"],
             f"✅ <b>{call.from_user.first_name}</b> قبل الدعوة وانضم لدولتك!\n"

@@ -26,6 +26,154 @@ def get_bot_link():
         return f'<a href="https://t.me/{username}">{name}</a>'
     else:
         return f"<b>{name}</b>"
+
+
+def make_open_bot_button() -> types.InlineKeyboardMarkup:
+    """
+    يبني زر URL لفتح خاص البوت.
+    يُعاد استخدامه في أي مكان يحتاج المستخدم لبدء محادثة مع البوت.
+    """
+    username = get_bot_username()
+    markup = types.InlineKeyboardMarkup()
+    if username:
+        markup.add(types.InlineKeyboardButton(
+            "🔓 فتح خاص البوت",
+            url=f"https://t.me/{username}"
+        ))
+    return markup
+
+
+def send_bot_profile(chat_id: int, caption: str,
+                     reply_to: int = None,
+                     open_pm_button: bool = False) -> None:
+    """
+    يرسل صورة البوت مع caption وزر اختياري لفتح الخاص.
+    """
+    import os
+    markup = None
+    if open_pm_button:
+        username = get_bot_username()
+        if username:
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton(
+                "💬 فتح خاص البوت",
+                url=f"https://t.me/{username}"
+            ))
+
+    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
+    kwargs = {
+        "caption":    caption,
+        "parse_mode": "HTML",
+        "reply_markup": markup,
+    }
+    if reply_to:
+        kwargs["reply_to_message_id"] = reply_to
+
+    try:
+        if os.path.exists(photo_path):
+            with open(photo_path, "rb") as f:
+                bot.send_photo(chat_id, f, **kwargs)
+        else:
+            bot.send_message(chat_id, caption,
+                             parse_mode="HTML",
+                             disable_web_page_preview=True,
+                             reply_markup=markup,
+                             reply_to_message_id=reply_to)
+    except Exception as e:
+        print(f"[send_bot_profile] error: {e}")
+
+
+def send_private_access_panel(chat_id: int, caption: str = None,
+                               reply_to: int = None,
+                               extra_buttons: list = None) -> None:
+    """
+    Helper reusable across all modules.
+    Sends bot profile image with a caption explaining the user must open
+    private chat, plus a PM button and any extra buttons.
+
+    extra_buttons: list of ui_btn() objects from utils/keyboards.py
+    """
+    import os
+    from utils.keyboards import ui_btn, build_keyboard
+
+    username = get_bot_username()
+    if caption is None:
+        caption = (
+            "💬 <b>افتح خاص البوت</b>\n\n"
+            "لاستخدام هذه الميزة يجب أن تبدأ محادثة خاصة مع البوت أولاً.\n"
+            "اضغط الزر بالأسفل ثم اضغط <b>Start</b>."
+        )
+
+    buttons = []
+    if username:
+        buttons.append(ui_btn(f"💬 {bot_name}", url=f"https://t.me/{username}",
+                               style="primary"))
+    if extra_buttons:
+        buttons.extend(extra_buttons)
+
+    cols   = min(len(buttons), 2)
+    layout = []
+    rem    = len(buttons)
+    while rem > 0:
+        layout.append(min(cols, rem))
+        rem -= cols
+
+    markup     = build_keyboard(buttons, layout) if buttons else None
+    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
+    kwargs     = {"caption": caption, "parse_mode": "HTML", "reply_markup": markup}
+    if reply_to:
+        kwargs["reply_to_message_id"] = reply_to
+
+    try:
+        if os.path.exists(photo_path):
+            with open(photo_path, "rb") as f:
+                bot.send_photo(chat_id, f, **kwargs)
+        else:
+            bot.send_message(chat_id, caption, parse_mode="HTML",
+                             disable_web_page_preview=True,
+                             reply_markup=markup,
+                             reply_to_message_id=reply_to)
+    except Exception as e:
+        print(f"[send_private_access_panel] error: {e}")
+
+
+def build_colored_buttons(buttons_data: list, cols: int = 1):
+    """
+    Reusable helper: takes parsed button dicts and returns an InlineKeyboardMarkup.
+
+    buttons_data items:
+        {"label": str, "url": str, "style": str}   → URL button
+        {"label": str, "cb": str,  "style": str}   → callback button
+
+    Uses utils/keyboards.py's ui_btn() and build_keyboard().
+    """
+    from utils.keyboards import ui_btn, build_keyboard as _kb
+    btns = []
+    for b in buttons_data:
+        if b.get("url"):
+            btns.append(ui_btn(b["label"], url=b["url"], style=b.get("style", "primary")))
+        elif b.get("cb"):
+            btns.append(ui_btn(b["label"], action=b["cb"], style=b.get("style", "primary")))
+    if not btns:
+        return None
+    layout = []
+    rem    = len(btns)
+    while rem > 0:
+        layout.append(min(cols, rem))
+        rem -= cols
+    return _kb(btns, layout)
+
+
+def can_contact_user(user_id: int) -> bool:
+    """
+    يتحقق إذا كان المستخدم بدأ محادثة مع البوت ولم يحجبه.
+    يرجع True إذا كان التواصل ممكناً.
+    """
+    try:
+        bot.send_chat_action(user_id, "typing")
+        return True
+    except Exception:
+        return False
       
 # -------------------------------------------------------------- Get Shapes
 
@@ -56,8 +204,8 @@ def get_happy_cheer():
 def get_lines():
   return random.choice(lines)
 
-def get_arrow_left():
-  return arrow_left
+def get_left_arrows():
+  return random.choice(arrow_lefts)
 
 def get_right_arrows():
   return random.choice(right_arrows)

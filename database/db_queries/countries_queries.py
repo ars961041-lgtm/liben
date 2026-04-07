@@ -305,3 +305,98 @@ def delete_rejected_invites():
     cursor = conn.cursor()
     cursor.execute("DELETE FROM country_invites WHERE status='rejected'")
     conn.commit()
+
+
+# ─────────────────────────────
+# عدد مدن الدولة
+# ─────────────────────────────
+def get_country_cities_count(country_id: int) -> int:
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM cities WHERE country_id = ?", (country_id,))
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
+# ─────────────────────────────
+# دعوات الانضمام المعلقة للمستخدم
+# ─────────────────────────────
+def get_pending_country_invites(to_user_id: int) -> list:
+    conn = get_db_conn()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ci.*, c.name AS country_name
+        FROM country_invites ci
+        JOIN countries c ON ci.country_id = c.id
+        WHERE ci.to_user_id = ? AND ci.status = 'pending'
+        ORDER BY ci.created_at DESC
+    """, (to_user_id,))
+    return [dict(r) for r in cursor.fetchall()]
+
+
+# ─────────────────────────────
+# قبول دعوة مع فحص السعة (atomic)
+# ─────────────────────────────
+MAX_CITIES_PER_COUNTRY = 10
+
+def accept_country_invite_atomic(invite_id: int, user_id: int) -> tuple[bool, str]:
+    """
+    يقبل الدعوة داخل معاملة واحدة مع إعادة فحص السعة.
+    يرجع (True, city_id) عند النجاح أو (False, رسالة_خطأ).
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+
+        # جلب الدعوة مع قفل
+        cursor.execute("""
+            SELECT * FROM country_invites
+            WHERE id = ? AND status = 'pending'
+        """, (invite_id,))
+        invite = cursor.fetchone()
+        if not invite:
+            conn.rollback()
+            return False, "❌ الدعوة غير موجودة أو انتهت صلاحيتها"
+
+        invite = dict(invite)
+        country_id = invite["country_id"]
+
+        # فحص السعة داخل المعاملة
+        cursor.execute(
+            "SELECT COUNT(*) FROM cities WHERE country_id = ?", (country_id,)
+        )
+        count = cursor.fetchone()[0]
+        if count >= MAX_CITIES_PER_COUNTRY:
+            cursor.execute(
+                "UPDATE country_invites SET status = 'rejected' WHERE id = ?", (invite_id,)
+            )
+            conn.commit()
+            return False, f"❌ لا يمكن الانضمام، الدولة وصلت للحد الأقصى ({MAX_CITIES_PER_COUNTRY} مدن)"
+
+        # إنشاء المدينة
+        cursor.execute(
+            "INSERT INTO cities (name, owner_id, country_id, last_collect_time) "
+            "VALUES (?, ?, ?, strftime('%s','now'))",
+            (invite["city_name"], user_id, country_id)
+        )
+        city_id = cursor.lastrowid
+
+        # ربط المستخدم بالدولة
+        cursor.execute(
+            "UPDATE users SET city_id = ?, country_id = ? WHERE user_id = ?",
+            (city_id, country_id, user_id)
+        )
+
+        # تحديث حالة الدعوة
+        cursor.execute(
+            "UPDATE country_invites SET status = 'accepted' WHERE id = ?", (invite_id,)
+        )
+
+        conn.commit()
+        return True, str(city_id)
+
+    except Exception as e:
+        conn.rollback()
+        return False, f"❌ خطأ داخلي: {e}"

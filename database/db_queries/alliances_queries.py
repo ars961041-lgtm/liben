@@ -1,6 +1,6 @@
 import time
 from ..connection import get_db_conn
-
+from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 MAX_COUNTRIES_PER_ALLIANCE = 10
 
 
@@ -326,7 +326,7 @@ def purchase_alliance_upgrade(alliance_id, upgrade_type_id, buyer_user_id):
     from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
     balance = get_user_balance(buyer_user_id)
     if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ. التكلفة: {cost:.0f} Liben"
+        return False, f"❌ رصيدك غير كافٍ. التكلفة: {cost:.0f} {CURRENCY_ARABIC_NAME}، رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}."
 
     deduct_user_balance(buyer_user_id, cost)
 
