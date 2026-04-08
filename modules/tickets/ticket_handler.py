@@ -97,7 +97,7 @@ def handle_category_selection(call, data):
     try:
         bot.edit_message_text(
             f"🎫 <b>تذكرة جديدة — {CATEGORIES[cat]}</b>\n\n"
-            f"✏️ أرسل رسالتك الآن (نص أو صورة أو ملف):",
+            f"✏️ أرسل رسالتك الآن (<b>نص فقط</b>):",
             chat_id, call.message.message_id, parse_mode="HTML"
         )
     except Exception:
@@ -126,7 +126,10 @@ def handle_ticket_message_input(message):
 
     # التحقق أن الرسالة نص فقط
     if not message.text:
-        bot.reply_to(message, "❌ التذاكر تدعم النص فقط.")
+        bot.reply_to(message,
+                     "❌ <b>الرجاء إرسال نص فقط لفتح التذكرة</b>\n\n"
+                     "لا يمكن إرسال صور أو ملصقات أو ملفات.",
+                     parse_mode="HTML")
         return True
 
     cat = state["data"].get("cat", "bug")
@@ -280,7 +283,7 @@ def _send_dev_reply_to_user(ticket, message, ticket_id):
         if message.text:
             bot.send_message(
                 user_id,
-                header + _escape(message.text) + "\n{get_lines()}",
+                header + _escape(message.text) + f"\n{get_lines()}",
                 parse_mode="HTML"
             )
 

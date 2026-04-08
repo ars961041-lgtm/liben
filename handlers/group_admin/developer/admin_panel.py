@@ -543,14 +543,15 @@ def reset_games_confirm(call, data):
         text=(
             "⚠️ <b>إعادة تعيين بيانات الألعاب</b>\n"
             f"{get_lines()}\n\n"
-            "سيتم حذف بيانات اللعب فقط:\n"
-            "• إنجازات اللاعبين وتقدمهم\n"
-            "• سجل المعارك والحروب\n"
-            "• نقاط النفوذ والمواسم\n"
-            "• صيانة الجيش والتعب والتعافي\n"
-            "• القروض والكولداون البنكي\n"
-            "• المهام اليومية\n\n"
-            "✅ <b>لن يُمس:</b> المستخدمون، الأرصدة، الدول، المدن، المباني، التحالفات.\n\n"
+            "سيتم حذف جميع بيانات اللعب:\n"
+            "• الدول والمدن والمباني والجيوش\n"
+            "• التحالفات والحروب والمعارك\n"
+            "• الأرصدة والقروض والاقتصاد\n"
+            "• الإنجازات والمواسم والنفوذ\n"
+            "• المهام اليومية والكولداون\n\n"
+            "✅ <b>لن يُمس:</b>\n"
+            "المستخدمون، الأسماء، المجموعات،\n"
+            "الأذكار، الختمة، القرآن، التذاكر.\n\n"
             "⚠️ <b>هذا الإجراء لا يمكن التراجع عنه!</b>\n\nهل أنت متأكد؟"
         ),
         buttons=[
@@ -595,46 +596,30 @@ def _execute_games_reset(executed_by: int) -> tuple[bool, str]:
     from utils.logger import log_event
 
     # الجداول التي تُحذف بالكامل (بيانات اللعب فقط)
+    # محفوظ: users, users_name, groups, group_members, bot_constants, bot_developers,
+    #         global_mutes, group_mutes, azkar*, khatma*, quran*, tickets*, magazine*
     GAME_TABLES = [
         # تقدم اللاعبين
-        "user_achievements",
-        "season_history",
-        "season_titles",
-        "country_influence",
+        "user_achievements", "season_history", "season_titles", "country_influence",
+        # دول ومدن وبنية تحتية
+        "countries", "cities", "city_buildings", "city_troops", "city_equipment",
+        "country_assets", "country_resources",
         # معارك وحروب
-        "country_battles",
-        "battle_state",
-        "battle_effects",
-        "battle_events",
-        "battle_action_cooldowns",
-        "battle_history",
-        "battle_losses",
-        "battles",
-        "war_costs_log",
-        "support_requests",
+        "country_battles", "battle_state", "battle_effects", "battle_events",
+        "battle_action_cooldowns", "battle_history", "battle_losses", "battles",
+        "war_costs_log", "support_requests",
         # جيش وصيانة
-        "army_maintenance",
-        "army_fatigue",
-        "country_recovery",
-        "injured_troops",
-        "damaged_equipment",
-        "repair_queue",
-        "city_troops",
-        "city_equipment",
+        "army_maintenance", "army_fatigue", "country_recovery",
+        "injured_troops", "damaged_equipment", "repair_queue",
         # تجسس واستكشاف
-        "spy_operations",
-        "discovered_countries",
-        "exploration_log",
-        "spy_agents",
-        # اقتصاد
-        "loans",
-        "bank_cooldowns",
-        "user_cooldowns",
-        "city_budget",
-        "alliance_support_stats",
+        "spy_operations", "discovered_countries", "exploration_log", "spy_agents",
+        # اقتصاد وبنك
+        "loans", "bank_cooldowns", "user_cooldowns", "city_budget",
+        "alliance_support_stats", "user_accounts",
+        # تحالفات
+        "alliances", "alliance_members", "alliance_wars",
         # مهام وكولداون
-        "daily_tasks",
-        "action_cooldowns",
+        "daily_tasks", "action_cooldowns",
         # أحداث عالمية
         "global_events",
     ]

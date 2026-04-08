@@ -17,6 +17,52 @@ def get_bot_username() -> str:
         return ""
 
 
+def get_bot_photo_id() -> str | None:
+    """
+    يجلب file_id لأحدث صورة بروفايل للبوت ديناميكياً ويخزنها مؤقتاً.
+    يرجع None إذا لم تكن هناك صورة.
+    """
+    try:
+        import core.bot as _cb
+        if not getattr(_cb, "_bot_photo_id", None):
+            bot_id = bot.get_me().id
+            photos = bot.get_user_profile_photos(bot_id, limit=1)
+            if photos.total_count > 0:
+                _cb._bot_photo_id = photos.photos[0][-1].file_id
+            else:
+                _cb._bot_photo_id = ""
+        return _cb._bot_photo_id or None
+    except Exception:
+        return None
+
+
+def get_entity_photo_id(chat_id: int):
+    """
+    يجلب صورة بروفايل أي كيان (مجموعة أو مستخدم أو بوت).
+    - للمجموعات/القنوات: يُنزّل الصورة ويرجع bytes
+      (ChatPhoto.big_file_id لا يمكن استخدامه مباشرة مع send_photo)
+    - للمستخدمين/البوتات: يرجع file_id من get_user_profile_photos
+    يرجع None إذا لم تكن هناك صورة أو فشل التنزيل.
+    """
+    try:
+        chat = bot.get_chat(chat_id)
+        if chat.type in ("group", "supergroup", "channel"):
+            photo = getattr(chat, "photo", None)
+            if not photo:
+                return None
+            # big_file_id هو ChatPhoto — يجب تنزيله أولاً قبل إرساله
+            file_info = bot.get_file(photo.big_file_id)
+            downloaded = bot.download_file(file_info.file_path)
+            return downloaded  # bytes — يمكن تمريره مباشرة لـ send_photo
+        # مستخدم أو بوت — file_id من get_user_profile_photos قابل للإرسال مباشرة
+        photos = bot.get_user_profile_photos(chat_id, limit=1)
+        if photos.total_count > 0:
+            return photos.photos[0][-1].file_id
+        return None
+    except Exception:
+        return None
+
+
 def get_bot_link():
     username = get_bot_username()
     name = bot_name
@@ -47,9 +93,9 @@ def send_bot_profile(chat_id: int, caption: str,
                      reply_to: int = None,
                      open_pm_button: bool = False) -> None:
     """
-    يرسل صورة البوت مع caption وزر اختياري لفتح الخاص.
+    يرسل صورة البوت الحالية (مجلوبة ديناميكياً) مع caption.
+    إذا لم تكن هناك صورة يرسل نصاً فقط.
     """
-    import os
     markup = None
     if open_pm_button:
         username = get_bot_username()
@@ -60,7 +106,7 @@ def send_bot_profile(chat_id: int, caption: str,
                 url=f"https://t.me/{username}"
             ))
 
-    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
+    photo_id = get_bot_photo_id()
     kwargs = {
         "caption":    caption,
         "parse_mode": "HTML",
@@ -70,9 +116,8 @@ def send_bot_profile(chat_id: int, caption: str,
         kwargs["reply_to_message_id"] = reply_to
 
     try:
-        if os.path.exists(photo_path):
-            with open(photo_path, "rb") as f:
-                bot.send_photo(chat_id, f, **kwargs)
+        if photo_id:
+            bot.send_photo(chat_id, photo_id, **kwargs)
         else:
             bot.send_message(chat_id, caption,
                              parse_mode="HTML",
@@ -87,13 +132,9 @@ def send_private_access_panel(chat_id: int, caption: str = None,
                                reply_to: int = None,
                                extra_buttons: list = None) -> None:
     """
-    Helper reusable across all modules.
-    Sends bot profile image with a caption explaining the user must open
-    private chat, plus a PM button and any extra buttons.
-
-    extra_buttons: list of ui_btn() objects from utils/keyboards.py
+    يرسل صورة البوت الحالية مع رسالة تطلب من المستخدم فتح الخاص،
+    مع زر PM وأي أزرار إضافية.
     """
-    import os
     from utils.keyboards import ui_btn, build_keyboard
 
     username = get_bot_username()
@@ -118,16 +159,15 @@ def send_private_access_panel(chat_id: int, caption: str = None,
         layout.append(min(cols, rem))
         rem -= cols
 
-    markup     = build_keyboard(buttons, layout) if buttons else None
-    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
-    kwargs     = {"caption": caption, "parse_mode": "HTML", "reply_markup": markup}
+    markup   = build_keyboard(buttons, layout) if buttons else None
+    photo_id = get_bot_photo_id()
+    kwargs   = {"caption": caption, "parse_mode": "HTML", "reply_markup": markup}
     if reply_to:
         kwargs["reply_to_message_id"] = reply_to
 
     try:
-        if os.path.exists(photo_path):
-            with open(photo_path, "rb") as f:
-                bot.send_photo(chat_id, f, **kwargs)
+        if photo_id:
+            bot.send_photo(chat_id, photo_id, **kwargs)
         else:
             bot.send_message(chat_id, caption, parse_mode="HTML",
                              disable_web_page_preview=True,
@@ -342,7 +382,7 @@ def format_remaining_time(seconds):
             parts.append(f"{sec} ثواني")
 
     return " و ".join(parts)
-  
+
 # -------------------------------------------------------------- Messages
 
 def dont_have_power ():

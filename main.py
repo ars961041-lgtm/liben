@@ -31,13 +31,14 @@ def replies(message):
         print("Error in message handler:", e)
 
 
-@bot.message_handler(content_types=["photo"])
-def photo_handler(message):
+@bot.message_handler(content_types=["photo", "video", "audio", "voice",
+                                     "video_note", "document", "sticker", "animation"])
+def media_handler(message):
     try:
-        from modules.post_creator import handle_post_creator_photo
-        handle_post_creator_photo(message)
+        # قفل الوسائط — يُعالج في _dispatch عبر receive_responses
+        receive_responses(message)
     except Exception as e:
-        print("Error in photo handler:", e)
+        print("Error in media handler:", e)
 
 def start_bot():
     while True:
@@ -67,6 +68,10 @@ if __name__ == "__main__":
     # Register rules callbacks
     from modules.rules.rules_handler import register_rules_callbacks
     register_rules_callbacks()
+
+    # Start khatmah reminder scheduler
+    from modules.quran.khatmah_reminder import start_khatmah_reminder_scheduler
+    start_khatmah_reminder_scheduler()
 
     run_daily_tasks()
     

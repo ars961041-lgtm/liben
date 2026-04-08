@@ -70,9 +70,9 @@ def create_asset_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS asset_log (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        city_id    INTEGER NOT NULL,
-        user_id    INTEGER NOT NULL,
-        asset_id   INTEGER NOT NULL,
+        city_id    INTEGER NOT NULL REFERENCES cities(id),
+        user_id    INTEGER NOT NULL REFERENCES users(user_id),
+        asset_id   INTEGER NOT NULL REFERENCES assets(id),
         action     TEXT NOT NULL,   -- 'buy' | 'upgrade'
         quantity   INTEGER DEFAULT 0,
         from_level INTEGER DEFAULT 1,

@@ -1,4 +1,5 @@
 from database.db_schema.banks import create_banks_tables
+from database.db_schema.user_timezone import create_user_timezone_table
 from database.db_schema.daily_tasks import create_daily_tasks_pool_table
 from .users import create_users_table
 from .groups import create_groups_tables
@@ -19,8 +20,10 @@ def create_all_tables():
     from database.db_schema.admin_system import create_admin_tables
     create_admin_tables()
 
-    create_banks_tables()
+    # users أولاً لأن جميع الجداول الأخرى تعتمد على users(user_id) كـ FK
     create_users_table()
+    create_user_timezone_table()
+    create_banks_tables()
     create_groups_tables()
     create_economy_tables()
     create_countries_tables()
@@ -33,6 +36,7 @@ def create_all_tables():
     create_war_balance_tables()
     create_war_extension_tables()
     create_progression_tables()
+    # daily_tasks آخراً لأنه يعتمد على cities(id) كـ FK
     create_daily_tasks_pool_table()
 
     from modules.tickets.ticket_db import create_ticket_tables

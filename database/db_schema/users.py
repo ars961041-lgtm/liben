@@ -7,9 +7,7 @@ def create_users_table():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL UNIQUE,
-        city_id    INTEGER DEFAULT NULL,
-        country_id INTEGER DEFAULT NULL
+        user_id    INTEGER NOT NULL UNIQUE
     );
     ''')
     

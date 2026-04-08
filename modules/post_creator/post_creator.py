@@ -8,7 +8,7 @@ Photo input: routed via handle_post_creator_photo() in main.py.
 Button input format (per line):
     نص | https://url          → URL button, default color
     نص | https://url | 1      → URL button, primary (blue)
-    نص | https://url | 2      → URL button, secondary (grey)
+    نص | https://url | 2      → URL button, success (green)
     نص | https://url | 3      → URL button, danger (red)
     نص | callback:action_name → internal callback button
 """
@@ -27,18 +27,15 @@ _STATE    = "post_creator"
 _TTL      = 600          # 10 min
 _MAX_BTNS = 10           # max buttons per post
 
-_COLOR_MAP = {"1": "primary", "2": "secondary", "3": "danger"}
+_COLOR_MAP = {"1": "primary", "2": "success", "3": "danger"}
 
 _COLOR_LEGEND = (
     "🎨 <b>ألوان الأزرار:</b>\n"
     "  1️⃣ أساسي (أزرق)\n"
-    "  2️⃣ ثانوي (رمادي)\n"
+    "  2️⃣ ثانوي (أخضر)\n"
     "  3️⃣ مميز (أحمر)\n"
     "  <i>(اتركه فارغاً = افتراضي)</i>"
 )
-
-_PHOTO_PATH = os.path.join("assets", "images", "bot_profile.jpg")
-
 
 # ══════════════════════════════════════════
 # Entry point
@@ -63,7 +60,7 @@ def open_post_creator(message):
         "📍 <b>الخطوة 1 — اختر وجهة النشر</b>\n\n"
         "• اضغط <b>هذه المحادثة</b> للنشر هنا\n"
         "• أو أرسل معرّف القناة/المجموعة\n"
-        "  مثال: <code>-1001234567890</code>"
+        "  مثال: <code>-1002121901488</code>"
     )
     buttons = [
         btn("📍 هذه المحادثة", "pc_use_current", {}, owner=owner, color="p"),
@@ -347,9 +344,8 @@ def _panel(uid, cid, call=None):
             "<code>نص | callback:action_name | رقم_اللون</code>\n\n"
             f"{_COLOR_LEGEND}"
             "\n\n<b>مثال:</b>\n"
-            "<code>زيارة الموقع | https://example.com | 1\n"
-            "تواصل معنا | https://t.me/username\n"
-            "إغلاق | callback:close_post | 3</code>"
+            "<code>زيارة الموقع | https://example.com | 1</code>\n"
+            "<code>📢 قناة التحديثات | https://t.me/BotBeloPro | 3</code>\n"
             f"{saved}"
         )
         buttons = [
@@ -465,7 +461,25 @@ def handle_post_creator_input(message) -> bool:
         if not raw.lstrip("-").isdigit():
             _toast(cid, "❌ أرسل معرّفاً رقمياً صحيحاً.")
             return True
-        _set_extra(uid, cid, target=int(raw))
+
+        target_id = int(raw)
+
+        # ── التحقق من وجود البوت في القناة/المجموعة وصلاحياته ──
+        valid, err_msg = _validate_target(target_id)
+        if not valid:
+            mid = StateManager.get_mid(uid, cid)
+            if mid:
+                try:
+                    bot.edit_message_text(
+                        f"❌ <b>تعذّر النشر في هذه الوجهة</b>\n\n{err_msg}\n\n"
+                        "أرسل معرّفاً آخر أو اضغط إلغاء:",
+                        cid, mid, parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+            return True
+
+        _set_extra(uid, cid, target=target_id)
         StateManager.update(uid, cid, {"step": "await_has_image"})
         _panel(uid, cid)
         return True
@@ -615,3 +629,40 @@ def _toast(cid, text, ttl=4.0):
         threading.Timer(ttl, lambda: _delete(cid, msg.message_id)).start()
     except Exception:
         pass
+
+
+def _validate_target(target_id: int) -> tuple[bool, str]:
+    """
+    يتحقق من أن البوت عضو في الوجهة ويملك صلاحية إرسال الرسائل.
+    يرجع (True, "") عند النجاح، أو (False, رسالة_الخطأ).
+    """
+    try:
+        bot_id = bot.get_me().id
+        member = bot.get_chat_member(target_id, bot_id)
+    except Exception as e:
+        err = str(e).lower()
+        if "chat not found" in err or "invalid" in err:
+            return False, "❌ المجموعة/القناة غير موجودة أو المعرّف خاطئ."
+        if "bot is not a member" in err or "kicked" in err:
+            return False, "❌ البوت ليس عضواً في هذه المجموعة/القناة.\nأضف البوت أولاً ثم حاول مجدداً."
+        return False, f"❌ تعذّر الوصول للوجهة:\n<code>{e}</code>"
+
+    status = member.status
+    if status == "kicked":
+        return False, "❌ البوت محظور من هذه المجموعة/القناة."
+    if status == "left":
+        return False, "❌ البوت ليس عضواً في هذه المجموعة/القناة."
+
+    # للقنوات: يجب أن يكون مشرفاً
+    try:
+        chat = bot.get_chat(target_id)
+        if chat.type == "channel":
+            if status != "administrator":
+                return False, "❌ البوت يحتاج صلاحية المشرف في القناة لإرسال المنشورات."
+            can_post = getattr(member, "can_post_messages", False)
+            if not can_post:
+                return False, "❌ البوت لا يملك صلاحية نشر الرسائل في هذه القناة.\nفعّل صلاحية 'نشر الرسائل' للبوت."
+    except Exception:
+        pass
+
+    return True, ""

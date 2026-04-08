@@ -18,17 +18,19 @@ def create_daily_tasks_pool_table():
     )
     """)
     
-    # ───── جدول مهام كل مستخدم يومية ─────
+    # ───── جدول مهام كل مدينة يومية ─────
+    # المهام مرتبطة بالمدينة فقط (city_id → cities.id)
+    # لا يوجد user_id مباشر — المالك يُستنتج عبر cities.owner_id
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS daily_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
         city_id INTEGER NOT NULL,
         task_data TEXT NOT NULL,
         assigned_at INTEGER DEFAULT (strftime('%s','now')),
         completed INTEGER DEFAULT 0,
         reward_collected INTEGER DEFAULT 0,
-        UNIQUE(user_id, task_data)          -- يمنع تكرار نفس المهمة لنفس المستخدم
+        UNIQUE(city_id, task_data),         -- يمنع تكرار نفس المهمة لنفس المدينة
+        FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE CASCADE
     )
     """)
     

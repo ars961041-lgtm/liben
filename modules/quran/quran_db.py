@@ -114,6 +114,78 @@ def create_tables():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ayat_search ON ayat(text_without_tashkeel)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_fav_user ON user_favorites(user_id)")
 
+    # ── تقدم قراءة السور ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS surah_read_progress (
+        user_id  INTEGER NOT NULL,
+        surah_id INTEGER NOT NULL,
+        ayah     INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, surah_id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_srp_user ON surah_read_progress(user_id)")
+
+    # ── ختمة القرآن ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_progress (
+        user_id     INTEGER PRIMARY KEY,
+        last_surah  INTEGER NOT NULL DEFAULT 1,
+        last_ayah   INTEGER NOT NULL DEFAULT 1,
+        total_read  INTEGER NOT NULL DEFAULT 0,
+        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # ── الهدف اليومي ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_goals (
+        user_id       INTEGER PRIMARY KEY,
+        daily_target  INTEGER NOT NULL DEFAULT 10
+    )
+    """)
+
+    # ── سجل القراءة اليومي (للاقتراح الذكي) ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_daily_log (
+        user_id   INTEGER NOT NULL,
+        log_date  TEXT    NOT NULL,
+        count     INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, log_date)
+    )
+    """)
+
+    # ── الاستمرارية (streak) ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_streak (
+        user_id        INTEGER PRIMARY KEY,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        last_read_date TEXT
+    )
+    """)
+
+    # ── تذكيرات الختمة ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_reminders (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL,
+        hour       INTEGER NOT NULL,
+        minute     INTEGER NOT NULL,
+        tz_offset  INTEGER NOT NULL DEFAULT 0,
+        enabled    INTEGER NOT NULL DEFAULT 1
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_kh_rem_user ON khatma_reminders(user_id)")
+
+    # ── تتبع الآيات المحسوبة (منع التكرار) ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS khatma_counted_ayat (
+        user_id  INTEGER NOT NULL,
+        ayah_id  INTEGER NOT NULL,
+        log_date TEXT    NOT NULL,
+        PRIMARY KEY (user_id, ayah_id, log_date)
+    )
+    """)
+
     conn.commit()
 
     # ── إدراج السور تلقائياً ──
@@ -259,6 +331,42 @@ def get_all_suras() -> list[dict]:
     return [dict(r) for r in cur.fetchall()]
 
 
+def get_next_tafseer_ayah(sura_id: int, tafseer_col: str) -> int:
+    """
+    يرجع رقم الآية التالية التي تحتاج تفسيراً في السورة.
+    يبحث عن أول آية بدون تفسير بالترتيب.
+    إذا كل الآيات لها تفسير → يرجع آخر رقم + 1
+    """
+    cur = _get_conn().cursor()
+    cur.execute(
+        f"SELECT ayah_number FROM ayat WHERE sura_id=? AND ({tafseer_col} IS NULL OR {tafseer_col}='') ORDER BY ayah_number ASC LIMIT 1",
+        (sura_id,),
+    )
+    row = cur.fetchone()
+    if row:
+        return row[0]
+    # كل الآيات لها تفسير — رجّع آخر رقم + 1
+    cur.execute("SELECT MAX(ayah_number) FROM ayat WHERE sura_id=?", (sura_id,))
+    row = cur.fetchone()
+    return (row[0] or 0) + 1
+
+
+def get_ayat_by_sura(sura_id: int) -> list[dict]:
+    """
+    يرجع رقم الآية التالية للإدراج في السورة.
+    إذا لم توجد آيات → 1
+    وإلا → آخر رقم + 1
+    """
+    cur = _get_conn().cursor()
+    cur.execute(
+        "SELECT MAX(ayah_number) FROM ayat WHERE sura_id=?",
+        (sura_id,),
+    )
+    row = cur.fetchone()
+    last = row[0] if row and row[0] else 0
+    return last + 1
+
+
 def get_ayat_by_sura(sura_id: int) -> list[dict]:
     cur = _get_conn().cursor()
     cur.execute("""
@@ -354,3 +462,366 @@ def clear_favorites(user_id: int) -> int:
     cur.execute("DELETE FROM user_favorites WHERE user_id = ?", (user_id,))
     conn.commit()
     return cur.rowcount
+
+
+# ══════════════════════════════════════════
+# تقدم قراءة السور
+# ══════════════════════════════════════════
+
+def get_surah_read_progress(user_id: int, surah_id: int) -> int:
+    """Returns last read ayah_number for this surah (1 if not started)."""
+    cur = _get_conn().cursor()
+    cur.execute(
+        "SELECT ayah FROM surah_read_progress WHERE user_id=? AND surah_id=?",
+        (user_id, surah_id),
+    )
+    row = cur.fetchone()
+    return row[0] if row else 1
+
+
+def save_surah_read_progress(user_id: int, surah_id: int, ayah_number: int):
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO surah_read_progress (user_id, surah_id, ayah)
+           VALUES (?,?,?)
+           ON CONFLICT(user_id, surah_id) DO UPDATE SET ayah=excluded.ayah""",
+        (user_id, surah_id, ayah_number),
+    )
+    conn.commit()
+
+
+def get_suras_with_ayat() -> list[dict]:
+    """Returns only suras that have at least one ayah."""
+    cur = _get_conn().cursor()
+    cur.execute("""
+        SELECT s.id, s.name, COUNT(a.id) as ayah_count
+        FROM suras s
+        JOIN ayat a ON a.sura_id = s.id
+        GROUP BY s.id
+        ORDER BY s.id ASC
+    """)
+    return [dict(r) for r in cur.fetchall()]
+
+
+# ══════════════════════════════════════════
+# ختمة القرآن
+# ══════════════════════════════════════════
+
+TOTAL_QURAN_AYAT = 6236
+
+
+def get_khatma(user_id: int) -> dict:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM khatma_progress WHERE user_id=?", (user_id,))
+    row = cur.fetchone()
+    return dict(row) if row else {
+        "user_id": user_id, "last_surah": 1, "last_ayah": 1,
+        "total_read": 0, "updated_at": None,
+    }
+
+
+def update_khatma(user_id: int, surah_id: int, ayah_number: int):
+    """
+    Increment total_read only if this ayah hasn't been counted today.
+    Updates streak and daily log as well.
+    Returns True if a new ayah was counted.
+    """
+    from datetime import date, timedelta
+    today = date.today().isoformat()
+    conn  = _get_conn()
+    cur   = conn.cursor()
+
+    # Get ayah_id for dedup key
+    cur.execute(
+        "SELECT id FROM ayat WHERE sura_id=? AND ayah_number=?",
+        (surah_id, ayah_number),
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    ayah_id = row[0]
+
+    # Dedup check — only count once per ayah per day
+    cur.execute(
+        "SELECT 1 FROM khatma_counted_ayat WHERE user_id=? AND ayah_id=? AND log_date=?",
+        (user_id, ayah_id, today),
+    )
+    if cur.fetchone():
+        # Already counted today — just update last position
+        conn.execute(
+            """INSERT INTO khatma_progress (user_id, last_surah, last_ayah, total_read, updated_at)
+               VALUES (?,?,?,0, datetime('now'))
+               ON CONFLICT(user_id) DO UPDATE SET
+                   last_surah=excluded.last_surah,
+                   last_ayah=excluded.last_ayah,
+                   updated_at=excluded.updated_at""",
+            (user_id, surah_id, ayah_number),
+        )
+        conn.commit()
+        return False
+
+    # Mark as counted
+    conn.execute(
+        "INSERT OR IGNORE INTO khatma_counted_ayat (user_id, ayah_id, log_date) VALUES (?,?,?)",
+        (user_id, ayah_id, today),
+    )
+
+    # Update progress
+    conn.execute(
+        """INSERT INTO khatma_progress (user_id, last_surah, last_ayah, total_read, updated_at)
+           VALUES (?,?,?,1, datetime('now'))
+           ON CONFLICT(user_id) DO UPDATE SET
+               last_surah=excluded.last_surah,
+               last_ayah=excluded.last_ayah,
+               total_read=total_read+1,
+               updated_at=excluded.updated_at""",
+        (user_id, surah_id, ayah_number),
+    )
+
+    # Daily log
+    conn.execute(
+        """INSERT INTO khatma_daily_log (user_id, log_date, count)
+           VALUES (?,?,1)
+           ON CONFLICT(user_id, log_date) DO UPDATE SET count=count+1""",
+        (user_id, today),
+    )
+
+    # Streak update — with 7-day grace period
+    cur.execute("SELECT current_streak, last_read_date FROM khatma_streak WHERE user_id=?",
+                (user_id,))
+    streak_row = cur.fetchone()
+    yesterday  = (date.today() - timedelta(days=1)).isoformat()
+    if streak_row:
+        streak, last_date = streak_row[0], streak_row[1]
+        if last_date == today:
+            new_streak = streak          # already updated today
+        elif last_date == yesterday:
+            new_streak = streak + 1      # consecutive day
+        else:
+            # Grace period: if gap <= 7 days, continue streak; else reset
+            try:
+                from datetime import datetime as _dt
+                last_dt = _dt.fromisoformat(last_date)
+                today_dt = _dt.fromisoformat(today)
+                gap_days = (today_dt - last_dt).days
+                new_streak = streak + 1 if gap_days <= 7 else 1
+            except Exception:
+                new_streak = 1
+    else:
+        new_streak = 1
+
+    conn.execute(
+        """INSERT INTO khatma_streak (user_id, current_streak, last_read_date)
+           VALUES (?,?,?)
+           ON CONFLICT(user_id) DO UPDATE SET
+               current_streak=excluded.current_streak,
+               last_read_date=excluded.last_read_date""",
+        (user_id, new_streak, today),
+    )
+
+    conn.commit()
+    return True
+
+
+def reset_khatma(user_id: int):
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO khatma_progress (user_id, last_surah, last_ayah, total_read, updated_at)
+           VALUES (?,1,1,0,datetime('now'))
+           ON CONFLICT(user_id) DO UPDATE SET
+               last_surah=1, last_ayah=1, total_read=0, updated_at=datetime('now')""",
+        (user_id,),
+    )
+    conn.commit()
+
+
+def get_khatma_goal(user_id: int) -> int:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT daily_target FROM khatma_goals WHERE user_id=?", (user_id,))
+    row = cur.fetchone()
+    return row[0] if row else 10
+
+
+def set_khatma_goal(user_id: int, target: int):
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO khatma_goals (user_id, daily_target) VALUES (?,?)
+           ON CONFLICT(user_id) DO UPDATE SET daily_target=excluded.daily_target""",
+        (user_id, target),
+    )
+    conn.commit()
+
+
+def get_daily_avg(user_id: int, days: int = 3) -> int:
+    """Returns average ayat read per day over last N days (0 if no data)."""
+    from datetime import date, timedelta
+    cur   = _get_conn().cursor()
+    dates = [(date.today() - timedelta(days=i)).isoformat() for i in range(1, days + 1)]
+    placeholders = ",".join("?" * len(dates))
+    cur.execute(
+        f"SELECT SUM(count) FROM khatma_daily_log WHERE user_id=? AND log_date IN ({placeholders})",
+        [user_id] + dates,
+    )
+    total = cur.fetchone()[0] or 0
+    return total // days
+
+
+def get_streak(user_id: int) -> int:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT current_streak FROM khatma_streak WHERE user_id=?", (user_id,))
+    row = cur.fetchone()
+    return row[0] if row else 0
+
+
+def get_today_count(user_id: int) -> int:
+    from datetime import date
+    today = date.today().isoformat()
+    cur   = _get_conn().cursor()
+    cur.execute(
+        "SELECT count FROM khatma_daily_log WHERE user_id=? AND log_date=?",
+        (user_id, today),
+    )
+    row = cur.fetchone()
+    return row[0] if row else 0
+
+
+# ── Khatmah reminders ──
+
+_MAX_KH_REMINDERS = 2
+
+
+def get_khatma_reminders(user_id: int) -> list:
+    cur = _get_conn().cursor()
+    cur.execute(
+        "SELECT * FROM khatma_reminders WHERE user_id=? AND enabled=1 ORDER BY hour, minute",
+        (user_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+def count_khatma_reminders(user_id: int) -> int:
+    cur = _get_conn().cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM khatma_reminders WHERE user_id=? AND enabled=1",
+        (user_id,),
+    )
+    return cur.fetchone()[0]
+
+
+def add_khatma_reminder(user_id: int, hour: int, minute: int,
+                        tz_offset: int = 0) -> int:
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute(
+        "INSERT INTO khatma_reminders (user_id, hour, minute, tz_offset) VALUES (?,?,?,?)",
+        (user_id, hour, minute, tz_offset),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def delete_khatma_reminder(reminder_id: int, user_id: int) -> bool:
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute(
+        "DELETE FROM khatma_reminders WHERE id=? AND user_id=?",
+        (reminder_id, user_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def get_due_khatma_reminders(utc_hour: int, utc_minute: int) -> list:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM khatma_reminders WHERE enabled=1")
+    due = []
+    for r in cur.fetchall():
+        r = dict(r)
+        local_total = r["hour"] * 60 + r["minute"]
+        utc_total   = (local_total - r["tz_offset"]) % (24 * 60)
+        if utc_total == utc_hour * 60 + utc_minute:
+            due.append(r)
+    return due
+
+
+# ══════════════════════════════════════════
+# إنجازات الختمة
+# ══════════════════════════════════════════
+
+_ACHIEVEMENTS = {
+    "active_reader": {"total": 1000, "streak": None,  "label": "قارئ نشيط 📖"},
+    "week_streak":   {"total": None,  "streak": 7,    "label": "أسبوع متواصل 🔥"},
+}
+
+
+def check_new_achievements(user_id: int) -> list[str]:
+    """
+    Returns list of newly unlocked achievement labels.
+    Marks them as seen so they don't fire again.
+    """
+    k      = get_khatma(user_id)
+    streak = get_streak(user_id)
+    conn   = _get_conn()
+    cur    = conn.cursor()
+
+    # Ensure seen table exists
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS khatma_achievements_seen (
+            user_id INTEGER NOT NULL,
+            key     TEXT    NOT NULL,
+            PRIMARY KEY (user_id, key)
+        )
+    """)
+    conn.commit()
+
+    new_ones = []
+    for key, cond in _ACHIEVEMENTS.items():
+        # Already seen?
+        cur.execute(
+            "SELECT 1 FROM khatma_achievements_seen WHERE user_id=? AND key=?",
+            (user_id, key),
+        )
+        if cur.fetchone():
+            continue
+        # Check condition
+        unlocked = False
+        if cond["total"] and k["total_read"] >= cond["total"]:
+            unlocked = True
+        if cond["streak"] and streak >= cond["streak"]:
+            unlocked = True
+        if unlocked:
+            conn.execute(
+                "INSERT OR IGNORE INTO khatma_achievements_seen (user_id, key) VALUES (?,?)",
+                (user_id, key),
+            )
+            new_ones.append(cond["label"])
+
+    if new_ones:
+        conn.commit()
+    return new_ones
+
+
+def get_best_day(user_id: int) -> int:
+    """Returns the highest single-day ayat count ever recorded."""
+    cur = _get_conn().cursor()
+    cur.execute(
+        "SELECT MAX(count) FROM khatma_daily_log WHERE user_id=?",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    return row[0] if row and row[0] else 0
+
+
+def get_days_since_last_read(user_id: int) -> int:
+    """Returns number of days since last khatmah activity (0 = today)."""
+    from datetime import date, datetime
+    cur = _get_conn().cursor()
+    cur.execute("SELECT last_read_date FROM khatma_streak WHERE user_id=?", (user_id,))
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return 999   # never read
+    try:
+        last = datetime.fromisoformat(row[0]).date()
+        return (date.today() - last).days
+    except Exception:
+        return 999

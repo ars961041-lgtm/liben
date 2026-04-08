@@ -47,6 +47,10 @@ commands = {
 
 def receive_responses(message):
     """نقطة الدخول الرئيسية — حدود الخطأ الإلزامية."""
+    # Guard: some update types have no from_user
+    if not message.from_user:
+        return
+
     uid   = message.from_user.id
     cid   = message.chat.id
     state = StateManager.get(uid, cid)
@@ -66,9 +70,22 @@ def receive_responses(message):
             _dispatch_private(message)
 
     except Exception as e:
+        # Only show the error message for unexpected crashes, not for
+        # routine Telegram API errors (message not modified, flood wait, etc.)
+        err_str = str(e).lower()
+        is_routine = any(x in err_str for x in (
+            "message is not modified",
+            "message to edit not found",
+            "bot was blocked",
+            "user is deactivated",
+            "chat not found",
+            "have no rights",
+            "not enough rights",
+        ))
         StateManager.clear(uid, cid)
         log_event("flow_error", user=uid, chat=cid, error=str(e), state=state)
-        send_result(chat_id=cid, text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية")
+        if not is_routine:
+            send_result(chat_id=cid, text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية")
 
 
 # ══════════════════════════════════════════
@@ -97,10 +114,10 @@ def _dispatch(message):
     cid = message.chat.id
 
     # ── فحص انتهاء الجلسة ──
-    from utils.pagination.router import get_state as _gs
+    # If the old router has a stale state but StateManager doesn't, just clear it silently.
+    from utils.pagination.router import get_state as _gs, clear_state as _cs
     if _gs(uid, cid).get("state") and not StateManager.get(uid, cid):
-        send_result(chat_id=cid, text="⚠️ انتهت العملية بسبب عدم التفاعل")
-        return
+        _cs(uid, cid)   # clear stale router state — no message to user
 
     # ── فحص الكتم ──
     if is_globally_muted(uid):
@@ -114,6 +131,11 @@ def _dispatch(message):
         return
 
     memory.set_last_interaction(uid, message.chat.type)
+
+    # ── فحص قفل الوسائط ──
+    from handlers.group_admin.media_lock import handle_media_lock
+    if handle_media_lock(message):
+        return
 
     if not message.text:
         return
@@ -141,7 +163,9 @@ def _dispatch(message):
         return
 
     # ── ردود تلقائية ──
-    chat_responses(message)
+    from database.db_queries.group_features_queries import is_feature_enabled as _feat
+    if _feat(cid, "feat_replies"):
+        chat_responses(message)
 
 
 # ══════════════════════════════════════════

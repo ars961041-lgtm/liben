@@ -2,7 +2,9 @@
 نظام تذكير الأذكار — ذكرني ذكري
 
 التدفق:
-  ذكرني ذكري → اختر النوع → اختر الساعة → اختر الدقيقة → أدخل فارق التوقيت → حفظ
+  ذكرني ذكري → اختر النوع → اختر الساعة → اختر الدقيقة
+  → إذا كان التوقيت محفوظاً: تأكيد مباشر (مع خيار تغييره)
+  → إذا لم يُحدَّد التوقيت: اختر التوقيت → حفظ
   في الوقت المحدد → يرسل رسالة خاصة + يفتح واجهة الأذكار
 """
 import time
@@ -10,14 +12,14 @@ import threading
 from datetime import datetime, timezone
 
 from core.bot import bot
-from utils.pagination import btn, send_ui, edit_ui, register_action, set_state, get_state, clear_state
+from utils.pagination import btn, send_ui, edit_ui, register_action
 from utils.helpers import get_lines
 from modules.azkar import azkar_db as db
 from modules.azkar.azkar_handler import (
     TYPE_MORNING, TYPE_EVENING, TYPE_SLEEP, TYPE_WAKEUP,
-    TYPE_LABELS, TYPE_EMOJI, _open_azkar_for_user
+    TYPE_LABELS, TYPE_EMOJI, _open_azkar_for_user,
 )
-
+from database.db_queries.timezone_queries import get_user_tz, set_user_tz
 
 _MAX_REMINDERS = 4
 _LIMIT_MSG = (
@@ -37,7 +39,6 @@ def handle_reminder_command(message) -> bool:
     cid   = message.chat.id
     owner = (uid, cid)
 
-    # ── check limit before starting the flow ──
     if db.count_user_reminders(uid) >= _MAX_REMINDERS:
         send_ui(cid, text=_LIMIT_MSG,
                 buttons=[
@@ -56,18 +57,24 @@ def handle_reminder_command(message) -> bool:
             {"t": t}, owner=owner)
         for t in (TYPE_MORNING, TYPE_EVENING, TYPE_SLEEP, TYPE_WAKEUP)
     ] + [
-        btn("📋 تذكيراتي",  "rem_list",   {}, owner=owner, color="p"),
-        btn("❌ إغلاق",     "rem_close",  {}, owner=owner, color="d"),
+        btn("📋 تذكيراتي",  "rem_list",  {}, owner=owner, color="p"),
+        btn("❌ إغلاق",     "rem_close", {}, owner=owner, color="d"),
     ]
     send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 2],
             owner_id=uid, reply_to=message.message_id)
     return True
 
 
+def _fmt_hour(h: int) -> str:
+    """يحوّل الساعة من 24 إلى 12 مع مؤشر ص/م."""
+    period = "ص" if h < 12 else "م"
+    h12    = h % 12 or 12
+    return f"{h12:02d} {period}"
+
+
 # ══════════════════════════════════════════
 # اختيار النوع → الساعة
 # ══════════════════════════════════════════
-
 @register_action("rem_pick_type")
 def on_pick_type(call, data):
     uid   = call.from_user.id
@@ -80,15 +87,13 @@ def on_pick_type(call, data):
         f"{TYPE_EMOJI[t]} <b>أذكار {TYPE_LABELS[t]}</b>\n\n"
         "اختر الساعة (بتوقيتك المحلي):"
     )
-    # صفوف: 0-5, 6-11, 12-17, 18-23
+    # 24 ساعة بتنسيق 12 ساعة، 4 في الصف، من اليمين لليسار
     hour_btns = [
-        btn(f"{h:02d}", "rem_pick_hour", {"t": t, "h": h}, owner=owner)
+        btn(_fmt_hour(h), "rem_pick_hour", {"t": t, "h": h}, owner=owner)
         for h in range(24)
     ]
     hour_btns.append(btn("🔙 رجوع", "rem_back_main", {}, owner=owner, color="d"))
-    layout = [6, 6, 6, 6, 1]
-    edit_ui(call, text=text, buttons=hour_btns, layout=layout)
-
+    edit_ui(call, text=text, buttons=hour_btns, layout=[4, 4, 4, 4, 4, 4, 1])
 
 # ══════════════════════════════════════════
 # اختيار الدقيقة
@@ -103,18 +108,63 @@ def on_pick_hour(call, data):
     owner = (uid, cid)
     bot.answer_callback_query(call.id)
 
+    # إذا كان التوقيت محفوظاً → الدقيقة تؤدي مباشرة لشاشة التأكيد
+    stored_tz     = get_user_tz(uid)
+    minute_action = "rem_confirm_stored" if stored_tz is not None else "rem_pick_tz"
+
     text = (
         f"{TYPE_EMOJI[t]} <b>أذكار {TYPE_LABELS[t]}</b>\n"
-        f"⏰ الساعة: <b>{h:02d}</b>\n\n"
+        f"⏰ الساعة: <b>{_fmt_hour(h)}</b>\n\n"
         "اختر الدقيقة:"
     )
     min_btns = [
-        btn(f"{m:02d}", "rem_pick_tz", {"t": t, "h": h, "m": m}, owner=owner)
+        btn(f"{m:02d}", minute_action, {"t": t, "h": h, "m": m}, owner=owner)
         for m in range(0, 60, 5)
     ]
     min_btns.append(btn("🔙 رجوع", "rem_pick_type", {"t": t}, owner=owner, color="d"))
-    layout = [6, 6] + [1]
-    edit_ui(call, text=text, buttons=min_btns, layout=layout)
+    edit_ui(call, text=text, buttons=min_btns, layout=[6, 6, 1])
+
+
+# ══════════════════════════════════════════
+# تأكيد مباشر (التوقيت محفوظ)
+# ══════════════════════════════════════════
+
+@register_action("rem_confirm_stored")
+def on_confirm_stored(call, data):
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    t     = int(data["t"])
+    h     = int(data["h"])
+    m     = int(data["m"])
+    owner = (uid, cid)
+
+    stored_tz = get_user_tz(uid)
+    if stored_tz is None:
+        # fallback
+        bot.answer_callback_query(call.id)
+        _show_tz_picker(call, t, h, m, owner)
+        return
+
+    tz_h     = stored_tz // 60
+    tz_label = f"UTC{'+' if tz_h >= 0 else ''}{tz_h}"
+    bot.answer_callback_query(call.id)
+
+    edit_ui(call,
+            text=(
+                f"{TYPE_EMOJI[t]} <b>أذكار {TYPE_LABELS[t]}</b>\n"
+                f"⏰ الوقت: <b>{_fmt_hour(h)}:{m:02d}</b>\n"
+                f"🌍 التوقيت المحفوظ: <b>{tz_label}</b>\n\n"
+                "هل تريد الحفظ بهذا التوقيت؟"
+            ),
+            buttons=[
+                btn("✅ حفظ", "rem_confirm",
+                    {"t": t, "h": h, "m": m, "tz": stored_tz}, owner=owner, color="su"),
+                btn("✏️ تغيير التوقيت", "rem_pick_tz",
+                    {"t": t, "h": h, "m": m}, owner=owner, color="p"),
+                btn("🔙 رجوع", "rem_pick_hour",
+                    {"t": t, "h": h}, owner=owner, color="d"),
+            ],
+            layout=[1, 1, 1])
 
 
 # ══════════════════════════════════════════
@@ -123,30 +173,28 @@ def on_pick_hour(call, data):
 
 @register_action("rem_pick_tz")
 def on_pick_tz(call, data):
-    uid   = call.from_user.id
-    cid   = call.message.chat.id
-    t     = int(data["t"])
-    h     = int(data["h"])
-    m     = int(data["m"])
-    owner = (uid, cid)
+    t = int(data["t"])
+    h = int(data["h"])
+    m = int(data["m"])
+    owner = (call.from_user.id, call.message.chat.id)
     bot.answer_callback_query(call.id)
+    _show_tz_picker(call, t, h, m, owner)
 
+
+def _show_tz_picker(call, t, h, m, owner):
     text = (
         f"{TYPE_EMOJI[t]} <b>أذكار {TYPE_LABELS[t]}</b>\n"
-        f"⏰ الوقت: <b>{h:02d}:{m:02d}</b>\n\n"
+        f"⏰ الوقت: <b>{_fmt_hour(h)}:{m:02d}</b>\n\n"
         "اختر فارق توقيتك عن UTC\n"
         "مثال: اليمن = UTC+3 → اختر <b>+3</b>"
     )
-    # UTC-12 إلى UTC+14 بخطوة ساعة
-    tz_btns = []
-    for offset_h in range(-12, 15):
-        label = f"UTC{'+' if offset_h >= 0 else ''}{offset_h}"
-        tz_btns.append(btn(label, "rem_confirm",
-                           {"t": t, "h": h, "m": m, "tz": offset_h * 60},
-                           owner=owner))
+    tz_btns = [
+        btn(f"UTC{'+' if o >= 0 else ''}{o}", "rem_confirm",
+            {"t": t, "h": h, "m": m, "tz": o * 60}, owner=owner)
+        for o in range(-12, 15)
+    ]
     tz_btns.append(btn("🔙 رجوع", "rem_pick_hour", {"t": t, "h": h}, owner=owner, color="d"))
-    layout = [3] * 9 + [1]
-    edit_ui(call, text=text, buttons=tz_btns, layout=layout)
+    edit_ui(call, text=text, buttons=tz_btns, layout=[3] * 9 + [1])
 
 
 # ══════════════════════════════════════════
@@ -163,10 +211,7 @@ def on_confirm(call, data):
     tz    = int(data["tz"])
     owner = (uid, cid)
 
-    # تحقق من إمكانية مراسلة المستخدم في الخاص
-    can_pm = _check_can_pm(uid)
-
-    if not can_pm:
+    if not _check_can_pm(uid):
         bot.answer_callback_query(call.id)
         edit_ui(call,
                 text=(
@@ -178,7 +223,6 @@ def on_confirm(call, data):
                 layout=[1])
         return
 
-    # ── second limit check (race-condition guard) ──
     if db.count_user_reminders(uid) >= _MAX_REMINDERS:
         bot.answer_callback_query(call.id)
         edit_ui(call, text=_LIMIT_MSG,
@@ -189,22 +233,72 @@ def on_confirm(call, data):
                 layout=[1, 1])
         return
 
-    rem_id = db.add_reminder(uid, t, h, m, tz)
-    tz_label = f"UTC{'+' if tz >= 0 else ''}{tz // 60}"
+    # حفظ التوقيت للاستخدام المستقبلي
+    set_user_tz(uid, tz)
+
+    rem_id   = db.add_reminder(uid, t, h, m, tz)
+    tz_h     = tz // 60
+    tz_label = f"UTC{'+' if tz_h >= 0 else ''}{tz_h}"
     bot.answer_callback_query(call.id, "✅ تم حفظ التذكير!", show_alert=True)
     edit_ui(call,
             text=(
                 f"✅ <b>تم حفظ التذكير #{rem_id}</b>\n{get_lines()}\n\n"
                 f"{TYPE_EMOJI[t]} أذكار {TYPE_LABELS[t]}\n"
-                f"⏰ الوقت: <b>{h:02d}:{m:02d}</b> ({tz_label})\n\n"
+                f"⏰ الوقت: <b>{_fmt_hour(h)}:{m:02d}</b> ({tz_label})\n\n"
                 "ستصلك رسالة خاصة في الوقت المحدد يومياً 🔔"
             ),
             buttons=[
-                btn("📋 تذكيراتي", "rem_list",      {}, owner=owner, color="p"),
-                btn("➕ إضافة آخر", "rem_back_main", {}, owner=owner),
-                btn("❌ إغلاق",    "rem_close",     {}, owner=owner, color="d"),
+                btn("📋 تذكيراتي",     "rem_list",      {}, owner=owner, color="p"),
+                btn("✏️ تغيير توقيتي", "rem_edit_tz",   {}, owner=owner, color="p"),
+                btn("➕ إضافة آخر",    "rem_back_main", {}, owner=owner),
+                btn("❌ إغلاق",        "rem_close",     {}, owner=owner, color="d"),
             ],
-            layout=[1, 1, 1])
+            layout=[2, 1, 1])
+
+
+# ══════════════════════════════════════════
+# تعديل التوقيت المحفوظ
+# ══════════════════════════════════════════
+
+@register_action("rem_edit_tz")
+def on_edit_tz(call, data):
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    owner = (uid, cid)
+    bot.answer_callback_query(call.id)
+
+    stored_tz = get_user_tz(uid)
+    tz_h      = stored_tz // 60 if stored_tz is not None else 0
+    tz_label  = f"UTC{'+' if tz_h >= 0 else ''}{tz_h}" if stored_tz is not None else "غير محدد"
+
+    tz_btns = [
+        btn(f"UTC{'+' if o >= 0 else ''}{o}", "rem_save_tz",
+            {"tz": o * 60}, owner=owner)
+        for o in range(-12, 15)
+    ]
+    tz_btns.append(btn("🔙 رجوع", "rem_back_main", {}, owner=owner, color="d"))
+    edit_ui(call,
+            text=(
+                f"🌍 <b>تعديل التوقيت</b>\n{get_lines()}\n\n"
+                f"توقيتك الحالي: <b>{tz_label}</b>\n\n"
+                "اختر توقيتك الجديد:"
+            ),
+            buttons=tz_btns,
+            layout=[3] * 9 + [1])
+
+
+@register_action("rem_save_tz")
+def on_save_tz(call, data):
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    owner = (uid, cid)
+    tz    = int(data["tz"])
+    tz_h  = tz // 60
+    set_user_tz(uid, tz)
+    bot.answer_callback_query(call.id,
+                              f"✅ تم حفظ التوقيت: UTC{'+' if tz_h >= 0 else ''}{tz_h}",
+                              show_alert=True)
+    on_back_main(call, {})
 
 
 # ══════════════════════════════════════════
@@ -219,30 +313,39 @@ def on_list(call, data):
     bot.answer_callback_query(call.id)
 
     reminders = db.get_user_reminders(uid)
+    stored_tz = get_user_tz(uid)
+    tz_h      = stored_tz // 60 if stored_tz is not None else None
+    tz_info   = f"\n🌍 توقيتك المحفوظ: <b>UTC{'+' if tz_h >= 0 else ''}{tz_h}</b>" if tz_h is not None else ""
+
     if not reminders:
         edit_ui(call,
-                text="📋 <b>تذكيراتك</b>\n\nلا توجد تذكيرات نشطة.",
+                text=f"📋 <b>تذكيراتك</b>{tz_info}\n\nلا توجد تذكيرات نشطة.",
                 buttons=[
-                    btn("➕ إضافة تذكير", "rem_back_main", {}, owner=owner),
-                    btn("❌ إغلاق",       "rem_close",     {}, owner=owner, color="d"),
+                    btn("➕ إضافة تذكير",  "rem_back_main", {}, owner=owner),
+                    btn("✏️ تغيير توقيتي", "rem_edit_tz",   {}, owner=owner, color="p"),
+                    btn("❌ إغلاق",        "rem_close",     {}, owner=owner, color="d"),
                 ],
-                layout=[1, 1])
+                layout=[1, 1, 1])
         return
 
-    text = f"📋 <b>تذكيراتك ({len(reminders)})</b>\n{get_lines()}\n\n"
+    text = f"📋 <b>تذكيراتك ({len(reminders)})</b>{tz_info}\n{get_lines()}\n\n"
     buttons = []
     for r in reminders:
-        tz_h  = r["tz_offset"] // 60
-        label = f"{TYPE_EMOJI[r['azkar_type']]} {r['hour']:02d}:{r['minute']:02d} (UTC{'+' if tz_h >= 0 else ''}{tz_h})"
+        rtz_h = r["tz_offset"] // 60
+        label = (
+            f"{TYPE_EMOJI[r['azkar_type']]} {_fmt_hour(r['hour'])}:{r['minute']:02d} "
+            f"(UTC{'+' if rtz_h >= 0 else ''}{rtz_h})"
+        )
         text += f"• {label} — أذكار {TYPE_LABELS[r['azkar_type']]}\n"
         buttons.append(btn(f"🗑 حذف #{r['id']}", "rem_delete",
                            {"rid": r["id"]}, owner=owner, color="d"))
 
     buttons += [
-        btn("➕ إضافة تذكير", "rem_back_main", {}, owner=owner),
-        btn("❌ إغلاق",       "rem_close",     {}, owner=owner, color="d"),
+        btn("➕ إضافة تذكير",  "rem_back_main", {}, owner=owner),
+        btn("✏️ تغيير توقيتي", "rem_edit_tz",   {}, owner=owner, color="p"),
+        btn("❌ إغلاق",        "rem_close",     {}, owner=owner, color="d"),
     ]
-    layout = [1] * len(reminders) + [1, 1]
+    layout = [1] * len(reminders) + [1, 1, 1]
     edit_ui(call, text=text, buttons=buttons, layout=layout)
 
 
@@ -270,8 +373,8 @@ def on_back_main(call, data):
             {"t": t}, owner=owner)
         for t in (TYPE_MORNING, TYPE_EVENING, TYPE_SLEEP, TYPE_WAKEUP)
     ] + [
-        btn("📋 تذكيراتي", "rem_list",  {}, owner=owner, color="p"),
-        btn("❌ إغلاق",    "rem_close", {}, owner=owner, color="d"),
+        btn("📋 تذكيراتي",  "rem_list",  {}, owner=owner, color="p"),
+        btn("❌ إغلاق",     "rem_close", {}, owner=owner, color="d"),
     ]
     edit_ui(call, text=text, buttons=buttons, layout=[2, 2, 2])
 
@@ -290,7 +393,6 @@ def on_close(call, data):
 # ══════════════════════════════════════════
 
 def _check_can_pm(user_id: int) -> bool:
-    """يتحقق إذا كان البوت يستطيع مراسلة المستخدم في الخاص."""
     try:
         bot.send_chat_action(user_id, "typing")
         return True
@@ -299,46 +401,35 @@ def _check_can_pm(user_id: int) -> bool:
 
 
 # ══════════════════════════════════════════
-# المُجدوِل — يعمل في الخلفية
+# المُجدوِل
 # ══════════════════════════════════════════
 
 def _scheduler_loop():
-    """يفحص التذكيرات كل دقيقة ويرسل الإشعارات."""
     while True:
         try:
             now        = datetime.now(timezone.utc)
-            utc_hour   = now.hour
-            utc_minute = now.minute
-            due        = db.get_due_reminders(utc_hour, utc_minute)
+            due        = db.get_due_reminders(now.hour, now.minute)
             for r in due:
                 _fire_reminder(r)
         except Exception as e:
             print(f"[AzkarReminder] {e}")
-        # انتظر حتى بداية الدقيقة التالية
         time.sleep(60 - datetime.now().second)
 
 
 def _fire_reminder(r: dict):
-    """يرسل إشعار التذكير ويفتح واجهة الأذكار."""
     uid        = r["user_id"]
     azkar_type = r["azkar_type"]
-    emoji      = TYPE_EMOJI[azkar_type]
-    label      = TYPE_LABELS[azkar_type]
-
     try:
-        # رسالة تنبيه
         bot.send_message(
             uid,
-            f"🔔 <b>حان وقت أذكار {label}!</b>\n\n"
-            f"{emoji} ابدأ أذكارك الآن 👇",
-            parse_mode="HTML"
+            f"🔔 <b>حان وقت أذكار {TYPE_LABELS[azkar_type]}!</b>\n\n"
+            f"{TYPE_EMOJI[azkar_type]} ابدأ أذكارك الآن 👇",
+            parse_mode="HTML",
         )
-        # افتح واجهة الأذكار مباشرة
         _open_azkar_for_user(uid, uid, azkar_type)
     except Exception as e:
         print(f"[AzkarReminder] فشل إرسال تذكير للمستخدم {uid}: {e}")
 
 
 def start_reminder_scheduler():
-    """يُشغَّل عند بدء البوت."""
     threading.Thread(target=_scheduler_loop, daemon=True).start()

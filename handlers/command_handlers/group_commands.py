@@ -5,6 +5,7 @@
 from core.bot import bot
 from core.admin import is_any_dev
 from handlers.group_admin.restrictions import get_target_user
+from database.db_queries.group_features_queries import is_feature_enabled
 
 
 def handle_group_commands(message, normalized_text: str, text: str) -> bool:
@@ -35,6 +36,12 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     )
 
     uid = message.from_user.id
+    cid = message.chat.id
+
+    # ── لوحة تحكم ميزات المجموعة ──
+    if normalized_text == "الأوامر":
+        from handlers.group_admin.group_features import handle_features_control
+        return handle_features_control(message)
 
     # ── /developer_gift — للمطور الأساسي فقط، في أي مجموعة ──
     if normalized_text in ["/developer_gift", "هدية", "developer_gift"]:
@@ -85,74 +92,83 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
 
     # ── ترقية / تعديل مشرف ──
     if normalized_text in ["/promote", "رفع مشرف"]:
-        handle_promote_command(message)
+        from handlers.group_admin.restrictions import promote_admin
+        promote_admin(message)
         return True
     if normalized_text in ["/edit_admin", "تعديل مشرف"]:
         handle_edit_command(message)
         return True
 
     # ── البنك ──
-    if bank_commands(message):
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if bank_commands(message):
+            return True
 
     # ── الألعاب ──
-    if games_command(message):
-        return True
-    if entertainment_games_command(message):
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if games_command(message):
+            return True
+        if entertainment_games_command(message):
+            return True
 
     # ── التوبات ──
-    if top_commands(message):
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if top_commands(message):
+            return True
 
     # ── الدولة والمدن ──
-    if country_commands(message):   return True
-    if city_commands(message):      return True
-    if daily_tasks_commands(message): return True
-    if normalized_text in ["دخل", "دخل مدينتي", "جمع الدخل", "اقتصادي"]:
-        collect_city_income(message)
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if country_commands(message):   return True
+        if city_commands(message):      return True
+        if daily_tasks_commands(message): return True
+        if normalized_text in ["دخل", "دخل مدينتي", "جمع الدخل", "اقتصادي"]:
+            collect_city_income(message)
+            return True
 
     # ── التحالفات ──
-    if alliance_commands(message):
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if alliance_commands(message):
+            return True
 
     # ── الحرب ──
-    if handle_war_text_commands(message):
-        return True
+    if is_feature_enabled(cid, "feat_games"):
+        if handle_war_text_commands(message):
+            return True
 
     # ── أوامر إدارة المجموعة ──
-    if normalized_text == "مسح":
-        delete_message(message)
-        return True
-    if normalized_text == "تثبيت":
-        pin_message(message)
-        return True
-    if normalized_text == "لقبي":
-        custom_title(message)
-        return True
-    if normalized_text == "تعيين اسم المجموعة":
-        set_group_name(message)
-        return True
-    if normalized_text == "تعيين بايو المجموعة":
-        set_group_bio(message)
-        return True
+    if is_feature_enabled(cid, "feat_admin"):
+        if normalized_text == "مسح":
+            delete_message(message)
+            return True
+        if normalized_text == "تثبيت":
+            pin_message(message)
+            return True
+        if normalized_text == "لقبي":
+            custom_title(message)
+            return True
+        if normalized_text == "تعيين اسم المجموعة":
+            set_group_name(message)
+            return True
+        if normalized_text == "تعيين بايو المجموعة":
+            set_group_bio(message)
+            return True
 
     # ── أوامر الكتم/الحظر (prefix-based) ──
-    from handlers.replies import commands as _punishment_cmds
-    for command_name, func in _punishment_cmds.items():
-        if normalized_text.startswith(command_name):
-            rest = normalized_text[len(command_name):]
-            if rest and not rest.startswith(" "):
-                continue
-            if "عالمي" in normalized_text:
-                continue
-            target_uid, _ = get_target_user(message)
-            if not target_uid:
-                bot.reply_to(message, "❌ حدد المستخدم بالرد أو الآيدي أو اليوزر.")
+    if is_feature_enabled(cid, "feat_admin"):
+        from handlers.replies import commands as _punishment_cmds
+        for command_name, func in _punishment_cmds.items():
+            if normalized_text.startswith(command_name):
+                rest = normalized_text[len(command_name):]
+                if rest and not rest.startswith(" "):
+                    continue
+                if "عالمي" in normalized_text:
+                    continue
+                target_uid, _ = get_target_user(message)
+                if not target_uid:
+                    bot.reply_to(message, "❌ حدد المستخدم بالرد أو الآيدي أو اليوزر.")
+                    return True
+                func(message)
                 return True
-            func(message)
-            return True
 
     # ── أوامر المطور (DEV_COMMANDS) ──
     if normalized_text in DEV_COMMANDS:

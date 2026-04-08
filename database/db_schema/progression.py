@@ -28,7 +28,7 @@ def create_progression_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_achievements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(user_id),
         achievement_id INTEGER NOT NULL,
         unlocked_at INTEGER DEFAULT (strftime('%s','now')),
         UNIQUE(user_id, achievement_id),
@@ -52,11 +52,11 @@ def create_progression_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS season_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        season_id INTEGER NOT NULL,
+        season_id INTEGER NOT NULL REFERENCES seasons(id),
         category TEXT NOT NULL,
         rank INTEGER NOT NULL,
-        user_id INTEGER,
-        country_id INTEGER,
+        user_id INTEGER REFERENCES users(user_id),
+        country_id INTEGER REFERENCES countries(id),
         alliance_id INTEGER,
         score REAL DEFAULT 0,
         reward_given TEXT,
@@ -69,8 +69,8 @@ def create_progression_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS season_titles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        season_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(user_id),
+        season_id INTEGER NOT NULL REFERENCES seasons(id),
         title TEXT NOT NULL,
         category TEXT NOT NULL,
         rank INTEGER NOT NULL,

@@ -129,7 +129,7 @@ def build_search_buttons(uid: int, cid: int, query: str,
         buttons.append(btn(
             f"📖 {r['sura_name']} {r['ayah_number']}",
             "qr_goto_ayah",
-            {"aid": r["id"]},
+            {"aid": r["id"], "src": "search"},
             color=_B, owner=owner,
         ))
 

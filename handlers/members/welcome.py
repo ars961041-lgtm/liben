@@ -1,13 +1,12 @@
 """
 نظام الترحيب والوداع — نسخة احترافية.
 """
-import os
 import random
 from datetime import datetime
 
 from core.bot import bot
 from core.config import bot_name, developers_id
-from utils.helpers import get_bot_username, get_lines
+from utils.helpers import get_bot_username, get_lines, get_bot_photo_id, get_entity_photo_id
 from utils.keyboards import ui_btn, build_keyboard, send_ui
 
 _WELCOME_MSGS = [
@@ -46,9 +45,6 @@ _LEFT_MSGS = [
     "غادر ✨ نتمنى له التوفيق",
 ]
 
-_PHOTO_PATH = os.path.join("assets", "images", "bot_profile.jpg")
-
-# Developer info reused from general_handler
 _DEV_ID      = list(developers_id)[0] if developers_id else None
 _UPDATES_URL = "https://t.me/BotBeloPro"
 
@@ -63,7 +59,10 @@ def welcome_member(message):
         if member.id == bot_id:
             _send_bot_joined(message)   # bot itself was added
         elif not member.is_bot:
-            _send_welcome(message, member)
+            # فحص ميزة الترحيب
+            from database.db_queries.group_features_queries import is_feature_enabled
+            if is_feature_enabled(message.chat.id, "feat_welcome"):
+                _send_welcome(message, member)
 
 
 def _send_welcome(message, member):
@@ -96,7 +95,10 @@ def _send_welcome(message, member):
     )
 
     markup = _build_welcome_markup(message)
-    _send_photo_or_text(message.chat.id, _PHOTO_PATH, caption, markup,
+    # استخدام صورة المجموعة للترحيب، وإلا صورة البوت، وإلا نص فقط
+    group_photo = get_entity_photo_id(message.chat.id)
+    photo_id    = group_photo or get_bot_photo_id()
+    _send_photo_or_text(message.chat.id, photo_id, caption, markup,
                         reply_to=message.message_id)
 
     # auto-send rules if enabled
@@ -113,7 +115,26 @@ def _send_bot_joined(message):
     cid        = message.chat.id
     group_name = message.chat.title or "المجموعة"
 
-    # Fetch group owner name
+    # ── فحص صلاحيات البوت ──
+    bot_id    = bot.get_me().id
+    is_admin  = False
+    try:
+        member   = bot.get_chat_member(cid, bot_id)
+        is_admin = member.status in ("administrator", "creator")
+    except Exception:
+        pass
+
+    # جلب معلومات المجموعة الكاملة
+    group_username = ""
+    group_desc     = ""
+    try:
+        chat_info      = bot.get_chat(cid)
+        group_username = f"@{chat_info.username}" if getattr(chat_info, "username", None) else ""
+        group_desc     = getattr(chat_info, "description", None) or ""
+    except Exception:
+        pass
+
+    # جلب اسم المالك
     owner_name = "غير معروف"
     try:
         admins = bot.get_chat_administrators(cid)
@@ -123,27 +144,34 @@ def _send_bot_joined(message):
     except Exception:
         pass
 
-    caption = (
-        f"🤖 <b>تم تفعيل بوت {bot_name} بنجاح!</b>\n"
-        f"{get_lines()}\n\n"
-        f"📛 اسم القروب: <b>{group_name}</b>\n"
-        f"👑 المالك: <b>{owner_name}</b>\n\n"
-        f"✨ البوت الآن جاهز لإدارة القروب وتقديم المميزات"
-    )
+    if is_admin:
+        caption = (
+            f"✅ <b>تم تفعيل بوت {bot_name} بنجاح!</b>\n"
+            f"{get_lines()}\n\n"
+            f"📛 اسم القروب: <b>{group_name}</b>\n"
+        )
+        if group_username:
+            caption += f"🔗 يوزر القروب: {group_username}\n"
+        caption += f"👑 المالك: <b>{owner_name}</b>\n"
+        if group_desc:
+            caption += f"📝 الوصف: {group_desc}\n"
+        caption += f"\n✨ البوت الآن جاهز لإدارة القروب وتقديم المميزات"
+    else:
+        caption = (
+            f"⚠️ <b>تم إضافة {bot_name} للمجموعة</b>\n"
+            f"{get_lines()}\n\n"
+            f"📛 المجموعة: <b>{group_name}</b>\n\n"
+            f"❗ <b>البوت يحتاج صلاحيات المشرف ليعمل بشكل صحيح.</b>\n\n"
+            f"يرجى ترقية البوت إلى مشرف حتى يتمكن من:\n"
+            f"• إدارة الأعضاء (كتم، حظر، تقييد)\n"
+            f"• إرسال رسائل الترحيب\n"
+            f"• تثبيت الرسائل وإدارة المجموعة"
+        )
 
     buttons = _build_bot_joined_buttons()
 
-    # Try group photo first, fallback to bot profile
-    photo = _get_group_photo(cid)
-    if photo:
-        try:
-            bot.send_photo(cid, photo, caption=caption,
-                           parse_mode="HTML", reply_markup=buttons)
-            return
-        except Exception:
-            pass
-
-    _send_photo_or_text(cid, _PHOTO_PATH, caption, buttons)
+    photo_id = get_entity_photo_id(cid) or get_bot_photo_id()
+    _send_photo_or_text(cid, photo_id, caption, buttons)
 
 
 def _build_bot_joined_buttons():
@@ -165,7 +193,7 @@ def _build_bot_joined_buttons():
 
     buttons.append(ui_btn("📢 قناة التحديثات", url=_UPDATES_URL, style="primary"))
 
-    return build_keyboard(buttons, [len(buttons)]) if buttons else None
+    return build_keyboard(buttons, [1] * len(buttons)) if buttons else None
 
 
 def _get_group_photo(chat_id: int):
@@ -199,23 +227,22 @@ def _build_welcome_markup(message):
             buttons.append(ui_btn(
                 f"👑 {owner.user.first_name}",
                 url=f"https://t.me/{owner.user.username}",
-                style="secondary",
+                style="danger",
             ))
     except Exception:
         pass
 
-    return build_keyboard(buttons, [len(buttons)]) if buttons else None
+    return build_keyboard(buttons, [1] * len(buttons)) if buttons else None
 
 
-def _send_photo_or_text(chat_id, photo_path, caption, markup, reply_to=None):
-    """Send photo with caption, fallback to text if image missing."""
+def _send_photo_or_text(chat_id, photo_id, caption, markup, reply_to=None):
+    """Send photo with caption using file_id, fallback to text if no photo."""
     kwargs = {"caption": caption, "parse_mode": "HTML", "reply_markup": markup}
     if reply_to:
         kwargs["reply_to_message_id"] = reply_to
     try:
-        if os.path.exists(photo_path):
-            with open(photo_path, "rb") as f:
-                bot.send_photo(chat_id, f, **kwargs)
+        if photo_id:
+            bot.send_photo(chat_id, photo_id, **kwargs)
         else:
             bot.send_message(chat_id, caption, parse_mode="HTML",
                              reply_markup=markup, reply_to_message_id=reply_to)

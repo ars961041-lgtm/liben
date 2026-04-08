@@ -282,14 +282,18 @@ def update_invite_status(invite_id, status):
     conn.commit()
     
 def attach_user_to_country(user_id: int, city_id: int, country_id: int):
+    """
+    ربط المستخدم بالدولة يتم عبر cities.owner_id و cities.country_id.
+    لا يوجد city_id/country_id مباشر على جدول users.
+    """
     conn = get_db_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
-        UPDATE users
-        SET city_id = ?, country_id = ?
-        WHERE user_id = ?
-    """, (city_id, country_id, user_id))
+        UPDATE cities
+        SET country_id = ?
+        WHERE id = ? AND owner_id = ?
+    """, (country_id, city_id, user_id))
 
     conn.commit()
 
@@ -383,10 +387,10 @@ def accept_country_invite_atomic(invite_id: int, user_id: int) -> tuple[bool, st
         )
         city_id = cursor.lastrowid
 
-        # ربط المستخدم بالدولة
+        # ربط المستخدم بالدولة عبر المدينة (لا يوجد city_id/country_id على جدول users)
         cursor.execute(
-            "UPDATE users SET city_id = ?, country_id = ? WHERE user_id = ?",
-            (city_id, country_id, user_id)
+            "UPDATE cities SET country_id = ? WHERE id = ? AND owner_id = ?",
+            (country_id, city_id, user_id)
         )
 
         # تحديث حالة الدعوة

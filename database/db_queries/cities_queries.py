@@ -151,18 +151,20 @@ def get_top_cities(limit=10):
 # -------------------------
 def get_city_users(city_id: int):
     """
-    ترجع جميع المستخدمين الذين ينتمون لمدينة معينة.
-    النتيجة: قائمة dict تحتوي على user_id واسم المستخدم إذا وجد.
+    ترجع المستخدم المالك للمدينة المحددة.
+    cities.owner_id → users.user_id (Telegram ID)
     """
     conn = get_db_conn()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+
     cursor.execute("""
         SELECT u.user_id, COALESCE(un.name, 'Unknown') AS name
-        FROM users u
-        LEFT JOIN users_name un ON u.user_id = un.user_id
-        WHERE u.city_id = ?
+        FROM cities c
+        JOIN users u ON u.user_id = c.owner_id
+        LEFT JOIN users_name un ON un.user_id = u.user_id
+        WHERE c.id = ?
     """, (city_id,))
+
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
-

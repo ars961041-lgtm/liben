@@ -136,11 +136,15 @@ def edit_tafseer(ayah_id: int, tafseer_col: str, content: str) -> bool:
 def bulk_add_ayat(sura_name: str, start_number: int, raw_text: str) -> int:
     """
     يضيف آيات متعددة مفصولة بـ BULK_SEPARATOR.
+    إذا start_number=0 → يحدد تلقائياً من آخر آية موجودة + 1
     يرجع عدد الآيات المضافة.
     """
     sura = db.get_sura_by_name(sura_name)
     if not sura:
         return 0
+
+    if start_number <= 0:
+        start_number = db.get_next_ayah_number(sura["id"])
 
     items = [i.strip() for i in raw_text.split(db.BULK_SEPARATOR) if i.strip()]
     added = 0

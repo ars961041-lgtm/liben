@@ -81,11 +81,9 @@ def paginate_list(items, page=0, per_page=10):
 # Callback handler
 # ══════════════════════════════════════════
 
-@bot.callback_query_handler(func=lambda call: True)
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("k:"))
 def handle_buttons(call):
     data = call.data
-    if not data.startswith("k:"):
-        return
     key = data.split(":", 1)[1]
 
     from .cache import _CACHE, _CACHE_LOCK, CACHE_TTL

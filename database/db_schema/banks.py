@@ -8,7 +8,7 @@ def create_banks_tables():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL UNIQUE REFERENCES users(user_id),
         balance REAL DEFAULT 1000,
         last_daily_claim INTEGER DEFAULT 0,
         created_at INTEGER
@@ -18,7 +18,7 @@ def create_banks_tables():
     # ⏱️ نظام التوقيت (Cooldowns)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_cooldowns (
-        user_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(user_id),
         action TEXT NOT NULL,
         last_time INTEGER,
         PRIMARY KEY (user_id, action)
@@ -29,7 +29,7 @@ def create_banks_tables():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS loans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
+        user_id INTEGER REFERENCES users(user_id),
         amount REAL NOT NULL,
         due_date INTEGER,
         repaid REAL DEFAULT 0,
@@ -40,7 +40,7 @@ def create_banks_tables():
     
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bank_cooldowns (
-        user_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(user_id),
         type TEXT NOT NULL,
         last_used INTEGER,
         PRIMARY KEY (user_id, type)

@@ -9,13 +9,14 @@ def create_countries_tables():
     CREATE TABLE IF NOT EXISTS countries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
-        owner_id INTEGER NOT NULL,
+        owner_id INTEGER NOT NULL,          -- → users.user_id (Telegram ID)
         created_at INTEGER DEFAULT (strftime('%s','now')),
         economy_score REAL DEFAULT 0,
         health_level REAL DEFAULT 0,
         education_level REAL DEFAULT 0,
         military_power REAL DEFAULT 0,
-        infrastructure_level REAL DEFAULT 0
+        infrastructure_level REAL DEFAULT 0,
+        FOREIGN KEY (owner_id) REFERENCES users(user_id)
     )
     """)
 
@@ -35,7 +36,7 @@ def create_countries_tables():
     CREATE TABLE IF NOT EXISTS cities (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         country_id INTEGER,
-        owner_id INTEGER,
+        owner_id INTEGER,                   -- → users.user_id (Telegram ID)
         name TEXT NOT NULL,
         level INTEGER DEFAULT 1,
         population INTEGER DEFAULT 1000,
@@ -47,7 +48,8 @@ def create_countries_tables():
         education_level REAL DEFAULT 0,
         military_power REAL DEFAULT 0,
         infrastructure_level REAL DEFAULT 0,
-        FOREIGN KEY (country_id) REFERENCES countries(id)
+        FOREIGN KEY (country_id) REFERENCES countries(id),
+        FOREIGN KEY (owner_id) REFERENCES users(user_id)
     )
     """)
 
@@ -88,23 +90,27 @@ def create_countries_tables():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS country_invites (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        from_user_id INTEGER NOT NULL,
-        to_user_id   INTEGER NOT NULL,
+        from_user_id INTEGER NOT NULL,      -- → users.user_id (Telegram ID)
+        to_user_id   INTEGER NOT NULL,      -- → users.user_id (Telegram ID)
         country_id   INTEGER NOT NULL,
         city_name    TEXT    NOT NULL,
         status       TEXT    DEFAULT 'pending',
         created_at   INTEGER DEFAULT (strftime('%s','now')),
-        UNIQUE(to_user_id, status)
+        UNIQUE(to_user_id, status),
+        FOREIGN KEY (from_user_id) REFERENCES users(user_id),
+        FOREIGN KEY (to_user_id)   REFERENCES users(user_id),
+        FOREIGN KEY (country_id)   REFERENCES countries(id)
     );
     """)
 
     # ─── نقل الدولة ───
+    # from/to_user_id مرجعية تاريخية — تُحفظ حتى بعد نقل الملكية
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS country_transfers (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        country_id       INTEGER NOT NULL,
-        from_user_id     INTEGER NOT NULL,
-        to_user_id       INTEGER NOT NULL,
+        country_id       INTEGER NOT NULL REFERENCES countries(id),
+        from_user_id     INTEGER NOT NULL REFERENCES users(user_id),
+        to_user_id       INTEGER NOT NULL REFERENCES users(user_id),
         penalty_applied  INTEGER DEFAULT 0,
         status           TEXT    DEFAULT 'active',
         transferred_at   INTEGER DEFAULT (strftime('%s','now')),
@@ -115,7 +121,7 @@ def create_countries_tables():
     # ─── كولداون الأفعال العامة (خيانة، إعادة تسمية، ...) ───
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS action_cooldowns (
-        user_id   INTEGER NOT NULL,
+        user_id   INTEGER NOT NULL REFERENCES users(user_id),
         action    TEXT    NOT NULL,
         last_time INTEGER NOT NULL,
         PRIMARY KEY (user_id, action)

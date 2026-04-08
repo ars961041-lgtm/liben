@@ -63,13 +63,15 @@ def _send_ayah(message_or_none, uid: int, cid: int, ayah: dict,
 
     if edit_call:
         edit_ui(edit_call, text=text, buttons=buttons, layout=layout)
-        if source != "favorites":
+        if source not in ("favorites", "search"):
             svc.save_position(uid, ayah["id"], edit_call.message.message_id)
+            db.update_khatma(uid, ayah["sura_id"], ayah["ayah_number"])
     else:
         sent = send_ui(cid, text=text, buttons=buttons, layout=layout,
                        owner_id=uid, reply_to=reply_to)
-        if sent and source != "favorites":
+        if sent and source not in ("favorites", "search"):
             svc.save_position(uid, ayah["id"], sent.message_id)
+            db.update_khatma(uid, ayah["sura_id"], ayah["ayah_number"])
 
 
 # ── التنقل ──
@@ -492,7 +494,6 @@ def handle_dev_quran_input(message) -> bool:
         "qr_dev_edit_tafseer_text",
         "qr_dev_tafseer_single_sura_ayah",
         "qr_dev_tafseer_single_content",
-        "qr_dev_tafseer_bulk_start_ayah",
         "qr_dev_tafseer_bulk_content",
     }
     if s not in handled_states:
@@ -586,36 +587,6 @@ def handle_dev_quran_input(message) -> bool:
         success, msg = svc.add_single_tafseer(sura_name, ayah_num, parts)
         _reply(msg)
         return True
-
-    # ── رقم الآية لبدء التفسير المتعدد ──
-    if s == "qr_dev_tafseer_bulk_start_ayah":
-        sura_id = sdata.get("sura_id")
-        tafseer_type = sdata.get("type")
-        sura = db.get_sura(sura_id)
-
-        if not sura or tafseer_type not in db.TAFSEER_TYPES:
-            _reply("❌ خطأ في البيانات.")
-            return True
-
-        try:
-            start_ayah = int(raw.strip())
-            if start_ayah < 1:
-                raise ValueError()
-
-            # التحقق من وجود الآية
-            ayah = db.get_ayah_by_sura_number(sura_id, start_ayah)
-            if not ayah:
-                _reply(f"❌ الآية {start_ayah} غير موجودة في سورة {sura['name']}.")
-                return True
-
-            set_state(uid, cid, "qr_dev_tafseer_bulk_content",
-                      {"sura_id": sura_id, "type": tafseer_type, "start": start_ayah, "_mid": mid})
-            text = ui.build_bulk_tafseer_input_text(sura, tafseer_type, start_ayah)
-            _reply(text)
-            return True
-        except ValueError:
-            _reply("❌ رقم الآية يجب أن يكون رقماً صحيحاً أكبر من 0.")
-            return True
 
     # ── محتوى التفسير المتعدد ──
     if s == "qr_dev_tafseer_bulk_content":
@@ -795,52 +766,102 @@ def on_dev_cancel(call, data):
 # 🆕 نظام التفسير الجديد
 # ══════════════════════════════════════════
 
-def handle_add_tafseer(message) -> bool:
-    """أمر: إضافة تفسير"""
-    if (message.text or "").strip() != "إضافة تفسير":
+def handle_add_ayat(message) -> bool:
+    """أمر: إضافة آيات — يعرض واجهة اختيار السورة بدون إدخال يدوي"""
+    if (message.text or "").strip() != "إضافة آيات":
         return False
 
     if not is_any_dev(message.from_user.id):
         bot.reply_to(message, "❌ هذا الأمر للمطورين فقط.")
         return True
 
-    uid = message.from_user.id
-    cid = message.chat.id
+    uid   = message.from_user.id
+    cid   = message.chat.id
     owner = (uid, cid)
 
-    # عرض خيارات إضافة التفسير
-    send_ui(
+    from modules.quran.sura_selector import show_sura_selector
+    # نرسل رسالة جديدة ثم نعدّلها بواجهة السور
+    sent = send_ui(
         cid,
-        text="📝 <b>إضافة تفسير</b>\n\nاختر نوع الإضافة:",
-        buttons=[
-            btn("📖 تفسير آية واحدة", "qr_dev_tafseer_single", {}, color=_B, owner=owner),
-            btn("📚 إضافة تفسير متعدد", "qr_dev_tafseer_bulk", {}, color=_B, owner=owner),
-            btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner),
-        ],
-        layout=[2, 1],
+        text="📖 <b>إضافة آيات</b>\n\nاختر السورة:",
+        buttons=[btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)],
+        layout=[1],
         owner_id=uid,
         reply_to=message.message_id,
     )
+    if sent:
+        # نعدّل الرسالة لتعرض واجهة السور
+        import types as _types
+        fake_call = _types.SimpleNamespace(
+            from_user=message.from_user,
+            message=sent,
+        )
+        show_sura_selector(
+            fake_call, 0,
+            callback_action="qr_dev_add_ayat_sura",
+            cancel_action="qr_dev_cancel",
+            page_action="qr_dev_add_ayat_page",
+            title="📖 إضافة آيات — اختر السورة",
+            suras_source="all",
+            edit=True,
+        )
     return True
 
 
-@register_action("qr_dev_tafseer_single")
-def on_tafseer_single(call, data):
+@register_action("qr_dev_add_ayat_page")
+def on_add_ayat_page(call, data):
     uid = call.from_user.id
-    cid = call.message.chat.id
+    if not is_any_dev(uid):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط.", show_alert=True)
+        return
+    from modules.quran.sura_selector import show_sura_selector
+    page = int(data.get("p", 0))
+    bot.answer_callback_query(call.id)
+    show_sura_selector(
+        call, page,
+        callback_action="qr_dev_add_ayat_sura",
+        cancel_action="qr_dev_cancel",
+        page_action="qr_dev_add_ayat_page",
+        title="📖 إضافة آيات — اختر السورة",
+        suras_source="all",
+        edit=True,
+    )
+
+
+@register_action("qr_dev_add_ayat_sura")
+def on_add_ayat_sura(call, data):
+    uid     = call.from_user.id
+    cid     = call.message.chat.id
+    owner   = (uid, cid)
+    sura_id = data.get("sura_id")
+
     if not is_any_dev(uid):
         bot.answer_callback_query(call.id, "❌ للمطورين فقط.", show_alert=True)
         return
 
-    set_state(uid, cid, "qr_dev_tafseer_single_sura_ayah", {"_mid": call.message.message_id})
+    sura = db.get_sura(sura_id)
+    if not sura:
+        bot.answer_callback_query(call.id, "❌ السورة غير موجودة.", show_alert=True)
+        return
+
+    # تحديد رقم الآية التالية تلقائياً
+    next_num = db.get_next_ayah_number(sura_id)
     bot.answer_callback_query(call.id)
 
-    text = "📖 <b>إضافة تفسير آية واحدة</b>\n\nأدخل السورة ورقم الآية:\nمثال: <code>الفاتحة 1</code>"
-    cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=(uid, cid))
+    set_state(uid, cid, "qr_dev_add_ayat",
+              data={"sura": sura["name"], "start": next_num, "_mid": call.message.message_id})
 
+    cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)
     try:
-        bot.edit_message_text(text, cid, call.message.message_id, parse_mode="HTML",
-                             reply_markup=build_keyboard([cancel_btn], [1], uid))
+        bot.edit_message_text(
+            f"📖 <b>إضافة آيات — سورة {sura['name']}</b>\n\n"
+            f"▶️ ستبدأ الإضافة من الآية رقم: <b>{next_num}</b>\n\n"
+            f"أرسل الآيات مفصولة بـ:\n<code>{db.BULK_SEPARATOR}</code>\n\n"
+            f"مثال:\nبِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ\n{db.BULK_SEPARATOR}\nالْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ",
+            cid, call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=build_keyboard([cancel_btn], [1], uid),
+        )
     except Exception:
         pass
 
@@ -852,33 +873,57 @@ def on_tafseer_bulk(call, data):
     if not is_any_dev(uid):
         bot.answer_callback_query(call.id, "❌ للمطورين فقط.", show_alert=True)
         return
+    bot.answer_callback_query(call.id)
+    from modules.quran.sura_selector import show_sura_selector
+    show_sura_selector(
+        call, 0,
+        callback_action="qr_dev_tafseer_select_sura",
+        cancel_action="qr_dev_cancel",
+        page_action="qr_dev_tafseer_sura_page",
+        title="📝 إضافة تفسير — اختر السورة",
+        suras_source="with_ayat",
+        edit=True,
+    )
 
-    # عرض السور للاختيار
-    _show_sura_selection(call, 0, edit_call=call)
 
+def handle_add_tafseer(message) -> bool:
+    """أمر: إضافة تفسير — يعرض واجهة اختيار السورة ثم يحدد الآية تلقائياً"""
+    if (message.text or "").strip() != "إضافة تفسير":
+        return False
 
-def _show_sura_selection(message_or_call, page: int, reply_to: int = None, edit_call=None):
-    """عرض قائمة السور للاختيار."""
-    uid = message_or_call.from_user.id if hasattr(message_or_call, 'from_user') else message_or_call.message.chat.id
-    cid = message_or_call.chat.id if hasattr(message_or_call, 'chat') else message_or_call.message.chat.id
+    if not is_any_dev(message.from_user.id):
+        bot.reply_to(message, "❌ هذا الأمر للمطورين فقط.")
+        return True
 
-    suras = db.get_all_suras()
-    if not suras:
-        text = "❌ لا توجد سور في قاعدة البيانات."
-        if edit_call:
-            edit_ui(edit_call, text=text, buttons=[], layout=[])
-        else:
-            bot.send_message(cid, text)
-        return
+    uid   = message.from_user.id
+    cid   = message.chat.id
+    owner = (uid, cid)
 
-    items, total_pages = paginate_list(suras, page, per_page=60)
-    text = ui.build_sura_selection_text(page, total_pages)
-    buttons, layout = ui.build_sura_buttons(items, uid, cid, page, total_pages)
-
-    if edit_call:
-        edit_ui(edit_call, text=text, buttons=buttons, layout=layout)
-    else:
-        send_ui(cid, text=text, buttons=buttons, layout=layout, owner_id=uid, reply_to=reply_to)
+    sent = send_ui(
+        cid,
+        text="📝 <b>إضافة تفسير</b>\n\nاختر السورة:",
+        buttons=[btn("❌ إلغاء", "qr_dev_cancel", {}, color=_R, owner=owner)],
+        layout=[1],
+        owner_id=uid,
+        reply_to=message.message_id,
+    )
+    if sent:
+        import types as _types
+        fake_call = _types.SimpleNamespace(
+            from_user=message.from_user,
+            message=sent,
+        )
+        from modules.quran.sura_selector import show_sura_selector
+        show_sura_selector(
+            fake_call, 0,
+            callback_action="qr_dev_tafseer_select_sura",
+            cancel_action="qr_dev_cancel",
+            page_action="qr_dev_tafseer_sura_page",
+            title="📝 إضافة تفسير — اختر السورة",
+            suras_source="with_ayat",
+            edit=True,
+        )
+    return True
 
 
 @register_action("qr_dev_tafseer_select_sura")
@@ -895,23 +940,39 @@ def on_select_sura(call, data):
         bot.answer_callback_query(call.id, "❌ السورة غير موجودة.", show_alert=True)
         return
 
-    # التحقق من وجود آيات في السورة
     ayat = db.get_ayat_by_sura(sura_id)
     if not ayat:
         bot.answer_callback_query(call.id, f"❌ لا توجد آيات في سورة {sura['name']}.", show_alert=True)
         return
 
-    set_state(uid, cid, "qr_dev_tafseer_bulk_select_type",
-              {"sura_id": sura_id, "_mid": call.message.message_id})
     bot.answer_callback_query(call.id)
 
-    buttons, layout = ui.build_tafseer_type_buttons(uid, cid, sura)
-    text = f"📚 <b>اختيار نوع التفسير</b>\n<b>السورة:</b> {sura['name']}\n\nاختر نوع التفسير:"
+    # ترتيب التفسير: الميسر → السعدي → المختصر
+    TAFSEER_ORDER = [
+        ("الميسر",   "tafseer_muyassar"),
+        ("السعدي",   "tafseer_saadi"),
+        ("المختصر",  "tafseer_mukhtasar"),
+    ]
+
+    owner = (uid, cid)
+    buttons = []
+    for name_ar, col in TAFSEER_ORDER:
+        next_ayah = db.get_next_tafseer_ayah(sura_id, col)
+        buttons.append(btn(
+            f"{name_ar} (من آية {next_ayah})",
+            "qr_dev_tafseer_select_type",
+            {"sura_id": sura_id, "type": name_ar, "start": next_ayah},
+            color=_B, owner=owner,
+        ))
+    buttons.append(btn("🔙 رجوع للسور", "qr_dev_tafseer_back_to_suras", {}, color=_R, owner=owner))
 
     try:
-        bot.edit_message_text(text, cid, call.message.message_id, parse_mode="HTML")
-        bot.edit_message_reply_markup(cid, call.message.message_id,
-                                    reply_markup=build_keyboard(buttons, layout, uid))
+        bot.edit_message_text(
+            f"📝 <b>إضافة تفسير</b>\n<b>السورة:</b> {sura['name']}\n\n"
+            f"اختر نوع التفسير:\n<i>الرقم بجانب كل تفسير هو الآية التالية التي تحتاج تفسيراً</i>",
+            cid, call.message.message_id, parse_mode="HTML",
+            reply_markup=build_keyboard(buttons, [3, 1], uid),
+        )
     except Exception:
         pass
 
@@ -924,21 +985,28 @@ def on_select_tafseer_type(call, data):
         bot.answer_callback_query(call.id, "❌ للمطورين فقط.", show_alert=True)
         return
 
-    sura_id = data.get("sura_id")
+    sura_id      = data.get("sura_id")
     tafseer_type = data.get("type")
-    sura = db.get_sura(sura_id)
+    start_ayah   = int(data.get("start", 1))
+    sura         = db.get_sura(sura_id)
 
     if not sura or tafseer_type not in db.TAFSEER_TYPES:
         bot.answer_callback_query(call.id, "❌ خطأ في البيانات.", show_alert=True)
         return
 
-    set_state(uid, cid, "qr_dev_tafseer_bulk_start_ayah",
-              {"sura_id": sura_id, "type": tafseer_type, "_mid": call.message.message_id})
+    set_state(uid, cid, "qr_dev_tafseer_bulk_content",
+              {"sura_id": sura_id, "type": tafseer_type, "start": start_ayah,
+               "_mid": call.message.message_id})
     bot.answer_callback_query(call.id)
 
-    text = ui.build_ayah_input_text(sura, tafseer_type)
+    text = (
+        f"📚 <b>إضافة تفسير {tafseer_type}</b>\n"
+        f"<b>السورة:</b> {sura['name']}\n"
+        f"<b>تبدأ من آية:</b> {start_ayah}\n\n"
+        f"أرسل التفاسير مفصولة بـ:\n<code>{db.BULK_SEPARATOR}</code>\n\n"
+        f"مثال:\nتفسير آية {start_ayah}\n{db.BULK_SEPARATOR}\nتفسير آية {start_ayah + 1}"
+    )
     cancel_btn = btn("🚫 إلغاء", "qr_dev_cancel", {}, color=_R, owner=(uid, cid))
-
     try:
         bot.edit_message_text(text, cid, call.message.message_id, parse_mode="HTML",
                              reply_markup=build_keyboard([cancel_btn], [1], uid))
@@ -952,7 +1020,16 @@ def on_sura_page(call, data):
     cid = call.message.chat.id
     page = int(data.get("p", 0))
     bot.answer_callback_query(call.id)
-    _show_sura_selection(call, page, edit_call=call)
+    from modules.quran.sura_selector import show_sura_selector
+    show_sura_selector(
+        call, page,
+        callback_action=data.get("act", "qr_dev_tafseer_select_sura"),
+        cancel_action=data.get("cact", "qr_dev_cancel"),
+        page_action=data.get("pact", "qr_dev_tafseer_sura_page"),
+        title="📝 إضافة تفسير — اختر السورة",
+        suras_source="with_ayat",
+        edit=True,
+    )
 
 
 @register_action("qr_dev_tafseer_back_to_suras")
@@ -960,7 +1037,16 @@ def on_back_to_suras(call, data):
     uid = call.from_user.id
     cid = call.message.chat.id
     bot.answer_callback_query(call.id)
-    _show_sura_selection(call, 0, edit_call=call)
+    from modules.quran.sura_selector import show_sura_selector
+    show_sura_selector(
+        call, 0,
+        callback_action="qr_dev_tafseer_select_sura",
+        cancel_action="qr_dev_cancel",
+        page_action="qr_dev_tafseer_sura_page",
+        title="📝 إضافة تفسير — اختر السورة",
+        suras_source="with_ayat",
+        edit=True,
+    )
 
 
 # ══════════════════════════════════════════
@@ -982,6 +1068,17 @@ def handle_quran_commands(message) -> bool:
         return handle_my_favorites(message)
     if text == "إضافة تفسير":
         return handle_add_tafseer(message)
+    if text == "إضافة آيات":
+        return handle_add_ayat(message)
+    if text == "قراءة سورة":
+        from modules.quran.surah_reader import handle_surah_read_command
+        return handle_surah_read_command(message)
+    if text == "ختمتي":
+        from modules.quran.khatmah import handle_khatmah_command
+        return handle_khatmah_command(message)
+    if text == "تذكير ختمتي":
+        from modules.quran.khatmah import handle_khatmah_reminder_command
+        return handle_khatmah_reminder_command(message)
     if text.startswith("آية "):
         return handle_search(message)
     if is_any_dev(message.from_user.id):

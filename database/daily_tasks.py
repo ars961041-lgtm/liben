@@ -30,22 +30,18 @@ def refresh_city_resources():
         print(f"[Economy] فشل جمع الدخل اليومي: {e}")
 
 
-def assign_tasks_to_all_users():
-    """تعيين المهام اليومية لجميع المستخدمين"""
-    if not _table_exists("users") or not _table_exists("cities") or not _table_exists("daily_tasks"):
+def assign_tasks_to_all_cities():
+    """تعيين المهام اليومية لجميع المدن — المهام مرتبطة بالمدينة مباشرة، لا بالمستخدم"""
+    if not _table_exists("cities") or not _table_exists("daily_tasks"):
         return
     try:
         from database.db_queries.daily_tasks_queries import generate_daily_tasks_for_city
         conn = get_db_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users")
-        users = cursor.fetchall()
-        for user in users:
-            user_id = user["id"]
-            cursor.execute("SELECT id FROM cities WHERE owner_id=? LIMIT 1", (user_id,))
-            city = cursor.fetchone()
-            if city:
-                generate_daily_tasks_for_city(user_id, city["id"])
+        cursor.execute("SELECT id FROM cities")
+        cities = cursor.fetchall()
+        for city in cities:
+            generate_daily_tasks_for_city(city["id"])
     except Exception as e:
         print(f"[assign_tasks] {e}")
 
@@ -80,7 +76,7 @@ def run_daily_tasks():
         delete_old_invites,
         update_daily_bonuses,
         refresh_city_resources,
-        assign_tasks_to_all_users,
+        assign_tasks_to_all_cities,
         _run_maintenance,
         _check_season,
         _trigger_global_event,

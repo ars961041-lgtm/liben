@@ -115,11 +115,12 @@ def send_welcome(message):
         f"دول، حروب، بنك، تحالفات، ألعاب ترفيهية\n\n"
         f"⚙️ <b>الإدارة:</b>\n"
         f"كتم، حظر، ترقية مشرفين، تذاكر دعم\n\n"
-        f"✨ <b>أدوات أخرى:</b>\n"
-        f"تنسيق النصوص، الوقت والتاريخ، المجلة اليومية\n\n"
+        f"✨ <b>والكثير من الميزات الحصرية والجديدة لتجربة أفضل، سيتم شرحها في قناة التحديثات الخاصة بالبوت</b>\n"
         f"{get_lines()}\n"
-        f"اكتب <code>مميزات بيلو</code> لاستعراض كل الميزات\n"
-        f"اكتب <code>الألعاب</code> لعرض الألعاب المتاحة"
+        f"ارفعني مشروف في جروبك واستمتع بالميزات\n"
+        f"اكتب في الجروب<code>مميزات بيلو</code> لاستعراض كل الميزات\n"
+        f"اكتب <code>الألعاب</code> لعرض الألعاب المتاحة\n\n"
+        f"✨ <b>\n انضم للقناة الآن ليصلك كل جديد</b>\n"
     )
 
     # Build buttons: PM button (groups only) + channel button
@@ -128,14 +129,15 @@ def send_welcome(message):
     if message.chat.type != "private":
         username = get_bot_username()
         if username:
-            buttons.append(ui_btn(bot_name, url=f"https://t.me/{username}", style="primary"))
-    buttons.append(ui_btn("📢 قناة التحديثات", url="https://t.me/BotBeloPro", style="success"))
+            buttons.append(ui_btn(bot_name, url=f"https://t.me/{username}", style="success"))
+    buttons.append(ui_btn("📢 قناة التحديثات", url="https://t.me/BotBeloPro", style="primary"))
 
-    markup = build_keyboard(buttons, [len(buttons)]) if buttons else None
+    markup = build_keyboard(buttons, [1] * len(buttons)) if buttons else None
 
     import os
     from core.bot import bot as _bot
-    photo_path = os.path.join("assets", "images", "bot_profile.jpg")
+    from utils.helpers import get_bot_photo_id
+    photo_id = get_bot_photo_id()
     kwargs = {
         "caption":      caption,
         "parse_mode":   "HTML",
@@ -143,9 +145,8 @@ def send_welcome(message):
         "reply_to_message_id": message.message_id,
     }
     try:
-        if os.path.exists(photo_path):
-            with open(photo_path, "rb") as f:
-                _bot.send_photo(message.chat.id, f, **kwargs)
+        if photo_id:
+            _bot.send_photo(message.chat.id, photo_id, **kwargs)
         else:
             _bot.send_message(message.chat.id, caption,
                               parse_mode="HTML", reply_markup=markup,
@@ -275,7 +276,7 @@ def send_user_profile(message):
         elif len(text) > 1 and text[1].isdigit():
             try:
                 target = bot.get_chat(int(text[1]))
-            except:
+            except Exception:
                 send_reply(message, "❌ لا يمكن جلب هذا المستخدم. قد يكون لم يبدأ محادثة مع البوت أو ليس في المجموعة.")
                 return
 
@@ -286,28 +287,41 @@ def send_user_profile(message):
         user_id = target.id
         chat_id = message.chat.id
 
-        # جلب بيانات المستخدم
-        user_data = get_user_data(target)
-
-        group_stats = None
+        # فحص ميزة الملف الشخصي في المجموعات
+        show_photo = True
         if is_group(message):
-            group_stats = get_group_stats(user_id, chat_id)
+            from database.db_queries.group_features_queries import is_feature_enabled
+            show_photo = is_feature_enabled(chat_id, "feat_profile")
 
-        # بناء البروفايل
-        caption = build_profile(user_id, chat_id, user_data, group_stats)
+        if show_photo:
+            # الوضع الكامل — صورة + بروفايل مفصّل
+            user_data   = get_user_data(target)
+            group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
+            caption     = build_profile(user_id, chat_id, user_data, group_stats)
 
-        # إرسال الصورة إذا موجودة، وإلا نص
-        if user_data["photo_id"]:
-            bot.send_photo(
-                chat_id,
-                user_data["photo_id"],
-                caption=caption,
-                parse_mode="HTML",
-                reply_to_message_id=message.message_id,
-                has_spoiler=True
-            )
+            if user_data["photo_id"]:
+                bot.send_photo(
+                    chat_id,
+                    user_data["photo_id"],
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_to_message_id=message.message_id,
+                    has_spoiler=True,
+                )
+            else:
+                bot.reply_to(message, caption, parse_mode="HTML")
         else:
-            send_reply(message, caption)
+            # الوضع المبسّط — نص فقط بدون صورة أو تنسيق زخرفي
+            full_name = (target.first_name or "") + (
+                " " + target.last_name if getattr(target, "last_name", None) else ""
+            )
+            username  = f"@{target.username}" if getattr(target, "username", None) else "لا يوجد"
+            plain = (
+                f"👤 الاسم: {full_name}\n"
+                f"🆔 الآيدي: {user_id}\n"
+                f"🔗 اليوزر: {username}"
+            )
+            bot.reply_to(message, plain, parse_mode="HTML")
 
     except Exception as e:
         send_error_reply(message, send_error("send_user_profile", e))
