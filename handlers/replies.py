@@ -13,9 +13,11 @@
           ├── handle_private_commands()  — تذاكر، ...                       (خاص فقط)
           └── chat_responses()           — ردود تلقائية
 """
+import traceback
+
 from core.bot import bot
 from core.state_manager import StateManager
-from core.admin import is_globally_muted, is_group_muted
+from core.admin import is_globally_muted, is_group_muted, is_any_dev
 from utils.logger import log_event
 from utils.helpers import send_result
 
@@ -70,8 +72,7 @@ def receive_responses(message):
             _dispatch_private(message)
 
     except Exception as e:
-        # Only show the error message for unexpected crashes, not for
-        # routine Telegram API errors (message not modified, flood wait, etc.)
+        # Routine Telegram API errors — silent, no user message
         err_str = str(e).lower()
         is_routine = any(x in err_str for x in (
             "message is not modified",
@@ -83,9 +84,49 @@ def receive_responses(message):
             "not enough rights",
         ))
         StateManager.clear(uid, cid)
+        tb = traceback.format_exc()
         log_event("flow_error", user=uid, chat=cid, error=str(e), state=state)
-        if not is_routine:
-            send_result(chat_id=cid, text="❌ حدث خطأ أثناء التنفيذ، تم إلغاء العملية")
+
+        if is_routine:
+            return
+
+        # ── إرسال التفاصيل الكاملة للمطورين ──
+        _report_error_to_devs(uid, cid, e, tb)
+
+        # ── رسالة مختصرة للمستخدم ──
+        try:
+            send_result(
+                chat_id=cid,
+                text=(
+                    f"❌ <b>حدث خطأ أثناء التنفيذ</b>\n\n"
+                    f"<code>{_safe_escape(str(e))}</code>\n\n"
+                    f"<i>تم إبلاغ المطورين تلقائياً.</i>"
+                ),
+            )
+        except Exception:
+            pass
+
+
+def _safe_escape(text: str) -> str:
+    """يُهرّب أحرف HTML الخاصة لعرضها داخل code block."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _report_error_to_devs(uid: int, cid: int, exc: Exception, tb: str):
+    """يُرسَل تقرير الخطأ الكامل لمجموعة المطورين."""
+    try:
+        from core.dev_notifier import send_to_dev_group
+        short_tb = tb[-3000:] if len(tb) > 3000 else tb   # حد Telegram
+        msg = (
+            f"🔴 <b>خطأ في التنفيذ</b>\n\n"
+            f"👤 المستخدم: <code>{uid}</code>\n"
+            f"💬 المحادثة: <code>{cid}</code>\n\n"
+            f"❌ <b>الخطأ:</b>\n<code>{_safe_escape(str(exc))}</code>\n\n"
+            f"📋 <b>Traceback:</b>\n<pre>{_safe_escape(short_tb)}</pre>"
+        )
+        send_to_dev_group(msg)
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════

@@ -38,6 +38,11 @@ SURAS_NAMES = [
 
 def _get_conn() -> sqlite3.Connection:
     if getattr(_local, "conn", None) is None:
+        import os
+        if not os.path.exists(DB_CONTENT):
+            directory = os.path.dirname(DB_CONTENT)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
         conn = sqlite3.connect(DB_CONTENT, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA foreign_keys = ON")

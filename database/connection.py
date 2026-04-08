@@ -1,6 +1,8 @@
 """
 اتصال قاعدة البيانات الرئيسية — thread-local مع WAL وtimeout
+يُنشئ ملف DB تلقائياً إذا لم يكن موجوداً.
 """
+import os
 import sqlite3
 import threading
 from core.config import DB_NAME
@@ -12,12 +14,21 @@ _CONNECTIONS_LOCK = threading.Lock()
 ACTIVE_CONNECTIONS: set = set()
 
 
+def _ensure_db_exists(path: str):
+    """يُنشئ ملف DB وأي مجلدات مطلوبة إذا لم تكن موجودة."""
+    directory = os.path.dirname(path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+    # sqlite3.connect ينشئ الملف تلقائياً — لا حاجة لإجراء إضافي
+
+
 def get_db_conn() -> sqlite3.Connection:
     """
     يرجع اتصالاً thread-local.
     WAL + foreign_keys + row_factory مُفعَّلة دائماً.
     """
     if getattr(_local, "conn", None) is None:
+        _ensure_db_exists(DB_NAME)
         conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
