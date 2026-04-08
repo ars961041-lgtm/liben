@@ -1,9 +1,20 @@
+# Python
 __pycache__/
 *.pyc
-.DS_Store
+
+# Environment
 .env
-/docs/
-*.md
+
+# macOS
+.DS_Store
+
+# Databases
 *.db
 *.db-shm
 *.db-wal
+
+# Docs
+/docs/
+
+# Markdown
+*.md
