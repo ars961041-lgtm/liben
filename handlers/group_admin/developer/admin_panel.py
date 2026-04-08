@@ -49,11 +49,12 @@ def _send_main_panel(chat_id, user_id):
         btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
         btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
         btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
-        btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
+        btn("🔄 إعادة تحميل الآيات", "adm_reload_ayat_confirm", data={}, owner=owner, color=_RED),
+        btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm",    data={}, owner=owner, color=_RED),
     ]
     send_ui(chat_id,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 2, 1, 1], owner_id=user_id)
+            buttons=buttons, layout=[2, 2, 2, 2], owner_id=user_id)
 
 
 # ══════════════════════════════════════════
@@ -383,11 +384,12 @@ def back_to_main(call, data):
         btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
         btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
         btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
-        btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm", data={}, owner=owner, color=_RED),
+        btn("🔄 إعادة تحميل الآيات", "adm_reload_ayat_confirm", data={}, owner=owner, color=_RED),
+        btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm",    data={}, owner=owner, color=_RED),
     ]
     edit_ui(call,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 2, 1, 1])
+            buttons=buttons, layout=[2, 2, 2, 2])
 
 
 # ══════════════════════════════════════════
@@ -751,3 +753,96 @@ def reset_db_execute(call, data):
             )
         except Exception:
             pass
+
+
+# ══════════════════════════════════════════
+# 🔄 إعادة تحميل الآيات
+# ══════════════════════════════════════════
+
+@register_action("adm_reload_ayat_confirm")
+def reload_ayat_confirm(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if not is_primary_dev(user_id):
+        bot.answer_callback_query(call.id, "❌ فقط المطور الأساسي.", show_alert=True)
+        return
+
+    owner = (user_id, chat_id)
+    edit_ui(
+        call,
+        text=(
+            "⚠️ <b>إعادة تحميل الآيات</b>\n"
+            f"{get_lines()}\n\n"
+            "سيتم <b>حذف جميع الآيات</b> من قاعدة البيانات\n"
+            "وإعادة تحميلها من API.\n\n"
+            "⚠️ <b>هذا الإجراء لا يمكن التراجع عنه!</b>\n\n"
+            "هل أنت متأكد؟"
+        ),
+        buttons=[
+            btn("✅ تأكيد الإعادة", "adm_reload_ayat_execute", data={},
+                owner=owner, color=_RED),
+            btn("❌ إلغاء", "adm_main_back", data={},
+                owner=owner, color=_GRN),
+        ],
+        layout=[1, 1],
+    )
+
+
+@register_action("adm_reload_ayat_execute")
+def reload_ayat_execute(call, data):
+    import threading
+
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if not is_primary_dev(user_id):
+        bot.answer_callback_query(call.id, "❌ للمطور الأساسي فقط.", show_alert=True)
+        return
+
+    bot.answer_callback_query(call.id, "⏳ جاري إعادة التحميل...")
+
+    # ── إنشاء رسالة التقدم الوحيدة ──
+    header   = "🔄 <b>إعادة تحميل الآيات</b>\n" + get_lines() + "\n\n"
+    init_msg = header + "⏳ جاري التحميل...\nقد تستغرق العملية بعض الوقت."
+
+    try:
+        progress_msg = bot.send_message(chat_id, init_msg, parse_mode="HTML")
+        prog_mid     = progress_msg.message_id
+    except Exception:
+        prog_mid = None
+
+    # ── تراكم سطور التقدم وتحديث الرسالة ──
+    lines = []
+
+    def _edit_progress():
+        if not prog_mid:
+            return
+        body = "\n".join(lines[-60:])   # آخر 60 سطر لتجنب تجاوز حد تيليغرام
+        try:
+            bot.edit_message_text(
+                header + body,
+                chat_id, prog_mid, parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+    def _progress(msg: str):
+        lines.append(msg)
+        _edit_progress()
+
+    # ── تشغيل العملية في thread منفصل لعدم تجميد البوت ──
+    def _run():
+        from modules.quran import quran_db as qr_db
+        ok, summary = qr_db.reload_ayat_from_api(progress_callback=_progress)
+
+        final = header + "\n".join(lines[-60:]) + f"\n\n{'✅' if ok else '❌'} {summary}"
+        if prog_mid:
+            try:
+                bot.edit_message_text(final, chat_id, prog_mid, parse_mode="HTML")
+                return
+            except Exception:
+                pass
+        bot.send_message(chat_id, f"{'✅' if ok else '❌'} {summary}", parse_mode="HTML")
+
+    threading.Thread(target=_run, daemon=True).start()

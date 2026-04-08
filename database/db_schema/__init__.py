@@ -54,4 +54,7 @@ def create_all_tables():
     from modules.rules.rules_db import create_rules_table
     create_rules_table()
 
+    from modules.quran.quran_db import create_tables as create_quran_tables
+    create_quran_tables()
+
     print("✅ تم إنشاء جميع جداول قاعدة البيانات بنجاح.")

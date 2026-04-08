@@ -830,3 +830,141 @@ def get_days_since_last_read(user_id: int) -> int:
         return (date.today() - last).days
     except Exception:
         return 999
+
+
+# ══════════════════════════════════════════
+# إعادة تحميل الآيات من API
+# ══════════════════════════════════════════
+
+_QURAN_API_BASE = "https://api.alquran.cloud/v1/surah"
+
+
+def _fetch_with_retry(url: str, retries: int = 3, delay: float = 2.0) -> dict:
+    """يجلب URL مع إعادة المحاولة عند الفشل."""
+    import time
+    import urllib.request
+    import json as _json
+
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                return _json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(delay)
+    raise RuntimeError(f"فشل الاتصال بـ API بعد {retries} محاولات: {last_err}")
+
+
+def _fetch_surah(surah_id: int) -> list[dict]:
+    """
+    يجلب آيات سورة من alquran.cloud API.
+    يرجع قائمة من dicts تحتوي على: numberInSurah, text
+    """
+    url  = f"{_QURAN_API_BASE}/{surah_id}"
+    data = _fetch_with_retry(url)
+
+    if data.get("code") != 200:
+        raise RuntimeError(f"API أعاد كود غير متوقع للسورة {surah_id}: {data.get('code')}")
+
+    ayahs = data.get("data", {}).get("ayahs")
+    if not ayahs:
+        raise RuntimeError(f"لا توجد آيات في استجابة API للسورة {surah_id}")
+
+    return ayahs
+
+
+def reload_ayat_from_api(progress_callback=None) -> tuple[bool, str]:
+    """
+    يحذف جميع الآيات ويعيد تحميلها من alquran.cloud API.
+    يفشل فوراً إذا فشل جلب أي سورة (لا تخطي).
+
+    progress_callback(msg: str): دالة اختيارية لإرسال تحديثات التقدم
+    يرجع (True, summary) أو (False, error_message)
+    """
+    from modules.quran.quran_service import remove_tashkeel
+
+    def _log(msg: str):
+        if progress_callback:
+            try:
+                progress_callback(msg)
+            except Exception:
+                pass
+
+    conn = _get_conn()
+    cur  = conn.cursor()
+
+    try:
+        cur.execute("BEGIN")
+
+        # ── 1. حذف جميع الآيات وإعادة ضبط الـ autoincrement ──
+        cur.execute("DELETE FROM ayat")
+        cur.execute("DELETE FROM sqlite_sequence WHERE name='ayat'")
+
+        total_inserted = 0
+        mismatches     = []
+
+        # ── 2. تحميل السور بالترتيب الصارم 1 → 114 ──
+        for sura_id in range(1, 115):
+
+            # التحقق من وجود السورة في جدول suras
+            cur.execute("SELECT id, name FROM suras WHERE id=?", (sura_id,))
+            sura_row = cur.fetchone()
+            if not sura_row:
+                raise RuntimeError(f"السورة {sura_id} غير موجودة في جدول suras")
+
+            sura_name = sura_row[1]
+            _log(f"📥 جاري تحميل سورة {sura_id}: {sura_name}...")
+
+            # جلب الآيات من API — يرفع استثناء إذا فشل
+            ayahs = _fetch_surah(sura_id)
+
+            # ترتيب صارم بـ numberInSurah تصاعدياً
+            ayahs.sort(key=lambda a: a["numberInSurah"])
+
+            for ayah in ayahs:
+                ayah_num     = int(ayah["numberInSurah"])
+                text_with    = str(ayah["text"]).strip()
+                text_without = remove_tashkeel(text_with)
+
+                cur.execute("""
+                    INSERT INTO ayat
+                        (sura_id, ayah_number, text_with_tashkeel, text_without_tashkeel,
+                         tafseer_mukhtasar, tafseer_saadi, tafseer_muyassar)
+                    VALUES (?,?,?,?,NULL,NULL,NULL)
+                """, (sura_id, ayah_num, text_with, text_without))
+
+            inserted_count = len(ayahs)
+            total_inserted += inserted_count
+
+            # التحقق من العدد بعد الإدراج
+            cur.execute("SELECT COUNT(*) FROM ayat WHERE sura_id=?", (sura_id,))
+            db_count = cur.fetchone()[0]
+            if db_count != inserted_count:
+                mismatch_msg = (
+                    f"⚠️ السورة {sura_id}: متوقع {inserted_count} آية، "
+                    f"أُدرج {db_count}"
+                )
+                mismatches.append(mismatch_msg)
+                _log(mismatch_msg)
+            else:
+                _log(f"✅ سورة {sura_id} ({sura_name}): {inserted_count} آية")
+
+        conn.commit()
+
+        summary = (
+            f"✅ تم إعادة تحميل جميع الآيات بنجاح!\n\n"
+            f"📊 إجمالي الآيات المُدرجة: {total_inserted}"
+        )
+        if mismatches:
+            summary += f"\n\n⚠️ تباينات ({len(mismatches)}):\n" + "\n".join(mismatches)
+
+        return True, summary
+
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False, f"❌ فشلت العملية وتم التراجع:\n<code>{e}</code>"
