@@ -32,13 +32,15 @@ def _ensure_databases():
             print(f"✅ Database exists: {path}")
 
 
-@bot.message_handler(content_types=["new_chat_members"])
-def welcome(message):
-    welcome_member(message)
+@bot.chat_member_handler()
+def on_chat_member_update(update):
+    old = update.old_chat_member.status
+    new = update.new_chat_member.status
+    if old in ("left", "kicked") and new == "member":
+        welcome_member(update)
+    elif old == "member" and new in ("left", "kicked"):
+        left_member(update)
 
-@bot.message_handler(content_types=["left_chat_member"])
-def left(message):
-    left_member(message)
 
 @bot.message_handler(func=lambda message: True)
 def replies(message):
@@ -63,7 +65,14 @@ def start_bot():
             bot.infinity_polling(
                 timeout=20,
                 long_polling_timeout=10,
-                skip_pending=True
+                skip_pending=True,
+                allowed_updates=[
+                    "message",
+                    "callback_query",
+                    "chat_member",
+                    "inline_query",
+                    "my_chat_member",
+                ]
             )
         except ApiTelegramException as e:
             print("Telegram API Error:", e)

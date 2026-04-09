@@ -53,25 +53,37 @@ _UPDATES_URL = "https://t.me/BotBeloPro"
 # عضو جديد
 # ══════════════════════════════════════════
 
-def welcome_member(message):
+# def welcome_member(message):
+#     bot_id = bot.get_me().id
+#     for member in message.new_chat_members:
+#         if member.id == bot_id:
+#             _send_bot_joined(message)   # bot itself was added
+#         elif not member.is_bot:
+#             # فحص ميزة الترحيب
+#             from database.db_queries.group_features_queries import is_feature_enabled
+#             if is_feature_enabled(message.chat.id, "feat_welcome"):
+#                 _send_welcome(message, member)
+
+def welcome_member(update):
     bot_id = bot.get_me().id
-    for member in message.new_chat_members:
-        if member.id == bot_id:
-            _send_bot_joined(message)   # bot itself was added
-        elif not member.is_bot:
-            # فحص ميزة الترحيب
-            from database.db_queries.group_features_queries import is_feature_enabled
-            if is_feature_enabled(message.chat.id, "feat_welcome"):
-                _send_welcome(message, member)
+    user = update.new_chat_member.user
 
+    if user.id == bot_id:
+        _send_bot_joined(update)
 
-def _send_welcome(message, member):
+    elif not user.is_bot:
+        from database.db_queries.group_features_queries import is_feature_enabled
+
+        if is_feature_enabled(update.chat.id, "feat_welcome"):
+            _send_welcome(update, user)
+
+def _send_welcome(update, member):
     uid        = member.id
     first_name = member.first_name or ""
     last_name  = member.last_name  or ""
     full_name  = (first_name + " " + last_name).strip()
     username   = f"@{member.username}" if member.username else "لا يوجد"
-    group_name = message.chat.title or "المجموعة"
+    group_name = update.chat.title or "المجموعة"
     is_dev     = uid in developers_id
 
     now      = datetime.now()
@@ -94,18 +106,17 @@ def _send_welcome(message, member):
         f"✨ {welcome_line}"
     )
 
-    markup = _build_welcome_markup(message)
-    # استخدام صورة المجموعة للترحيب، وإلا صورة البوت، وإلا نص فقط
-    group_photo = get_entity_photo_id(message.chat.id)
+    markup = _build_welcome_markup(update)
+
+    group_photo = get_entity_photo_id(update.chat.id)
     photo_id    = group_photo or get_bot_photo_id()
-    _send_photo_or_text(message.chat.id, photo_id, caption, markup,
-                        reply_to=message.message_id)
+
+    _send_photo_or_text(update.chat.id, photo_id, caption, markup)
 
     # auto-send rules if enabled
     from modules.rules.rules_handler import send_rules_to_new_member
-    send_rules_to_new_member(message.chat.id, uid)
-
-
+    send_rules_to_new_member(update.chat.id, uid)
+    
 # ══════════════════════════════════════════
 # البوت أُضيف لمجموعة
 # ══════════════════════════════════════════
@@ -254,15 +265,30 @@ def _send_photo_or_text(chat_id, photo_id, caption, markup, reply_to=None):
 # وداع عضو
 # ══════════════════════════════════════════
 
-def left_member(message):
-    user = message.left_chat_member
+# def left_member(message):
+#     user = message.left_chat_member
+#     if user.is_bot:
+#         return
+#     text = (
+#         f"<b>{random.choice(_LEFT_MSGS)} "
+#         f"<a href='tg://user?id={user.id}'>{user.first_name}</a></b>"
+#     )
+#     try:
+#         bot.reply_to(message, text, parse_mode="HTML")
+#     except Exception as e:
+#         print(f"[left_member] error: {e}")
+def left_member(update):
+    user = update.new_chat_member.user
+
     if user.is_bot:
         return
+
     text = (
         f"<b>{random.choice(_LEFT_MSGS)} "
         f"<a href='tg://user?id={user.id}'>{user.first_name}</a></b>"
     )
+
     try:
-        bot.reply_to(message, text, parse_mode="HTML")
+        bot.send_message(update.chat.id, text, parse_mode="HTML")
     except Exception as e:
         print(f"[left_member] error: {e}")
