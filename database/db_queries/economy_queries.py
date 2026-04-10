@@ -1,7 +1,7 @@
 
 import time
 
-from database.db_queries.building_queries import calculate_city_economy
+from database.db_queries.assets_queries import calculate_city_effects
 from ..connection import get_db_conn
 from utils.helpers import send_error
 
@@ -52,7 +52,7 @@ def calculate_country_economy(country_id: int):
     total_maintenance = 0
 
     for city in cities:
-        city_stats = calculate_city_economy(city['id'])
+        city_stats = calculate_city_effects(city['id'])
         total_income += city_stats.get("income", 0)
         total_maintenance += city_stats.get("maintenance", 0)
 

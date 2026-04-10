@@ -2,6 +2,7 @@
 import time
 from core.bot import bot
 from .cache import get_cache
+from utils.helpers import get_error_icons
 
 # ── Action handlers ──
 ACTION_HANDLERS = {}
@@ -78,6 +79,47 @@ def paginate_list(items, page=0, per_page=10):
 
 
 # ══════════════════════════════════════════
+# Whisper button helpers (reusable via pagination module)
+# ══════════════════════════════════════════
+
+def build_whisper_view_button(whisper_ids: dict, sender_id: int, is_all: bool):
+    """
+    يبني زر "🔐 عرض الهمسة" للمجموعة.
+    يُستخدم من whispers_keyboards — مُصدَّر هنا للاستخدام المركزي.
+    """
+    from modules.whispers.whispers_keyboards import build_whisper_group_buttons
+    return build_whisper_group_buttons(sender_id, 0, whisper_ids, is_all)
+
+
+def build_whisper_reply_button(whisper_ids: dict, sender_id: int, group_id: int):
+    """
+    يبني زر "↩️ الرد على الهمسة" فقط (بدون زر العرض).
+    مُصدَّر للاستخدام المركزي من pagination module.
+    """
+    from .cache import store_cache
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup()
+    payload = {"a": "wsp_reply", "d": {
+        "wids": {str(k): v for k, v in whisper_ids.items()},
+        "sid":  sender_id,
+        "gid":  group_id,
+    }}
+    key = store_cache(None, None, payload, owner=None)
+    markup.add(InlineKeyboardButton("↩️ الرد على الهمسة", callback_data=f"k:{key}"))
+    return markup
+
+
+def build_whisper_keyboard(whisper_ids: dict, sender_id: int,
+                            group_id: int, is_all: bool):
+    """
+    يبني لوحة مفاتيح الهمسة الكاملة (عرض + رد).
+    نقطة الدخول الموحدة من pagination module.
+    """
+    from modules.whispers.whispers_keyboards import build_whisper_group_buttons
+    return build_whisper_group_buttons(sender_id, group_id, whisper_ids, is_all)
+
+
+# ══════════════════════════════════════════
 # Callback handler
 # ══════════════════════════════════════════
 
@@ -106,10 +148,10 @@ def handle_buttons(call):
     if owner:
         owner_uid, owner_cid = owner
         if owner_uid != call.from_user.id:
-            bot.answer_callback_query(call.id, "❌ هذا الزر ليس لك", show_alert=True)
+            bot.answer_callback_query(call.id, f" هذا الزر ليس لك  {get_error_icons()}", show_alert=True)
             return
         if owner_cid is not None and owner_cid != call.message.chat.id:
-            bot.answer_callback_query(call.id, "❌ هذا الزر ليس لك", show_alert=True)
+            bot.answer_callback_query(call.id, f" هذا الزر ليس لك  {get_error_icons()}", show_alert=True)
             return
 
     payload = entry["data"]

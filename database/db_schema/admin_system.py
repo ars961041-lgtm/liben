@@ -7,49 +7,75 @@ def create_admin_tables():
     conn = get_db_conn()
     cursor = conn.cursor()
 
-    # ─── ثوابت البوت ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: bot_constants
+    # PURPOSE: Key-value store for all runtime-configurable bot
+    #          settings. Avoids hardcoding values in code. Admins
+    #          can update these without redeploying.
+    #
+    # COLUMNS:
+    #   name        — Unique key (e.g. 'attack_cost', 'initial_balance').
+    #                 Acts as the primary key.
+    #   value       — The setting's value, always stored as TEXT.
+    #                 Cast to int/float at the call site.
+    #   description — Human-readable explanation of what this controls.
+    #   updated_at  — Unix timestamp of the last change.
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS bot_constants (
-        name TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
+        name        TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
         description TEXT DEFAULT '',
-        updated_at INTEGER DEFAULT (strftime('%s','now'))
+        updated_at  INTEGER DEFAULT (strftime('%s','now'))
     )
     """)
 
-    # ─── مطورو البوت ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: bot_developers
+    # PURPOSE: List of users with developer-level access to the bot.
+    #          Used to gate admin commands and the dev panel.
+    #
+    # COLUMNS:
+    #   id       — Internal autoincrement PK.
+    #   user_id  — References users.user_id. The developer's Telegram ID.
+    #   role     — 'primary' (full access) or 'secondary' (limited).
+    #   added_at — Unix timestamp when this developer was registered.
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS bot_developers (
-        user_id INTEGER PRIMARY KEY,
-        role TEXT DEFAULT 'secondary',
-        added_at INTEGER DEFAULT (strftime('%s','now'))
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id  INTEGER NOT NULL UNIQUE,
+        role     TEXT    DEFAULT 'secondary',
+        added_at INTEGER DEFAULT (strftime('%s','now')),
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
     )
     """)
 
-    # ─── كتم عالمي ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: global_mutes
+    # PURPOSE: Users muted across ALL groups the bot is in.
+    #          A global mute overrides any group-level setting.
+    #
+    # COLUMNS:
+    #   id       — Internal autoincrement PK.
+    #   user_id  — The globally muted user. Unique — one row per user.
+    #   reason   — Why the user was globally muted.
+    #   muted_by — The developer/admin who issued the mute.
+    #   muted_at — Unix timestamp when the mute was applied.
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS global_mutes (
-        user_id INTEGER PRIMARY KEY,
-        reason TEXT DEFAULT '',
-        muted_by INTEGER,
-        muted_at INTEGER DEFAULT (strftime('%s','now'))
-    )
-    """)
-
-    # ─── كتم في مجموعة محددة ───
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS group_mutes (
-        user_id INTEGER NOT NULL,
-        group_id INTEGER NOT NULL,
-        reason TEXT DEFAULT '',
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id  INTEGER NOT NULL UNIQUE,
+        reason   TEXT    DEFAULT '',
         muted_by INTEGER,
         muted_at INTEGER DEFAULT (strftime('%s','now')),
-        PRIMARY KEY (user_id, group_id)
+        FOREIGN KEY (user_id)  REFERENCES users(user_id),
+        FOREIGN KEY (muted_by) REFERENCES users(user_id)
     )
     """)
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_global_mutes ON global_mutes(user_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_group_mutes ON group_mutes(user_id, group_id)")
 
     conn.commit()
     _seed_defaults(conn)
@@ -58,13 +84,14 @@ def create_admin_tables():
 def _seed_defaults(conn):
     cursor = conn.cursor()
 
-    # ─── إضافة المطور الأساسي ───
     for dev_id in developers_id:
+        cursor.execute(
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (dev_id,)
+        )
         cursor.execute("""
             INSERT OR IGNORE INTO bot_developers (user_id, role) VALUES (?, 'primary')
         """, (dev_id,))
 
-    # ─── الثوابت الافتراضية ───
     defaults = [
         ("dev_group_id",          "-1003505563946",  "معرف مجموعة المطورين"),
         ("attack_cost",           "500",           f"تكلفة إطلاق هجوم ({CURRENCY_ARABIC_NAME})"),
@@ -94,6 +121,9 @@ def _seed_defaults(conn):
         ("transfer_min_amount",   "10",            "الحد الأدنى للتحويل البنكي"),
         ("transfer_max_amount",   "100000",        "الحد الأقصى للتحويل البنكي"),
         ("max_loan_amount",       "10000",         "الحد الأقصى لمبلغ القرض"),
+        ("quotes_interval_minutes", "10",          "فترة إرسال الاقتباسات التلقائية للمجموعات (دقائق)"),
+        ("weekly_ranking_reward",   "500",          "مكافأة بطل الأسبوع في المجلة"),
+        ("monthly_ranking_reward",  "2000",         "مكافأة بطل الشهر في المجلة"),
     ]
 
     cursor.executemany("""

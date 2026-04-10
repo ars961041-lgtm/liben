@@ -4,7 +4,7 @@
 from utils.pagination import btn, paginate_list
 from modules.quran.quran_service import get_available_tafseer
 from modules.quran import quran_db as db
-from utils.helpers import get_lines
+from utils.helpers import get_lines, format_ayah_number
 
 _B = "p"   # أزرق
 _G = "su"  # أخضر
@@ -13,18 +13,17 @@ _R = "d"   # أحمر
 
 def build_ayah_text(ayah: dict, total: int) -> str:
     """يبني نص عرض الآية."""
-    # الحصول على اسم السورة
+
     sura = db.get_sura(ayah["sura_id"])
     sura_name = sura["name"] if sura else f"سورة {ayah['sura_id']}"
-
+    
     return (
-        f"📖 <b>{sura_name}</b> — آية {ayah['ayah_number']}\n"
-        f"‏━━━━━━━━━━━━━━━\n\n"
-        f"{ayah['text_with_tashkeel']}\n\n"
+        f"📖 <b>{sura_name}</b>\n"
+        f"‏━━━━━━━━\n\n"
+        f"{ayah['text_with_tashkeel']} {format_ayah_number(ayah['ayah_number'])}\n\n"
         f"‏━━━━━━━━━━\n"
-        f"<tg-spoiler><i>آية {ayah['id']} من {total}</i></tg-spoiler>"    
-        )
-
+        f"<tg-spoiler><i>آية {ayah['id']} من {total}</i></tg-spoiler>"
+    )
 
 def build_ayah_buttons(uid: int, cid: int, ayah: dict,
                        is_fav: bool, has_prev: bool, has_next: bool,
@@ -103,17 +102,25 @@ def build_tafseer_buttons(uid: int, cid: int, ayah: dict,
 
     return buttons, layout
 
-def build_search_result_text(results: list[dict], page: int, total_pages: int) -> str:
-    """يبني نص نتائج البحث."""
-
-    text = f"🔍 <b>نتائج البحث</b> ({page+1}/{total_pages})\n{get_lines()}\n\n"
+def build_search_result_text(results: list[dict], page: int, total_pages: int,
+                             query: str = "", ayat_count: int = 0,
+                             total_occurrences: int = 0) -> str:
+    """يبني نص نتائج البحث مع إحصائيات."""
+    text = (
+        f"🔎 <b>نتائج البحث عن:</b> «{query}»\n"
+        f"📊 وُجد في <b>{ayat_count}</b> آية "
+        f"(<b>{total_occurrences}</b> تكرار إجمالي)\n"
+        f"{get_lines()}\n\n"
+    )
     for r in results:
         sura = db.get_sura(r["sura_id"])
         sura_name = sura["name"] if sura else f"سورة {r['sura_id']}"
         text += (
-            f"📖 <b>{sura_name}</b> — آية {r['ayah_number']}\n"
-            f"{r['text_with_tashkeel']}\n\n"
+            f"📖 <b>{sura_name}</b>\n\n"
+            f"{r['text_with_tashkeel']} {format_ayah_number(r['ayah_number'])}\n\n"
         )
+    if total_pages > 1:
+        text += f"<i>صفحة {page+1} من {total_pages}</i>"
     return text
 
 
@@ -127,7 +134,7 @@ def build_search_buttons(uid: int, cid: int, query: str,
     # أزرار النتائج
     for r in results:
         buttons.append(btn(
-            f"📖 {r['sura_name']} {r['ayah_number']}",
+            f"📖 {r['sura_name']} {format_ayah_number(r['ayah_number'])}",
             "qr_goto_ayah",
             {"aid": r["id"], "src": "search"},
             color=_B, owner=owner,
@@ -170,8 +177,8 @@ def build_favorites_text(favs: list[dict], page: int, total_pages: int) -> str:
         sura = db.get_sura(f["sura_id"])
         sura_name = sura["name"] if sura else f"سورة {f['sura_id']}"
         text += (
-            f"📖 <b>{sura_name}</b> — آية {f['ayah_number']}\n"
-            f"{f['text_with_tashkeel']}\n\n"
+            f"📖 <b>{sura_name}</b>\n\n"
+            f"{f['text_with_tashkeel']} {format_ayah_number(f['ayah_number'])}\n\n"
         )
     return text
 
@@ -186,7 +193,7 @@ def build_favorites_buttons(uid: int, cid: int, favs: list[dict],
     for f in favs:
         row.append(
             btn(
-                f"📖 {f['sura_name']} {f['ayah_number']}",
+                f"📖 {f['sura_name']} {format_ayah_number(f['ayah_number'])}",
                 "qr_goto_ayah",
                 {"aid": f["id"], "src": "favorites", "fp": page},
                 color=_B,

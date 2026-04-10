@@ -4,10 +4,6 @@ from .bank_queries import (
     can_use_cooldown, set_cooldown,
     create_loan, repay_loan, get_active_loans
 )
-from .building_queries import (
-    buy_building, upgrade_building,
-    calculate_city_stats, calculate_city_economy, delete_all_buildings
-)
 from .cities_queries import (
     city_exists, create_city, get_user_city, get_user_city_details,
     update_city, delete_city, get_cities_by_country, get_top_cities, get_city_users
@@ -15,7 +11,7 @@ from .cities_queries import (
 from .countries_queries import (
     get_all_countries, country_exists, create_country,
     get_user_country, get_user_country_name, get_user_country_id,
-    get_country_stats, update_country_stats, get_country_budget,
+    get_country_budget,
     get_country_by_user, get_top_countries
 )
 from .economy_queries import (

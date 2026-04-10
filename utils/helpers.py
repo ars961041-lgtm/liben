@@ -232,9 +232,6 @@ def get_twinkle_line():
 def get_vertical_separator():
   return vertical_separator
 
-def get_ayah_divider():
-  return ayah_divider
-
 def get_post_divider():
   return post_divider
 
@@ -245,7 +242,7 @@ def get_lines():
   return random.choice(lines)
 
 def get_left_arrows():
-  return random.choice(arrow_lefts)
+  return random.choice(left_arrows)
 
 def get_right_arrows():
   return random.choice(right_arrows)
@@ -280,11 +277,7 @@ def send_error_reply (msg, text):
   except Exception as e:
     bot.reply_to(send_error("send_error_relpy", e), parse_mode="HTML")
 
-def send_reply(msg, text, parse_html=True, buttons=None, Shape = True):
-    """
-    إرسال رد على الرسالة الأصلية مع دعم الأزرار.
-    buttons: قائمة من القوائم [[("زر1", "cb_1"), ("زر2", "cb_2")], [...]]
-    """
+def send_reply(msg, text, parse_html=True, buttons=None, Shape=True):
     try:
         markup = None
         if buttons:
@@ -292,18 +285,21 @@ def send_reply(msg, text, parse_html=True, buttons=None, Shape = True):
             for row in buttons:
                 markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
 
+        prefix = get_section_dividers() if Shape else ""
+        final_text = prefix + f"<b>{text}</b>"
+
         bot.reply_to(
             msg,
-            get_section_dividers() if Shape else "" + "<b>" + text + "</b>",
+            final_text,
             parse_mode="HTML" if parse_html else None,
             reply_markup=markup
         )
+
     except Exception as e:
         try:
-            bot.reply_to(msg, f"❌ {str(e)}", parse_mode="HTML")
+            bot.reply_to(msg, f"{str(e)}  {get_error_icons()}", parse_mode="HTML")
         except Exception:
             pass
-
 
 def send_message(chat_id, text, parse_html=True, buttons=None, reply_to_id=None):
     """
@@ -382,6 +378,19 @@ def format_remaining_time(seconds):
             parts.append(f"{sec} ثواني")
 
     return " و ".join(parts)
+
+def convert_to_arabic_numbers(number):
+    return str(number).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+
+def format_ayah_number(ayah_number: int) -> str:
+
+    # عكس الرقم كنص حتى لا يضيع الصفر
+    reversed_number = str(ayah_number)[::-1]
+
+    # تحويل للأرقام العربية
+    arabic_number = convert_to_arabic_numbers(reversed_number)
+
+    return f"{arabic_number}{ayah_divider}"
 
 # -------------------------------------------------------------- Messages
 

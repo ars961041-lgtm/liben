@@ -42,23 +42,25 @@ def open_admin_panel(message):
 def _send_main_panel(chat_id, user_id):
     owner = (user_id, chat_id)
     buttons = [
-        btn("⚙️ ثوابت البوت",    "adm_constants",   data={"page": 0}, owner=owner, color=_BLUE),
-        btn("👨‍💻 المطورون",       "adm_devs",        data={},          owner=owner, color=_BLUE),
-        btn("🔇 الكتم العالمي",   "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
-        btn("🔕 كتم المجموعة",    "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
-        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
+        btn("⚙️ ثوابت البوت",        "adm_constants",   data={"page": 0}, owner=owner, color=_BLUE),
+        btn("👨‍💻 المطورون",           "adm_devs",        data={},          owner=owner, color=_BLUE),
+        btn("🔇 الكتم العالمي",       "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
+        btn("🔕 كتم المجموعة",        "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
         btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
         btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
+        btn("📚 إدارة المحتوى",       "adm_content_hub",         data={}, owner=owner, color=_BLUE),
+        btn("📖 إدارة القرآن",        "adm_quran_panel",         data={}, owner=owner, color=_BLUE),
+        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
         btn("🔄 إعادة تحميل الآيات", "adm_reload_ayat_confirm", data={}, owner=owner, color=_RED),
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm",    data={}, owner=owner, color=_RED),
     ]
     send_ui(chat_id,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 2, 2], owner_id=user_id)
+            buttons=buttons, layout=[2, 2, 2, 2, 2, 1], owner_id=user_id)
 
 
 # ══════════════════════════════════════════
-# ⚙️ ثوابت البوت
+# 🛠 لوحة المطور (ثوابت البوت)
 # ══════════════════════════════════════════
 
 @register_action("adm_constants")
@@ -78,7 +80,7 @@ def show_constants(call, data):
     # أرقام عربية للعرض
     _nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣"]
 
-    text = f"⚙️ ثوابت البوت (صفحة {page+1}/{total_pages})\n‏• ━━━━━━━━━━━━ •\n\n"
+    text = f"🛠 لوحة المطور (صفحة {page+1}/{total_pages})\n‏• ━━━━━━━━━━━━ •\n\n"
     buttons = []
     for i, c in enumerate(items):
         num = _nums[i]
@@ -377,19 +379,21 @@ def back_to_main(call, data):
         return
     owner = (user_id, chat_id)
     buttons = [
-        btn("⚙️ ثوابت البوت",    "adm_constants",   data={"page": 0}, owner=owner, color=_BLUE),
-        btn("👨‍💻 المطورون",       "adm_devs",        data={},          owner=owner, color=_BLUE),
-        btn("🔇 الكتم العالمي",   "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
-        btn("🔕 كتم المجموعة",    "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
-        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
+        btn("⚙️ ثوابت البوت",        "adm_constants",   data={"page": 0}, owner=owner, color=_BLUE),
+        btn("👨‍💻 المطورون",           "adm_devs",        data={},          owner=owner, color=_BLUE),
+        btn("🔇 الكتم العالمي",       "adm_global_mutes",data={"page": 0}, owner=owner, color=_RED),
+        btn("🔕 كتم المجموعة",        "adm_group_mutes", data={"page": 0}, owner=owner, color=_RED),
         btn("📿 إدارة الأذكار",       "adm_azkar_panel",         data={}, owner=owner, color=_BLUE),
         btn("📰 المجلة والهدايا",     "adm_magazine_panel",      data={}, owner=owner, color=_BLUE),
+        btn("📚 إدارة المحتوى",       "adm_content_hub",         data={}, owner=owner, color=_BLUE),
+        btn("📖 إدارة القرآن",        "adm_quran_panel",         data={}, owner=owner, color=_BLUE),
+        btn("🎮 إعادة تعيين الألعاب", "adm_reset_games_confirm", data={}, owner=owner, color=_RED),
         btn("🔄 إعادة تحميل الآيات", "adm_reload_ayat_confirm", data={}, owner=owner, color=_RED),
         btn("🗑 مسح قاعدة البيانات", "adm_reset_db_confirm",    data={}, owner=owner, color=_RED),
     ]
     edit_ui(call,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 2, 2])
+            buttons=buttons, layout=[2, 2, 2, 2, 2, 1])
 
 
 # ══════════════════════════════════════════
@@ -527,6 +531,26 @@ def adm_magazine_panel(call, data):
     open_magazine_admin(cid, uid, call=call)
 
 
+@register_action("adm_content_hub")
+def adm_content_hub(call, data):
+    if not is_any_dev(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+    bot.answer_callback_query(call.id)
+    from handlers.group_admin.developer.dev_control_panel import _show_content_hub_panel
+    _show_content_hub_panel(call)
+
+
+@register_action("adm_quran_panel")
+def adm_quran_panel(call, data):
+    if not is_any_dev(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+    bot.answer_callback_query(call.id)
+    from handlers.group_admin.developer.dev_control_panel import _show_quran_dev_panel
+    _show_quran_dev_panel(call)
+
+
 # ══════════════════════════════════════════
 # 🎮 إعادة تعيين بيانات الألعاب
 # ══════════════════════════════════════════
@@ -616,7 +640,7 @@ def _execute_games_reset(executed_by: int) -> tuple[bool, str]:
         # تجسس واستكشاف
         "spy_operations", "discovered_countries", "exploration_log", "spy_agents",
         # اقتصاد وبنك
-        "loans", "bank_cooldowns", "user_cooldowns", "city_budget",
+        "loans", "bank_cooldowns", "city_budget",
         "alliance_support_stats", "user_accounts",
         # تحالفات
         "alliances", "alliance_members", "alliance_wars",

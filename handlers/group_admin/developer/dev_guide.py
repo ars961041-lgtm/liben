@@ -16,6 +16,52 @@ _RD = "d"
 # ══════════════════════════════════════════
 
 _SECTIONS = {
+    "other_tools": {
+        "emoji": "🔧",
+        "title": "أدوات أخرى",
+        "pages": [
+            {
+                "title": "🔧 أدوات أخرى — نظرة عامة",
+                "content": (
+                    "هذا القسم يشرح الأدوات المساعدة التي لا تندرج تحت الألعاب أو الإدارة.\n\n"
+                    "💌 <b>نظام الهمسات:</b>\n"
+                    "يتيح للأعضاء إرسال رسائل خاصة (همسات) داخل المجموعة.\n"
+                    "• <code>همسة @username</code> — همسة لمستخدم محدد\n"
+                    "• <code>همسة @all</code> — همسة لجميع الأعضاء النشطين\n"
+                    "• <code>همسة</code> + رد على رسالة — همسة للمُرسِل\n\n"
+                    "⚙️ <b>تحكم المشرف في الهمسات:</b>\n"
+                    "• <code>تفعيل الهمسات</code> — يُفعّل النظام في المجموعة\n"
+                    "• <code>تعطيل الهمسات</code> — يُعطّل النظام في المجموعة\n"
+                    "• أو من لوحة <code>الأوامر</code> → 💌 الهمسات\n\n"
+                    "🗄 <b>قاعدة البيانات:</b>\n"
+                    "الهمسات محفوظة في جدول <code>whispers</code> في DB الرئيسية.\n"
+                    "الإعداد محفوظ في عمود <code>enable_whispers</code> في جدول <code>groups</code>."
+                ),
+            },
+            {
+                "title": "💌 الهمسات — التفاصيل التقنية",
+                "content": (
+                    "📌 <b>الملفات المعنية:</b>\n"
+                    "• <code>modules/whispers/whisper_handler.py</code> — المنطق الرئيسي\n"
+                    "• <code>modules/whispers/whispers_keyboards.py</code> — بناء الأزرار\n"
+                    "• <code>database/db_queries/whispers_queries.py</code> — الاستعلامات\n"
+                    "• <code>database/db_schema/whispers.py</code> — تعريف الجداول\n\n"
+                    "🔄 <b>تدفق الهمسة:</b>\n"
+                    "1️⃣ المستخدم يكتب <code>همسة @username</code> في المجموعة\n"
+                    "2️⃣ البوت يُنشئ token ويرسل زر 'كتابة الهمسة'\n"
+                    "3️⃣ المستخدم يضغط الزر → يفتح الخاص مع البوت\n"
+                    "4️⃣ يكتب النص → يُحفظ في DB → إشعار في المجموعة\n"
+                    "5️⃣ المستقبِل يضغط 'عرض الهمسة' → يرى النص في popup\n\n"
+                    "⏱️ <b>التنظيف التلقائي:</b>\n"
+                    "• همسات غير مقروءة تُحذف بعد 3 أيام\n"
+                    "• همسات مقروءة تُحذف بعد يوم واحد\n\n"
+                    "🚦 <b>Rate Limit:</b>\n"
+                    "5 همسات كحد أقصى كل 60 ثانية لكل مستخدم."
+                ),
+            },
+        ],
+    },
+
     "overview": {
         "emoji": "📋",
         "title": "نظرة عامة",
@@ -24,7 +70,7 @@ _SECTIONS = {
                 "title": "🛠 ما يمكن للمطور إدارته",
                 "content": (
                     "👑 <b>المطور الأساسي (Primary):</b>\n"
-                    "• تعديل ثوابت البوت (أسعار، كولداون، رسائل)\n"
+                    "• تعديل ثوابت البوت عبر لوحة المطور (أسعار، كولداون، رسائل)\n"
                     "• إضافة/إزالة/ترقية المطورين\n"
                     "• الكتم العالمي وكتم المجموعات\n"
                     "• إدارة الأصول والمباني والجنود\n\n"
@@ -40,9 +86,128 @@ _SECTIONS = {
         ],
     },
 
+    "analytics": {
+        "emoji": "📊",
+        "title": "نظام الإحصائيات",
+        "pages": [
+            {
+                "title": "📊 جداول السجل المستخدمة",
+                "content": (
+                    "نظام الإحصائيات يستخرج بياناته من جداول السجل التالية:\n\n"
+                    "📦 <b>asset_log</b>\n"
+                    "كل عملية شراء أو ترقية لأصل في مدينة.\n"
+                    "الحقول: city_id, user_id, asset_id, action, quantity, cost, ts\n\n"
+                    "💸 <b>bank_transfers</b>\n"
+                    "كل تحويل بنكي بين لاعبين.\n"
+                    "الحقول: from_user_id, to_user_id, amount, fee, created_at\n\n"
+                    "⚔️ <b>battle_history</b>\n"
+                    "أرشيف المعارك المكتملة.\n"
+                    "الحقول: attacker/defender_country_id, winner, loot, duration_seconds\n\n"
+                    "🕵️ <b>spy_operations</b>\n"
+                    "كل عملية تجسس مع نتيجتها.\n"
+                    "الحقول: attacker_country_id, target_country_id, result\n\n"
+                    "🗺️ <b>exploration_log</b>\n"
+                    "مهام الاستكشاف ونتائجها.\n\n"
+                    "💰 <b>war_costs_log</b>\n"
+                    "كل خصم مالي مرتبط بعمليات الحرب."
+                ),
+            },
+            {
+                "title": "📊 كيفية إضافة إحصائية جديدة",
+                "content": (
+                    "📌 <b>الخطوات:</b>\n\n"
+                    "1️⃣ أضف دالة استعلام في:\n"
+                    "<code>database/db_queries/analytics_queries.py</code>\n\n"
+                    "مثال:\n"
+                    "<code>def get_top_X(limit=10, since=None):\n"
+                    "    conn = get_db_conn()\n"
+                    "    cursor = conn.cursor()\n"
+                    "    since = since or 0\n"
+                    "    cursor.execute('SELECT ... WHERE ts >= ?', (since,))\n"
+                    "    return [dict(r) for r in cursor.fetchall()]</code>\n\n"
+                    "2️⃣ أضف أمر نصي في <code>_COMMANDS</code> داخل:\n"
+                    "<code>handlers/analytics_handler.py</code>\n\n"
+                    "3️⃣ أضف formatter في نفس الملف:\n"
+                    "<code>def _fmt_X(since, period): ...</code>\n\n"
+                    "4️⃣ أضف case في <code>_dispatch()</code>\n\n"
+                    "📅 <b>دعم الفترات الزمنية تلقائي:</b>\n"
+                    "كل دالة تقبل <code>since</code> (Unix timestamp).\n"
+                    "<code>_resolve_period(text)</code> يحوّل الكلمة المفتاحية\n"
+                    "إلى timestamp تلقائياً."
+                ),
+            },
+            {
+                "title": "📊 الأوامر المتاحة",
+                "content": (
+                    "📦 <b>أصول المدن:</b>\n"
+                    "• <code>إحصائيات الأصول</code> — أكثر الأصول شراءً\n"
+                    "• <code>أكثر ترقية</code> — أكثر الأصول ترقيةً\n"
+                    "• <code>أكبر منفقين</code> — أكثر اللاعبين إنفاقاً\n\n"
+                    "💸 <b>التحويلات البنكية:</b>\n"
+                    "• <code>إحصائيات التحويلات</code> — حجم + أكثر المرسلين\n\n"
+                    "⚔️ <b>الحرب:</b>\n"
+                    "• <code>إحصائيات المعارك</code> — ملخص + أكثر الفائزين\n"
+                    "• <code>أكثر هجوما</code> — أكثر الدول هجوماً\n"
+                    "• <code>إحصائيات التجسس</code> — نجاح التجسس\n"
+                    "• <code>إحصائيات الاستكشاف</code> — مهام الاستكشاف\n"
+                    "• <code>أكبر منفقين حرب</code> — إنفاق الحرب\n\n"
+                    "📅 <b>الفترات:</b>\n"
+                    "افتراضي = هذا الشهر\n"
+                    "أضف <code>الأسبوع</code> أو <code>كل الوقت</code> للتغيير"
+                ),
+            },
+        ],
+    },
+
+    "bank_account_cmd": {
+        "emoji": "🏦",
+        "title": "أمر حسابي / حسابه",
+        "pages": [
+            {
+                "title": "🏦 كيف يعمل الأمر",
+                "content": (
+                    "📌 <b>الأوامر:</b>\n"
+                    "• <code>حسابي</code> — يعرض حساب المرسل\n"
+                    "• <code>حسابه</code> + رد على رسالة — يعرض حساب المستهدف\n\n"
+                    "🔄 <b>منطق التحديد:</b>\n"
+                    "<code>if text == 'حسابه' and message.reply_to_message:\n"
+                    "    target_id = message.reply_to_message.from_user.id\n"
+                    "else:\n"
+                    "    target_id = message.from_user.id</code>\n\n"
+                    "📋 <b>البيانات المعروضة:</b>\n"
+                    "• رقم الحساب (Telegram user_id)\n"
+                    "• الرصيد من <code>user_accounts.balance</code>\n"
+                    "• القروض من <code>loans</code> حيث status IN ('active','overdue')\n"
+                    "• مجموع الدين المتبقي = amount - repaid لكل قرض\n\n"
+                    "✅ <b>إذا لا يوجد حساب:</b>\n"
+                    "يُعرض رسالة واضحة — لا يُرمى خطأ."
+                ),
+            },
+            {
+                "title": "🏦 الكود المرجعي",
+                "content": (
+                    "📌 <b>الدالة الرئيسية:</b>\n"
+                    "<code>_build_account_info(target_user_id, display_name)</code>\n"
+                    "في: <code>modules/bank/commands/bank_commands.py</code>\n\n"
+                    "📌 <b>الاستعلامات المستخدمة:</b>\n"
+                    "• <code>check_bank_account(user_id)</code>\n"
+                    "  → SELECT balance FROM user_accounts WHERE user_id=?\n\n"
+                    "• <code>get_user_balance(user_id)</code>\n"
+                    "  → SELECT balance FROM user_accounts WHERE user_id=?\n\n"
+                    "• <code>get_active_loans(user_id)</code>\n"
+                    "  → SELECT ... FROM loans WHERE user_id=?\n"
+                    "    AND status IN ('active','overdue')\n\n"
+                    "📌 <b>لإضافة حقل جديد:</b>\n"
+                    "عدّل <code>_build_account_info()</code> فقط —\n"
+                    "لا تحتاج لتغيير أي handler آخر."
+                ),
+            },
+        ],
+    },
+
     "constants": {
         "emoji": "⚙️",
-        "title": "ثوابت البوت",
+        "title": "لوحة المطور",
         "pages": [
             {
                 "title": "⚙️ ما هي الثوابت؟",
@@ -65,7 +230,7 @@ _SECTIONS = {
                 "title": "⚙️ كيفية التعديل",
                 "content": (
                     "1️⃣ افتح: <code>لوحة الإدارة</code>\n"
-                    "2️⃣ اضغط: ⚙️ ثوابت البوت\n"
+                    "2️⃣ اضغط: 🛠 لوحة المطور\n"
                     "3️⃣ اضغط ✏️ بجانب الثابت المراد تعديله\n"
                     "4️⃣ أرسل القيمة الجديدة\n\n"
                     "✅ يُطبَّق التغيير فوراً\n"
@@ -149,6 +314,31 @@ _SECTIONS = {
                     "🔇 قديم (كتم) — النظام القديم لا يزال يعمل"
                 ),
             },
+            {
+                "title": "👤 دعم @username في أوامر الإدارة",
+                "content": (
+                    "📌 <b>الميزة:</b>\n"
+                    "أوامر الكتم والحظر والتقييد وترقية المشرف\n"
+                    "تقبل الآن <code>@username</code> مباشرةً في نص الأمر.\n\n"
+                    "📋 <b>أمثلة:</b>\n"
+                    "<code>كتم @username</code>\n"
+                    "<code>حظر @username</code>\n"
+                    "<code>تقييد @username</code>\n"
+                    "<code>رفع مشرف @username</code>\n\n"
+                    "🔄 <b>آلية العمل:</b>\n"
+                    "1️⃣ البوت يستخرج @username من نص الأمر\n"
+                    "2️⃣ يبحث عنه في جدول <code>users</code> (عمود <code>username</code>)\n"
+                    "3️⃣ يحوّله إلى <code>user_id</code> ويكمل الأمر عادياً\n\n"
+                    "⚠️ <b>شرط:</b>\n"
+                    "المستخدم يجب أن يكون قد تفاعل مع البوت مسبقاً\n"
+                    "حتى يكون username محفوظاً في قاعدة البيانات.\n\n"
+                    "📌 <b>الكود المرجعي:</b>\n"
+                    "• <code>get_user_id_by_username()</code> في:\n"
+                    "  <code>database/db_queries/users_queries.py</code>\n"
+                    "• <code>get_target_user()</code> في:\n"
+                    "  <code>handlers/group_admin/restrictions.py</code>"
+                ),
+            },
         ],
     },
 
@@ -159,7 +349,7 @@ _SECTIONS = {
             {
                 "title": "⚔️ ثوابت الحرب القابلة للتعديل",
                 "content": (
-                    "جميع هذه القيم تُعدَّل من <code>لوحة الإدارة → ثوابت البوت</code>\n\n"
+                    "جميع هذه القيم تُعدَّل من <code>لوحة الإدارة → 🛠 لوحة المطور</code>\n\n"
                     "⏱️ <b>الأوقات:</b>\n"
                     "• <code>travel_time_normal</code> — وقت السفر العادي (ثانية)\n"
                     "• <code>travel_time_sudden</code> — وقت الهجوم المباغت\n"
@@ -177,8 +367,8 @@ _SECTIONS = {
             {
                 "title": "⚔️ إدارة الأصول والجنود",
                 "content": (
-                    "📌 <b>لوحة المطور الأصلية:</b>\n"
-                    "من <code>لوحة المطور</code> (الأمر القديم)\n\n"
+                    "📌 <b>لوحة الإدارة:</b>\n"
+                    "من <code>لوحة الإدارة</code> → 🛠 لوحة المطور\n\n"
                     "🏗 <b>إدارة المباني:</b>\n"
                     "• إضافة/تعديل/حذف أنواع المباني\n"
                     "• تعديل الأسعار والتأثيرات\n"
@@ -221,12 +411,12 @@ _SECTIONS = {
             {
                 "title": "🎫 ثوابت التذاكر",
                 "content": (
-                    "يمكن تعديل هذه القيم من <code>لوحة الإدارة → ثوابت البوت</code>\n\n"
+                    "يمكن تعديل هذه القيم من <code>لوحة الإدارة → 🛠 لوحة المطور</code>\n\n"
                     "• <code>daily_ticket_limit</code> — حد التذاكر اليومي للمستخدم (2)\n"
                     "• <code>ticket_cooldown_sec</code> — كولداون بين التذاكر (10 ثانية)\n\n"
                     "📌 <b>مجموعة المطورين:</b>\n"
                     "معرف المجموعة محفوظ في: <code>dev_group_id</code>\n"
-                    "يمكن تعديله من ثوابت البوت إذا تغيرت المجموعة"
+                    "يمكن تعديله من لوحة المطور إذا تغيرت المجموعة"
                 ),
             },
         ],
@@ -316,6 +506,125 @@ _SECTIONS = {
                     "📊 <b>التسجيل:</b>\n"
                     "كل هدية تُسجَّل في <code>gift_log</code>\n"
                     "وتُضاف تلقائياً كمنشور في المجلة."
+                ),
+            },
+        ],
+    },
+
+    "quotes_feature": {
+        "emoji": "💬",
+        "title": "الاقتباسات التلقائية",
+        "pages": [
+            {
+                "title": "💬 كيف تعمل الاقتباسات التلقائية",
+                "content": (
+                    "📌 <b>الملفات المعنية:</b>\n"
+                    "• <code>modules/content_hub/quotes_sender.py</code> — المنطق الرئيسي\n"
+                    "• <code>modules/content_hub/seed_content.py</code> — البيانات الافتراضية\n"
+                    "• <code>database/daily_tasks.py</code> — التسجيل في المُجدوِل\n\n"
+                    "🔄 <b>دورة الحياة:</b>\n"
+                    "1️⃣ المُجدوِل يستدعي <code>send_periodic_quotes()</code> كل 5 دقائق\n"
+                    "2️⃣ تقرأ الدالة <code>quotes_interval_minutes</code> من bot_constants\n"
+                    "3️⃣ تجلب المجموعات التي <code>quotes_enabled = 1</code>\n"
+                    "4️⃣ لكل مجموعة: تتحقق من آخر إرسال (throttle في الذاكرة)\n"
+                    "5️⃣ إذا حان الوقت → تختار جدولاً عشوائياً من الخمسة\n"
+                    "6️⃣ تجلب صفاً عشوائياً بكفاءة عبر <code>random_key</code>\n"
+                    "7️⃣ ترسل المحتوى للمجموعة\n\n"
+                    "⚙️ <b>الثابت القابل للتعديل:</b>\n"
+                    "• <code>quotes_interval_minutes</code> — الفترة بالدقائق (افتراضي: 10)"
+                ),
+            },
+            {
+                "title": "💬 التفعيل والإيقاف",
+                "content": (
+                    "📌 <b>أوامر المشرف:</b>\n"
+                    "• <code>تفعيل الاقتباسات</code> — يضع <code>quotes_enabled=1</code>\n"
+                    "• <code>إيقاف الاقتباسات</code> — يضع <code>quotes_enabled=0</code>\n\n"
+                    "📌 <b>في الكود:</b>\n"
+                    "<code>from modules.content_hub.quotes_sender import toggle_quotes\n"
+                    "toggle_quotes(tg_group_id, enable=True)</code>\n\n"
+                    "📌 <b>جداول المحتوى (في content_hub.db):</b>\n"
+                    "• <code>quotes</code> — اقتباسات\n"
+                    "• <code>anecdotes</code> — نوادر\n"
+                    "• <code>stories</code> — قصص\n"
+                    "• <code>wisdom</code> — حكم\n"
+                    "• <code>poetry</code> — شعر\n\n"
+                    "📌 <b>إضافة محتوى جديد:</b>\n"
+                    "من لوحة المطور → 📜 اقتباسات\n"
+                    "أو عبر <code>insert_content(table, text)</code> في hub_db.py"
+                ),
+            },
+        ],
+    },
+
+    "rankings": {
+        "emoji": "🏆",
+        "title": "ترتيبات المجلة",
+        "pages": [
+            {
+                "title": "🏆 ما هي ترتيبات المجلة؟",
+                "content": (
+                    "نظام تلقائي يحسب ترتيبات اللاعبين أسبوعياً وشهرياً\n"
+                    "ويُنشرها في المجلة مع مكافآت للفائزين.\n\n"
+                    "📅 <b>التوقيت:</b>\n"
+                    "• <b>أسبوعي</b> — كل يوم اثنين منتصف الليل (توقيت اليمن)\n"
+                    "• <b>شهري</b> — أول يوم من كل شهر منتصف الليل\n\n"
+                    "🏆 <b>ترتيبات الأسبوع:</b>\n"
+                    "• 💰 أغنى لاعب\n"
+                    "• ⚔️ محارب الأسبوع (أكثر انتصارات)\n"
+                    "• 🕵️ جاسوس الأسبوع (أنجح عمليات)\n"
+                    "• 📦 الأصل الأكثر شراءً\n"
+                    "• 📤 أكثر المحوّلين\n"
+                    "• 😇 أفضل سمعة / 😈 أسوأ سمعة\n\n"
+                    "🌟 <b>ترتيبات الشهر:</b>\n"
+                    "• 🏆 أكثر الدول انتصاراً (مع ميداليات 🥇🥈🥉)\n"
+                    "• 💎 أثرى لاعب\n"
+                    "• 🗡 أكثر الدول هجوماً\n"
+                    "• 🏙 أكثر المنفقين على المدن\n"
+                    "• 🌍 أقوى تحالف\n"
+                    "• 🌟 متصدر الموسم الحالي"
+                ),
+            },
+            {
+                "title": "🏆 المكافآت والثوابت",
+                "content": (
+                    "🎁 <b>المكافآت تُدفع تلقائياً:</b>\n"
+                    "عند نشر الترتيب، يحصل كل فائز على مكافأة\n"
+                    "مباشرة في حسابه البنكي.\n\n"
+                    "⚙️ <b>ثوابت المكافآت (قابلة للتعديل):</b>\n"
+                    "• <code>weekly_ranking_reward</code> — مكافأة بطل الأسبوع (500)\n"
+                    "• <code>monthly_ranking_reward</code> — مكافأة بطل الشهر (2000)\n\n"
+                    "📌 <b>لتعديل المكافآت:</b>\n"
+                    "<code>لوحة الإدارة</code> → 🛠 لوحة المطور\n"
+                    "ابحث عن <code>weekly_ranking_reward</code>\n\n"
+                    "📰 <b>النشر في المجلة:</b>\n"
+                    "كل ترتيب يُنشر كمنشور في المجلة تلقائياً.\n"
+                    "اللاعبون يرونه بكتابة <code>المجلة</code>."
+                ),
+            },
+            {
+                "title": "🏆 الكود المرجعي",
+                "content": (
+                    "📌 <b>الملف الرئيسي:</b>\n"
+                    "<code>modules/magazine/rankings.py</code>\n\n"
+                    "📌 <b>الدوال الرئيسية:</b>\n"
+                    "• <code>publish_weekly_rankings()</code>\n"
+                    "  ينشر ترتيب الأسبوع ويدفع المكافآت\n\n"
+                    "• <code>publish_monthly_rankings()</code>\n"
+                    "  ينشر ترتيب الشهر ويدفع المكافآت\n\n"
+                    "• <code>maybe_publish_weekly()</code>\n"
+                    "  تُستدعى من المُجدوِل — تتحقق إذا كان اليوم اثنين\n\n"
+                    "• <code>maybe_publish_monthly()</code>\n"
+                    "  تُستدعى من المُجدوِل — تتحقق إذا كان اليوم الأول\n\n"
+                    "📌 <b>التسجيل في المُجدوِل:</b>\n"
+                    "في <code>database/daily_tasks.py</code>:\n"
+                    "<code>@register_daily\n"
+                    "def publish_magazine_rankings():\n"
+                    "    _safe(_do_weekly_rankings)\n"
+                    "    _safe(_do_monthly_rankings)</code>\n\n"
+                    "📌 <b>لإضافة ترتيب جديد:</b>\n"
+                    "أضف حساب البيانات في <code>rankings.py</code>\n"
+                    "واستدعِ <code>db.add_post(title, body, 0)</code>"
                 ),
             },
         ],
@@ -444,6 +753,93 @@ _SECTIONS = {
                     "• البوت ليس مشرفاً في القناة\n"
                     "• صلاحية 'نشر الرسائل' غير مفعّلة للبوت\n"
                     "• المعرّف خاطئ أو القناة غير موجودة"
+                ),
+            },
+        ],
+    },
+
+    "economy_stats": {
+        "emoji": "📊",
+        "title": "إحصائيات الاقتصاد",
+        "pages": [
+            {
+                "title": "📊 ما هي economy_stats؟",
+                "content": (
+                    "جدول <code>economy_stats</code> هو الطبقة الاقتصادية الكلية للعبة.\n"
+                    "يخزن مؤشرات الاقتصاد العالمي كأزواج مفتاح/قيمة.\n\n"
+                    "📋 <b>المفاتيح المتاحة:</b>\n"
+                    "• <code>inflation</code> — مؤشر التضخم (0.75–2.5)\n"
+                    "  يُحسب من: إجمالي الأموال ÷ 1,000,000 (الخط الأساسي)\n"
+                    "  يؤثر على: الرواتب والاستثمار\n\n"
+                    "• <code>event_multiplier</code> — مضاعف الحدث العالمي النشط\n"
+                    "  يؤثر على: الرواتب، الاستثمار، الغنائم\n\n"
+                    "• <code>sink</code> — إجمالي الأموال المسحوبة من التداول\n"
+                    "  المصادر: رسوم التحويل + مشتريات الأصول\n\n"
+                    "• <code>total_salary_paid</code> — إجمالي الرواتب المدفوعة\n"
+                    "• <code>total_investments</code> — عدد عمليات الاستثمار\n"
+                    "• <code>total_investment_profit/loss</code> — أرباح/خسائر الاستثمار\n"
+                    "• <code>total_transfers</code> — عدد التحويلات البنكية\n"
+                    "• <code>total_transfer_volume</code> — حجم التحويلات\n"
+                    "• <code>total_transfer_fees</code> — رسوم التحويل المحصّلة\n"
+                    "• <code>total_city_spending</code> — إجمالي الإنفاق على المدن"
+                ),
+            },
+            {
+                "title": "📊 كيف يؤثر التضخم على اللعبة",
+                "content": (
+                    "🔄 <b>دورة التضخم:</b>\n\n"
+                    "1️⃣ <b>حساب التضخم:</b>\n"
+                    "<code>inflation = total_money / 1,000,000</code>\n"
+                    "مقيّد بين 0.75 و 2.5\n\n"
+                    "2️⃣ <b>تأثيره على الراتب:</b>\n"
+                    "<code>adapt_salary_amount(base, user_id)</code>\n"
+                    "• تضخم عالٍ → راتب أقل (القوة الشرائية تنخفض)\n"
+                    "• تضخم منخفض → راتب أعلى\n"
+                    "• الأرصدة الكبيرة تحصل على راتب أقل (soft cap)\n\n"
+                    "3️⃣ <b>تأثيره على الاستثمار:</b>\n"
+                    "<code>adapt_investment_outcome(amount)</code>\n"
+                    "• تضخم عالٍ → أرباح أقل، خسائر أكبر\n"
+                    "• تضخم منخفض → فرص ربح أفضل\n\n"
+                    "4️⃣ <b>المصارف (Money Sink):</b>\n"
+                    "رسوم التحويل + مشتريات الأصول تُسحب من التداول\n"
+                    "هذا يخفض التضخم تدريجياً"
+                ),
+            },
+            {
+                "title": "📊 قراءة وكتابة economy_stats في الكود",
+                "content": (
+                    "📌 <b>القراءة:</b>\n"
+                    "<code>from database.db_queries.economy_queries import get_economy_stat\n\n"
+                    "inflation = get_economy_stat('inflation', 1.0)\n"
+                    "# الوسيط الثاني = القيمة الافتراضية إذا لم يوجد المفتاح</code>\n\n"
+                    "📌 <b>الكتابة:</b>\n"
+                    "<code>from database.db_queries.economy_queries import set_economy_stat\n\n"
+                    "set_economy_stat('inflation', 1.25)\n"
+                    "# يُحدَّث تلقائياً مع last_updated</code>\n\n"
+                    "📌 <b>تحديث التضخم (يدوياً أو من daily_tasks):</b>\n"
+                    "<code>from modules.economy.services.economy_service import compute_inflation_index\n\n"
+                    "compute_inflation_index()  # يحسب ويحفظ تلقائياً</code>\n\n"
+                    "⚠️ <b>ملاحظة:</b>\n"
+                    "جميع القيم مخزنة كـ TEXT في DB.\n"
+                    "<code>get_economy_stat</code> تُعيدها كـ float تلقائياً."
+                ),
+            },
+            {
+                "title": "📊 أين تُستخدم economy_stats في اللعبة",
+                "content": (
+                    "🏦 <b>البنك:</b>\n"
+                    "• <code>salary()</code> — يطبق التضخم + soft cap على الراتب\n"
+                    "• <code>invest()</code> — يستخدم <code>adapt_investment_outcome()</code>\n"
+                    "• <code>transfer_funds()</code> — يسجل الرسوم في <code>sink</code>\n\n"
+                    "🏙 <b>المدن والأصول:</b>\n"
+                    "• <code>buy_asset()</code> / <code>upgrade_asset()</code>\n"
+                    "  يسجل الإنفاق في <code>total_city_spending</code> و <code>sink</code>\n\n"
+                    "🌍 <b>الأحداث العالمية:</b>\n"
+                    "• <code>event_generator()</code> يكتب <code>event_multiplier</code>\n"
+                    "• <code>get_event_multiplier()</code> يقرأه في الحسابات\n\n"
+                    "📅 <b>المهام اليومية:</b>\n"
+                    "• <code>compute_inflation_index()</code> يُشغَّل يومياً\n"
+                    "  لتحديث <code>inflation</code> بناءً على إجمالي الأموال"
                 ),
             },
         ],

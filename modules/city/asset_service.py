@@ -68,6 +68,9 @@ def buy_asset(user_id: int, city_id: int, asset_name: str,
 
     log_asset_action(city_id, user_id, asset["id"], "buy", quantity, 1, 1, cost)
 
+    # record spending for leaderboards
+    _record_spending(city_id, cost)
+
     branch_label = f" {branch['emoji']} {branch['name_ar']}" if branch else ""
     return True, (
         f"✅ تم شراء {quantity} × {asset['emoji']} {asset['name_ar']}{branch_label}\n"
@@ -110,6 +113,9 @@ def upgrade_asset(user_id: int, city_id: int, asset_name: str,
     log_asset_action(city_id, user_id, asset["id"], "upgrade",
                      quantity, from_level, from_level + 1, cost)
 
+    # record spending for leaderboards
+    _record_spending(city_id, cost)
+
     return True, (
         f"⬆️ تمت ترقية {quantity} × {asset['emoji']} {asset['name_ar']}\n"
         f"المستوى: {from_level} → {from_level + 1}\n"
@@ -124,3 +130,29 @@ def upgrade_asset(user_id: int, city_id: int, asset_name: str,
 
 def get_city_summary(city_id: int) -> dict:
     return calculate_city_effects(city_id)
+
+
+def _record_spending(city_id: int, amount: float):
+    """Update city_spending.total_spent and economy_stats — used for leaderboards and macro tracking."""
+    try:
+        from database.connection import get_db_conn
+        conn = get_db_conn()
+        conn.execute("""
+            INSERT INTO city_spending (city_id, total_spent)
+            VALUES (?, ?)
+            ON CONFLICT(city_id) DO UPDATE SET total_spent = total_spent + excluded.total_spent
+        """, (city_id, amount))
+        conn.commit()
+    except Exception as e:
+        print(f"[asset_service] record_spending failed: {e}")
+
+    # track macro economy stat — total currency spent on city development
+    try:
+        from database.db_queries.economy_queries import get_economy_stat, set_economy_stat
+        from modules.economy.services.economy_service import money_sink
+        set_economy_stat("total_city_spending",
+                         get_economy_stat("total_city_spending", 0.0) + amount)
+        # asset purchases are a money sink (currency leaves circulation)
+        money_sink(amount)
+    except Exception:
+        pass

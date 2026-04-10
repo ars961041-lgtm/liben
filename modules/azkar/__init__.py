@@ -1,1 +1,1 @@
-from modules.azkar import azkar_db
+from database.db_queries import azkar_queries  # noqa: F401

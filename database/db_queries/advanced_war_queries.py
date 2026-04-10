@@ -777,3 +777,53 @@ def get_last_spy_result(attacker_country_id: int, target_country_id: int) -> dic
     """, (attacker_country_id, target_country_id))
     row = cursor.fetchone()
     return dict(row) if row else None
+
+
+# ══════════════════════════════════════════
+# 🔍 كولداون الاستكشاف (action_cooldowns)
+# ══════════════════════════════════════════
+
+EXPLORE_COOLDOWN = 20 * 60  # 20 دقيقة
+
+
+def get_explore_cooldown(user_id: int) -> tuple:
+    """
+    يتحقق من كولداون الاستكشاف للمستخدم.
+    يرجع (can_explore: bool, remaining_seconds: int)
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT last_time FROM action_cooldowns WHERE user_id = ? AND action = 'explore'",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return True, 0
+    elapsed = int(time.time()) - row[0]
+    if elapsed >= EXPLORE_COOLDOWN:
+        return True, 0
+    return False, EXPLORE_COOLDOWN - elapsed
+
+
+def set_explore_cooldown(user_id: int):
+    """يسجل وقت آخر استكشاف للمستخدم."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO action_cooldowns (user_id, action, last_time)
+        VALUES (?, 'explore', ?)
+        ON CONFLICT(user_id, action) DO UPDATE SET last_time = excluded.last_time
+    """, (user_id, int(time.time())))
+    conn.commit()
+
+
+def clear_explore_cooldown(user_id: int):
+    """يمسح كولداون الاستكشاف — يُستخدم عند فشل العملية لإعادة المحاولة."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM action_cooldowns WHERE user_id = ? AND action = 'explore'",
+        (user_id,)
+    )
+    conn.commit()

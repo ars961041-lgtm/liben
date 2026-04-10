@@ -51,16 +51,28 @@ def handle_custom_zikr_input(message) -> bool:
         return True
 
     if s == "czikr_awaiting_count":
-        raw = (message.text or "").strip()
-        if not raw.isdigit() or int(raw) < 1:
-            bot.reply_to(message, "❌ أرسل رقماً صحيحاً أكبر من صفر.")
-            return True
+        raw   = (message.text or "").strip()
         sdata = state.get("data", {})
         ztext = sdata.get("text", "")
-        total = int(raw)
+
+        notice = ""
+        if not raw.isdigit():
+            total  = 100
+            notice = f"⚠️ إدخال غير رقمي — سيتم استخدام العدد الافتراضي: <b>100</b>"
+        else:
+            total = int(raw)
+            if total <= 0:
+                total  = 100
+                notice = f"⚠️ العدد غير صالح — سيتم استخدام العدد الافتراضي: <b>100</b>"
+            elif total > 1000:
+                total  = 1000
+                notice = f"⚠️ الحد الأقصى هو <b>1000</b> — تم تقليص العدد تلقائياً."
+
         clear_state(uid, cid)
 
-        # حفظ الجلسة في الذاكرة
+        if notice:
+            bot.reply_to(message, notice, parse_mode="HTML")
+
         _SESSIONS[(uid, cid)] = {"text": ztext, "total": total, "remaining": total}
         _send_zikr_msg(cid, uid, ztext, total, total,
                        reply_to=message.message_id)

@@ -6,21 +6,66 @@ from typing import Optional
 from modules.quran import quran_db as db
 
 # ══════════════════════════════════════════
-# تطبيع النص العربي (المطلوب بالضبط)
+# تطبيع النص العربي
 # ══════════════════════════════════════════
 
-TASHKEEL_PATTERN = re.compile(r'[\u0617-\u061A\u064B-\u0652\u0670\u0640]')
+# التشكيل الأساسي: فتحة، ضمة، كسرة، تنوين، شدة، سكون، مد، طولة
+_TASHKEEL = re.compile(
+    r'['
+    r'\u0610-\u061A'   # علامات قرآنية (صلى، قلى، إلخ)
+    r'\u064B-\u065F'   # تشكيل كامل (تنوين، حركات، شدة، سكون...)
+    r'\u0670'          # ألف خنجرية
+    r'\u0640'          # طولة (tatweel)
+    r'\u06D6-\u06DC'   # علامات وقف قرآنية (ۖ ۗ ۘ ۙ ۚ ۛ ۜ)
+    r'\u06DF-\u06E4'   # علامات قرآنية إضافية (ۡ ۢ ۣ ۤ)
+    r'\u06E7-\u06E8'   # علامات مد (ۧ ۨ)
+    r'\u06EA-\u06ED'   # علامات وقف إضافية (۪ ۫ ۬ ۭ)
+    r']'
+)
+
+# أشكال الألف المختلفة → ا
+_ALEF_VARIANTS = re.compile(r'[أإآٱ\u0671]')
+# تاء مربوطة → هاء
+_TA_MARBUTA    = re.compile(r'ة')
+# ألف مقصورة → ياء
+_ALEF_MAQSURA  = re.compile(r'ى')
+# واو همزة → واو
+_WAW_HAMZA     = re.compile(r'ؤ')
+# ياء همزة → ياء
+_YA_HAMZA      = re.compile(r'ئ')
 
 
 def remove_tashkeel(text: str) -> str:
     if not text:
         return text
-    return TASHKEEL_PATTERN.sub('', text)
+    return _TASHKEEL.sub('', text)
+
+
+def normalize_arabic(text: str) -> str:
+    """
+    تطبيع شامل للنص العربي:
+    - إزالة التشكيل والرموز القرآنية الخاصة (وقف، مد، إلخ)
+    - توحيد أشكال الألف (أ إ آ ٱ → ا)
+    - توحيد التاء المربوطة (ة → ه)
+    - توحيد الألف المقصورة (ى → ي)
+    - توحيد واو الهمزة (ؤ → و)
+    - توحيد ياء الهمزة (ئ → ي)
+    - ضغط المسافات الزائدة
+    """
+    if not text:
+        return text
+    text = remove_tashkeel(text)
+    text = _ALEF_VARIANTS.sub('ا', text)
+    text = _TA_MARBUTA.sub('ه', text)
+    text = _ALEF_MAQSURA.sub('ي', text)
+    text = _WAW_HAMZA.sub('و', text)
+    text = _YA_HAMZA.sub('ي', text)
+    return ' '.join(text.split())
 
 
 def normalize_text(text: str) -> str:
-    text = remove_tashkeel(text)
-    return text.strip().lower()
+    """للتوافق مع الكود القديم — يستخدم normalize_arabic داخلياً."""
+    return normalize_arabic(text).strip().lower()
 
 
 # ══════════════════════════════════════════
@@ -88,12 +133,28 @@ def get_user_favorites(user_id: int) -> list[dict]:
 # البحث
 # ══════════════════════════════════════════
 
-def search(query: str) -> list[dict]:
-    """يبحث بعد تطبيع النص."""
-    normalized = normalize_text(query)
+def search(query: str) -> tuple[list[dict], int]:
+    """
+    يبحث بعد تطبيع النص.
+    يرجع (results, total_occurrences)
+
+    - query بدون مسافة نهائية → بحث جزئي (LIKE %كلمة%)
+    - query بمسافة نهائية     → بحث بحدود الكلمة (لا يطابق وقالوا)
+    """
+    # حذف كلمة "آية" من بداية الاستعلام إذا وُجدت
+    q = query
+    if q.lstrip().startswith("آية "):
+        q = q.lstrip()[4:]
+
+    # هل المستخدم أضاف مسافة نهائية قصداً؟
+    word_boundary = q.endswith(" ")
+
+    normalized = normalize_arabic(q)   # normalize يضغط المسافات تلقائياً
     if len(normalized) < 2:
-        return []
-    return db.search_ayat(normalized)
+        return [], 0
+
+    results, total = db.search_ayat(normalized, word_boundary=word_boundary)
+    return results, total
 
 
 # ══════════════════════════════════════════
@@ -120,12 +181,12 @@ def add_ayah(sura_name: str, ayah_number: int, text_with: str) -> int:
     sura = db.get_sura_by_name(sura_name)
     if not sura:
         return 0
-    text_without = normalize_text(text_with)
+    text_without = normalize_arabic(text_with)
     return db.insert_ayah(sura["id"], ayah_number, text_with, text_without)
 
 
 def edit_ayah(ayah_id: int, new_text: str) -> bool:
-    text_without = normalize_text(new_text)
+    text_without = normalize_arabic(new_text)
     return db.update_ayah_text(ayah_id, new_text, text_without)
 
 

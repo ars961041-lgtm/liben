@@ -196,6 +196,42 @@ def create_tables():
     # ── إدراج السور تلقائياً ──
     auto_insert_suras()
 
+    # ── إعادة تطبيع النص المخزن (migration) ──
+    _renormalize_stored_ayat(conn)
+
+
+# ══════════════════════════════════════════
+# إعادة تطبيع النص المخزن
+# ══════════════════════════════════════════
+
+def _renormalize_stored_ayat(conn):
+    """
+    يُعيد تطبيع text_without_tashkeel لجميع الآيات المخزنة.
+    يُشغَّل مرة عند بدء التطبيق — يُحدِّث فقط الصفوف التي تحتوي
+    على رموز قرآنية لم تُزَل بالتطبيع القديم.
+    """
+    from modules.quran.quran_service import normalize_arabic
+
+    cur  = conn.cursor()
+    cur.execute("SELECT id, text_without_tashkeel FROM ayat")
+    rows = cur.fetchall()
+
+    updated = 0
+    for row in rows:
+        ayah_id  = row[0]
+        old_text = row[1] or ""
+        new_text = normalize_arabic(old_text)
+        if new_text != old_text:
+            cur.execute(
+                "UPDATE ayat SET text_without_tashkeel=? WHERE id=?",
+                (new_text, ayah_id),
+            )
+            updated += 1
+
+    if updated:
+        conn.commit()
+        print(f"[quran] re-normalized {updated} ayat in text_without_tashkeel")
+
 
 # ══════════════════════════════════════════
 # الآيات
@@ -266,38 +302,78 @@ def get_total_ayat() -> int:
     cur.execute("SELECT COUNT(*) FROM ayat")
     return cur.fetchone()[0]
 
+def search_ayat(normalized_query: str, word_boundary: bool = False) -> tuple[list[dict], int]:
+    """
+    يبحث في text_without_tashkeel.
 
-def search_ayat(normalized_query: str) -> list[dict]:
-    """يبحث في النص بدون تشكيل."""
+    word_boundary=False → LIKE %query%  (بحث جزئي)
+    word_boundary=True  → يطابق الكلمة كاملة فقط:
+        - في وسط الآية:  % query %
+        - في البداية:    query %
+        - في النهاية:    % query
+        - آية من كلمة واحدة: query
+    """
     cur = _get_conn().cursor()
-    cur.execute("""
-        SELECT a.*, s.name as sura_name
-        FROM ayat a
-        JOIN suras s ON a.sura_id = s.id
-        WHERE a.text_without_tashkeel LIKE ?
-        ORDER BY a.id ASC LIMIT 50
-    """, (f"%{normalized_query}%",))
-    return [dict(r) for r in cur.fetchall()]
 
+    if word_boundary:
+        # أربعة أنماط تغطي كل مواضع الكلمة
+        patterns = [
+            f"% {normalized_query} %",   # وسط
+            f"{normalized_query} %",      # بداية الآية
+            f"% {normalized_query}",      # نهاية الآية
+            normalized_query,             # آية من كلمة واحدة
+        ]
+        placeholders = " OR ".join(
+            ["a.text_without_tashkeel LIKE ?"] * len(patterns)
+        )
+        cur.execute(f"""
+            SELECT a.*, s.name as sura_name
+            FROM ayat a
+            JOIN suras s ON a.sura_id = s.id
+            WHERE {placeholders}
+            ORDER BY a.id ASC
+            LIMIT 1000
+        """, patterns)
+    else:
+        cur.execute("""
+            SELECT a.*, s.name as sura_name
+            FROM ayat a
+            JOIN suras s ON a.sura_id = s.id
+            WHERE a.text_without_tashkeel LIKE ?
+            ORDER BY a.id ASC
+            LIMIT 1000
+        """, (f"%{normalized_query}%",))
+
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # عدد التكرارات عبر النتائج
+    total_occurrences = sum(
+        r["text_without_tashkeel"].count(normalized_query)
+        for r in rows
+    )
+
+    return rows, total_occurrences
 
 def insert_ayah(sura_id: int, ayah_number: int,
                 text_with: str, text_without: str) -> int:
+    from modules.quran.quran_service import normalize_arabic
     conn = _get_conn()
     cur  = conn.cursor()
     cur.execute("""
         INSERT OR IGNORE INTO ayat (sura_id, ayah_number, text_with_tashkeel, text_without_tashkeel)
         VALUES (?,?,?,?)
-    """, (sura_id, ayah_number, text_with.strip(), text_without.strip()))
+    """, (sura_id, ayah_number, text_with.strip(), normalize_arabic(text_without)))
     conn.commit()
     return cur.lastrowid or 0
 
 
 def update_ayah_text(ayah_id: int, text_with: str, text_without: str) -> bool:
+    from modules.quran.quran_service import normalize_arabic
     conn = _get_conn()
     cur  = conn.cursor()
     cur.execute(
         "UPDATE ayat SET text_with_tashkeel=?, text_without_tashkeel=? WHERE id=?",
-        (text_with.strip(), text_without.strip(), ayah_id),
+        (text_with.strip(), normalize_arabic(text_without), ayah_id),
     )
     conn.commit()
     return cur.rowcount > 0
@@ -883,7 +959,7 @@ def reload_ayat_from_api(progress_callback=None) -> tuple[bool, str]:
     progress_callback(msg: str): دالة اختيارية لإرسال تحديثات التقدم
     يرجع (True, summary) أو (False, error_message)
     """
-    from modules.quran.quran_service import remove_tashkeel
+    from modules.quran.quran_service import normalize_arabic
 
     def _log(msg: str):
         if progress_callback:
@@ -926,7 +1002,7 @@ def reload_ayat_from_api(progress_callback=None) -> tuple[bool, str]:
             for ayah in ayahs:
                 ayah_num     = int(ayah["numberInSurah"])
                 text_with    = str(ayah["text"]).strip()
-                text_without = remove_tashkeel(text_with)
+                text_without = normalize_arabic(text_with)
 
                 cur.execute("""
                     INSERT INTO ayat

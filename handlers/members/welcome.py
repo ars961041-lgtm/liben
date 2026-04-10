@@ -53,28 +53,21 @@ _UPDATES_URL = "https://t.me/BotBeloPro"
 # عضو جديد
 # ══════════════════════════════════════════
 
-# def welcome_member(message):
-#     bot_id = bot.get_me().id
-#     for member in message.new_chat_members:
-#         if member.id == bot_id:
-#             _send_bot_joined(message)   # bot itself was added
-#         elif not member.is_bot:
-#             # فحص ميزة الترحيب
-#             from database.db_queries.group_features_queries import is_feature_enabled
-#             if is_feature_enabled(message.chat.id, "feat_welcome"):
-#                 _send_welcome(message, member)
-
 def welcome_member(update):
     bot_id = bot.get_me().id
-    user = update.new_chat_member.user
+    user   = update.new_chat_member.user
 
     if user.id == bot_id:
         _send_bot_joined(update)
-
     elif not user.is_bot:
-        from database.db_queries.group_features_queries import is_feature_enabled
+        # تسجيل الحضور
+        from database.db_queries.groups_queries import set_member_active
+        full_name  = ((user.first_name or "") + " " + (user.last_name or "")).strip()
+        group_name = update.chat.title or ""
+        set_member_active(update.chat.id, user.id, full_name, group_name)
 
-        if is_feature_enabled(update.chat.id, "feat_welcome"):
+        from database.db_queries.group_features_queries import is_feature_enabled
+        if is_feature_enabled(update.chat.id, "enable_welcome"):
             _send_welcome(update, user)
 
 def _send_welcome(update, member):
@@ -262,33 +255,80 @@ def _send_photo_or_text(chat_id, photo_id, caption, markup, reply_to=None):
 
 
 # ══════════════════════════════════════════
-# وداع عضو
+# وداع عضو / طرد / حظر
 # ══════════════════════════════════════════
 
-# def left_member(message):
-#     user = message.left_chat_member
-#     if user.is_bot:
-#         return
-#     text = (
-#         f"<b>{random.choice(_LEFT_MSGS)} "
-#         f"<a href='tg://user?id={user.id}'>{user.first_name}</a></b>"
-#     )
-#     try:
-#         bot.reply_to(message, text, parse_mode="HTML")
-#     except Exception as e:
-#         print(f"[left_member] error: {e}")
-def left_member(update):
-    user = update.new_chat_member.user
+# action_type codes in group_punishment_log:
+# 0 = ban, 1 = mute, 2 = restrict, 3 = unban, 4 = unmute, 5 = unrestrict
+_BAN_ACTION_TYPE  = 0
+_KICK_GRACE_SEC   = 5   # seconds window to match a log entry to this event
 
+
+def left_member(update):
+    """
+    يُستدعى من on_chat_member_update عند انتقال العضو من member → left/kicked.
+    يميّز بين:
+      - مغادرة طوعية  (new=left)
+      - طرد/حظر عبر أمر البوت (new=kicked, مسجَّل في group_punishment_log)
+      - طرد/حظر خارجي (new=kicked, غير مسجَّل)
+
+    إذا كان الحدث ناتجاً عن أمر البوت (حظر/كتم) فإن restrictions.py
+    أرسل رسالة بالفعل — لا نرسل مرة ثانية.
+    """
+    user = update.new_chat_member.user
     if user.is_bot:
         return
 
-    text = (
-        f"<b>{random.choice(_LEFT_MSGS)} "
-        f"<a href='tg://user?id={user.id}'>{user.first_name}</a></b>"
-    )
+    chat_id    = update.chat.id
+    new_status = update.new_chat_member.status  # "left" or "kicked"
+
+    # تسجيل المغادرة في قاعدة البيانات
+    from database.db_queries.groups_queries import set_member_inactive
+    set_member_inactive(chat_id, user.id)
+
+    # تحقق من تفعيل الإشعارات لهذه المجموعة
+    from database.db_queries.group_features_queries import is_feature_enabled
+    if not is_feature_enabled(chat_id, "enable_leave_notify"):
+        return
+
+    name_link = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
+
+    if new_status == "kicked":
+        # ── تحقق إذا كان الطرد/الحظر صادراً من أمر البوت ──
+        # إذا وُجد سجل حديث في group_punishment_log → restrictions.py
+        # أرسل رسالته بالفعل، لا نرسل مرة ثانية.
+        log_entry = _find_recent_punishment(chat_id, user.id)
+        if log_entry:
+            # الحدث مُعالَج بالفعل من restrictions.py — تجاهل
+            return
+
+        # طرد خارجي (من واجهة تيليغرام مباشرة، لا عبر أمر البوت)
+        text = f"🚫 تم طرد {name_link} من المجموعة"
+    else:
+        # مغادرة طوعية
+        text = f"👋 {random.choice(_LEFT_MSGS)} {name_link}"
 
     try:
-        bot.send_message(update.chat.id, text, parse_mode="HTML")
+        bot.send_message(chat_id, text, parse_mode="HTML")
     except Exception as e:
         print(f"[left_member] error: {e}")
+
+
+def _find_recent_punishment(tg_group_id: int, user_id: int):
+    """
+    يبحث في group_punishment_log عن سجل حظر/طرد حديث (خلال _KICK_GRACE_SEC ثانية)
+    لهذا المستخدم في هذه المجموعة.
+    يرجع الصف أو None.
+    """
+    import time as _time
+    try:
+        from database.db_queries.group_punishments_queries import get_last_punishment
+        row = get_last_punishment(tg_group_id, user_id, _BAN_ACTION_TYPE)
+        if row:
+            # row = (user_id, action_type, executor_id, timestamp)
+            ts = row[3]
+            if (_time.time() - ts) <= _KICK_GRACE_SEC:
+                return row
+    except Exception as e:
+        print(f"[left_member] _find_recent_punishment error: {e}")
+    return None

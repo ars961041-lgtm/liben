@@ -6,6 +6,7 @@ from utils.pagination import btn, send_ui, edit_ui, register_action, paginate_li
 from modules.tickets.ticket_db import (
     get_ticket, get_tickets_paginated, count_tickets,
     get_ticket_messages, get_stats,
+    get_user_tickets, count_user_tickets,
 )
 from modules.tickets.ticket_handler import (
     CATEGORIES, DEVELOPERS, _get_dev_group_id,
@@ -303,6 +304,126 @@ def on_close_from_view(call, data):
 
 
 # ══════════════════════════════════════════
+# 📋 تذاكري — عرض تذاكر المستخدم
+# ══════════════════════════════════════════
+
+_PER_PAGE = 5
+
+def show_my_tickets(message):
+    """نقطة الدخول النصية لأمر تذاكري."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    owner   = (user_id, chat_id)
+
+    tickets = get_user_tickets(user_id, page=0, per_page=_PER_PAGE)
+    total   = count_user_tickets(user_id)
+
+    text, buttons, layout = _build_my_tickets_view(user_id, chat_id, tickets, total, page=0)
+    send_ui(chat_id, text=text, buttons=buttons, layout=layout,
+            owner_id=user_id, reply_to=message.message_id)
+
+
+def _build_my_tickets_view(user_id, chat_id, tickets, total, page):
+    owner       = (user_id, chat_id)
+    total_pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+
+    if not tickets:
+        text = (
+            f"🎫 <b>تذاكري</b>\n{get_lines()}\n\n"
+            "📭 لا توجد تذاكر مسجلة بعد.\n\n"
+            "اكتب <code>تذكرة</code> لفتح تذكرة دعم جديدة."
+        )
+        return text, [], []
+
+    text = (
+        f"🎫 <b>تذاكري</b> (صفحة {page+1}/{total_pages})\n"
+        f"{get_lines()}\n\n"
+    )
+    buttons = []
+    for t in tickets:
+        status_icon = "📬" if t["status"] == "open" else "📁"
+        cat_label   = CATEGORIES.get(t["category"], t["category"])
+        created     = _time.strftime("%Y-%m-%d", _time.localtime(t["created_at"]))
+        text += f"{status_icon} <b>#{t['id']}</b> | {cat_label} | {created}\n"
+        buttons.append(
+            btn(f"{status_icon} #{t['id']} — {cat_label}",
+                "my_ticket_view",
+                data={"tid": t["id"], "page": page},
+                owner=owner)
+        )
+
+    nav = []
+    if page < total_pages - 1:
+        nav.append(btn("التالي ◀️", "my_tickets_page",
+                       data={"page": page + 1}, owner=owner))
+    if page > 0:
+        nav.append(btn("▶️ السابق", "my_tickets_page",
+                       data={"page": page - 1}, owner=owner))
+
+    layout = [1] * len(buttons) + ([len(nav)] if nav else [])
+    return text, buttons + nav, layout
+
+
+@register_action("my_tickets_page")
+def on_my_tickets_page(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    page    = int(data.get("page", 0))
+
+    tickets = get_user_tickets(user_id, page=page, per_page=_PER_PAGE)
+    total   = count_user_tickets(user_id)
+    text, buttons, layout = _build_my_tickets_view(user_id, chat_id, tickets, total, page)
+    bot.answer_callback_query(call.id)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
+
+
+@register_action("my_ticket_view")
+def on_my_ticket_view(call, data):
+    user_id   = call.from_user.id
+    chat_id   = call.message.chat.id
+    ticket_id = int(data["tid"])
+    back_page = int(data.get("page", 0))
+    owner     = (user_id, chat_id)
+
+    ticket = get_ticket(ticket_id)
+    if not ticket:
+        bot.answer_callback_query(call.id, "❌ التذكرة غير موجودة", show_alert=True)
+        return
+
+    # المستخدم يرى تذاكره فقط
+    if ticket["user_id"] != user_id:
+        bot.answer_callback_query(call.id, "❌ هذه التذكرة ليست لك", show_alert=True)
+        return
+
+    messages  = get_ticket_messages(ticket_id, limit=20)
+    cat_label    = CATEGORIES.get(ticket["category"], ticket["category"])
+    status_label = "📬 مفتوحة" if ticket["status"] == "open" else "📁 مغلقة"
+    created      = _time.strftime("%Y-%m-%d %H:%M", _time.localtime(ticket["created_at"]))
+
+    text = (
+        f"🎫 <b>تذكرة #{ticket_id}</b>\n"
+        f"{get_lines()}\n"
+        f"📂 النوع: {cat_label}\n"
+        f"📊 الحالة: {status_label}\n"
+        f"📅 التاريخ: {created}\n"
+        f"{get_lines()}\n\n"
+        f"💬 <b>المحادثة ({len(messages)} رسالة):</b>\n\n"
+    )
+
+    for msg in messages[-10:]:
+        sender_label = "👤 أنت" if msg["sender"] == "user" else "👨‍💻 المطور"
+        msg_time = _time.strftime("%H:%M", _time.localtime(msg["created_at"]))
+        content  = _escape(msg["content"] or f"[{msg['message_type']}]")
+        text += f"<b>{sender_label}</b> [{msg_time}]:\n{content}\n\n"
+
+    buttons = [
+        btn("🔙 رجوع", "my_tickets_page", data={"page": back_page}, owner=owner)
+    ]
+    bot.answer_callback_query(call.id)
+    edit_ui(call, text=text, buttons=buttons, layout=[1])
+
+
+# ══════════════════════════════════════════
 # 📝 أوامر نصية للتذاكر
 # ══════════════════════════════════════════
 
@@ -323,6 +444,11 @@ def handle_ticket_commands(message):
     if normalized in ["إبلاغ المطور", "ابلاغ المطور", "تذكرة", "بلاغ"]:
         from modules.tickets.ticket_handler import start_ticket_flow
         start_ticket_flow(message)
+        return True
+
+    # ─── تذاكري ───
+    if normalized in ["تذاكري", "تذاكر المستخدم"]:
+        show_my_tickets(message)
         return True
 
     # ─── لوحة التحكم ───

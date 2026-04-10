@@ -7,14 +7,12 @@
   → إذا لم يُحدَّد التوقيت: اختر التوقيت → حفظ
   في الوقت المحدد → يرسل رسالة خاصة + يفتح واجهة الأذكار
 """
-import time
-import threading
 from datetime import datetime, timezone
 
 from core.bot import bot
 from utils.pagination import btn, send_ui, edit_ui, register_action
 from utils.helpers import get_lines
-from modules.azkar import azkar_db as db
+from database.db_queries import azkar_queries as db
 from modules.azkar.azkar_handler import (
     TYPE_MORNING, TYPE_EVENING, TYPE_SLEEP, TYPE_WAKEUP,
     TYPE_LABELS, TYPE_EMOJI, _open_azkar_for_user,
@@ -236,7 +234,7 @@ def on_confirm(call, data):
     # حفظ التوقيت للاستخدام المستقبلي
     set_user_tz(uid, tz)
 
-    rem_id   = db.add_reminder(uid, t, h, m, tz)
+    rem_id   = db.add_reminder(uid, t, h, m)
     tz_h     = tz // 60
     tz_label = f"UTC{'+' if tz_h >= 0 else ''}{tz_h}"
     bot.answer_callback_query(call.id, "✅ تم حفظ التذكير!", show_alert=True)
@@ -331,10 +329,8 @@ def on_list(call, data):
     text = f"📋 <b>تذكيراتك ({len(reminders)})</b>{tz_info}\n{get_lines()}\n\n"
     buttons = []
     for r in reminders:
-        rtz_h = r["tz_offset"] // 60
         label = (
-            f"{TYPE_EMOJI[r['azkar_type']]} {_fmt_hour(r['hour'])}:{r['minute']:02d} "
-            f"(UTC{'+' if rtz_h >= 0 else ''}{rtz_h})"
+            f"{TYPE_EMOJI[r['azkar_type']]} {_fmt_hour(r['hour'])}:{r['minute']:02d}"
         )
         text += f"• {label} — أذكار {TYPE_LABELS[r['azkar_type']]}\n"
         buttons.append(btn(f"🗑 حذف #{r['id']}", "rem_delete",
@@ -401,20 +397,8 @@ def _check_can_pm(user_id: int) -> bool:
 
 
 # ══════════════════════════════════════════
-# المُجدوِل
+# Fire a single reminder (called by interval scheduler)
 # ══════════════════════════════════════════
-
-def _scheduler_loop():
-    while True:
-        try:
-            now        = datetime.now(timezone.utc)
-            due        = db.get_due_reminders(now.hour, now.minute)
-            for r in due:
-                _fire_reminder(r)
-        except Exception as e:
-            print(f"[AzkarReminder] {e}")
-        time.sleep(60 - datetime.now().second)
-
 
 def _fire_reminder(r: dict):
     uid        = r["user_id"]
@@ -431,5 +415,7 @@ def _fire_reminder(r: dict):
         print(f"[AzkarReminder] فشل إرسال تذكير للمستخدم {uid}: {e}")
 
 
+# ── Backward-compat stub — no longer starts a thread ─────────────
 def start_reminder_scheduler():
-    threading.Thread(target=_scheduler_loop, daemon=True).start()
+    """Deprecated. Reminders are now handled by the unified IntervalScheduler."""
+    pass

@@ -2,6 +2,8 @@ import sqlite3
 import time
 from ..connection import get_db_conn
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
+from utils.helpers import get_error_icons
+
 # ================================
 # ⚡️ الحسابات البنكية
 # ================================
@@ -24,7 +26,7 @@ def create_bank_account(user_id, initial_balance=None):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO user_accounts (user_id, balance, last_daily_claim, created_at) VALUES (?, ?, 0, ?)",
+            "INSERT INTO user_accounts (user_id, balance, created_at) VALUES (?, ?, ?)",
             (user_id, initial_balance, int(time.time()))
         )
         conn.commit()
@@ -45,8 +47,8 @@ def update_bank_balance(user_id, amount):
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO user_accounts (user_id, balance, last_daily_claim, created_at)
-        VALUES (?, MAX(0, ?), 0, ?)
+        INSERT INTO user_accounts (user_id, balance, created_at)
+        VALUES (?, MAX(0, ?), ?)
         ON CONFLICT(user_id) DO UPDATE SET balance = balance + ?
     """, (user_id, amount, int(time.time()), amount))
     conn.commit()
@@ -102,7 +104,7 @@ def create_loan(user_id, amount, due_seconds=86400*7):
     from core.admin import get_const_int
     max_loan = get_const_int("max_loan_amount", 10000)
     if amount > max_loan:
-        return False, f"❌ الحد الأقصى للقرض هو {max_loan} {CURRENCY_ARABIC_NAME}"
+        return False, f" الحد الأقصى للقرض هو {max_loan} {CURRENCY_ARABIC_NAME} {get_error_icons()}"
     conn = get_db_conn()
     cursor = conn.cursor()
     due_date = int(time.time()) + due_seconds
@@ -121,7 +123,7 @@ def repay_loan(user_id, loan_id, amount):
     cursor.execute("SELECT amount, repaid, due_date, status FROM loans WHERE id=? AND user_id=?", (loan_id, user_id))
     loan = cursor.fetchone()
     if not loan:
-        return False, "❌ لا يوجد قرض بهذا الرقم"
+        return False, f" لا يوجد قرض بهذا الرقم {get_error_icons()}"
 
     loan_amount, repaid, due_date, status = loan
     now = int(time.time())
@@ -155,24 +157,6 @@ def get_active_loans(user_id):
         (user_id,)
     )
     return cursor.fetchall()
-
-def get_last_daily_claim(user_id: int) -> int:
-    """Returns the last_daily_claim timestamp for the user."""
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT last_daily_claim FROM user_accounts WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
-    return row[0] if row else 0
-
-def set_last_daily_claim(user_id: int):
-    """Updates last_daily_claim to now."""
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE user_accounts SET last_daily_claim=? WHERE user_id=?",
-        (int(time.time()), user_id)
-    )
-    conn.commit()
 
 
 # ================================
@@ -239,6 +223,22 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
         (from_user_id, to_user_id, amount, fee)
     )
     conn.commit()
+
+    # track in economy_stats
+    try:
+        from database.db_queries.economy_queries import get_economy_stat, set_economy_stat
+        set_economy_stat("total_transfers",
+                         get_economy_stat("total_transfers", 0.0) + 1)
+        set_economy_stat("total_transfer_volume",
+                         get_economy_stat("total_transfer_volume", 0.0) + amount)
+        set_economy_stat("total_transfer_fees",
+                         get_economy_stat("total_transfer_fees", 0.0) + fee)
+        # fees are a money sink — track them
+        from modules.economy.services.economy_service import money_sink
+        money_sink(fee)
+    except Exception:
+        pass
+
     return True, (
         f"✅ <b>تم التحويل بنجاح!</b>\n"
         f"💸 المبلغ: {amount:.2f} {CURRENCY_ARABIC_NAME}\n"

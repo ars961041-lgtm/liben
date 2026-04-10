@@ -38,6 +38,17 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     uid = message.from_user.id
     cid = message.chat.id
 
+    # ── الصياح ──
+    if normalized_text == "صيح":
+        from handlers.shout_handler import handle_shout
+        return handle_shout(message)
+
+    # ── الهمسات ──
+    from modules.whispers.whisper_handler import handle_whisper_command, WHISPER_TRIGGERS
+    lower_text = normalized_text.lower()
+    if any(lower_text.startswith(t) for t in WHISPER_TRIGGERS):
+        return handle_whisper_command(message)
+
     # ── لوحة تحكم ميزات المجموعة ──
     if normalized_text == "الأوامر":
         from handlers.group_admin.group_features import handle_features_control
@@ -68,10 +79,6 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             from handlers.group_admin.developer.dev_store import open_dev_store
             open_dev_store(message)
             return True
-        if normalized_text in ["لوحة المطور", "dev panel"]:
-            from handlers.group_admin.developer.dev_control_panel import open_developer_panel
-            open_developer_panel(message)
-            return True
         if normalized_text in ["إدارة الأذكار", "ادارة الأذكار", "azkar admin"]:
             from modules.azkar.azkar_handler import open_azkar_admin
             open_azkar_admin(message)
@@ -100,24 +107,30 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
         return True
 
     # ── البنك ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if bank_commands(message):
             return True
 
+    # ── الإحصائيات والتحليلات ──
+    if is_feature_enabled(cid, "enable_games"):
+        from handlers.analytics_handler import analytics_commands
+        if analytics_commands(message):
+            return True
+
     # ── الألعاب ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if games_command(message):
             return True
         if entertainment_games_command(message):
             return True
 
     # ── التوبات ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if top_commands(message):
             return True
 
     # ── الدولة والمدن ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if country_commands(message):   return True
         if city_commands(message):      return True
         if daily_tasks_commands(message): return True
@@ -126,17 +139,17 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             return True
 
     # ── التحالفات ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if alliance_commands(message):
             return True
 
     # ── الحرب ──
-    if is_feature_enabled(cid, "feat_games"):
+    if is_feature_enabled(cid, "enable_games"):
         if handle_war_text_commands(message):
             return True
 
     # ── أوامر إدارة المجموعة ──
-    if is_feature_enabled(cid, "feat_admin"):
+    if is_feature_enabled(cid, "enable_admin"):
         if normalized_text == "مسح":
             delete_message(message)
             return True
@@ -153,8 +166,37 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             set_group_bio(message)
             return True
 
+        # ── تفعيل / إيقاف الاقتباسات التلقائية ──
+        if normalized_text in ("تفعيل الاقتباسات", "إيقاف الاقتباسات"):
+            from handlers.group_admin.permissions import is_admin as _is_admin
+            if not _is_admin(message):
+                bot.reply_to(message, "❌ هذا الأمر للمشرفين فقط.")
+                return True
+            enable = normalized_text == "تفعيل الاقتباسات"
+            from modules.content_hub.quotes_sender import toggle_quotes
+            ok = toggle_quotes(cid, enable)
+            if ok:
+                status = "✅ تم تفعيل الاقتباسات التلقائية." if enable else "❌ تم إيقاف الاقتباسات التلقائية."
+            else:
+                status = "⚠️ تعذّر تحديث الإعداد، تأكد أن المجموعة مسجّلة."
+            bot.reply_to(message, status)
+            return True
+
+        # ── تفعيل / تعطيل الهمسات ──
+        if normalized_text in ("تفعيل الهمسات", "تعطيل الهمسات"):
+            from handlers.group_admin.permissions import is_admin as _is_admin
+            if not _is_admin(message):
+                bot.reply_to(message, "❌ هذا الأمر للمشرفين فقط.")
+                return True
+            enable = normalized_text == "تفعيل الهمسات"
+            from database.db_queries.group_features_queries import set_feature
+            set_feature(cid, "enable_whispers", enable)
+            status = "✅ تم تفعيل الهمسات في هذه المجموعة." if enable else "❌ تم تعطيل الهمسات في هذه المجموعة."
+            bot.reply_to(message, status)
+            return True
+
     # ── أوامر الكتم/الحظر (prefix-based) ──
-    if is_feature_enabled(cid, "feat_admin"):
+    if is_feature_enabled(cid, "enable_admin"):
         from handlers.replies import commands as _punishment_cmds
         for command_name, func in _punishment_cmds.items():
             if normalized_text.startswith(command_name):
@@ -163,10 +205,7 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
                     continue
                 if "عالمي" in normalized_text:
                     continue
-                target_uid, _ = get_target_user(message)
-                if not target_uid:
-                    bot.reply_to(message, "❌ حدد المستخدم بالرد أو الآيدي أو اليوزر.")
-                    return True
+                # تفويض التحقق الكامل لـ handle_punishment — لا نتحقق هنا
                 func(message)
                 return True
 

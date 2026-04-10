@@ -1,155 +1,125 @@
-# database/utils/tops_builder.py
-
-import random
+"""
+tops_builder.py — بناء رسائل التوب بتنسيق ثابت ومحاذاة صحيحة.
+"""
+import re
 from utils.helpers import get_lines
 
-# -----------------------------
-# 🏆 إيموجيات المراتب الأولى
-# -----------------------------
-MEDALS = ["🥇", "🥈", "🥉"]
+# ── ثوابت ──
+MEDALS      = ["🥇", "🥈", "🥉"]
+LTR_MARK    = "\u200e"   # يجبر اتجاه النص من اليسار لليمين
+_MAX_NAME   = 20         # أقصى طول للاسم قبل القطع
+_TOP_LIMIT  = 10         # الحد الافتراضي للعرض
 
 
-# -----------------------------
-# 🧠 تجهيز الصفوف بشكل آمن
-# -----------------------------
-def _normalize_rows(rows):
-    """
-    يضمن أن كل صف يحتوي name و value
-    """
-    normalized = []
+# ══════════════════════════════════════════
+# تنظيف الأسماء
+# ══════════════════════════════════════════
 
+# أحرف غير مرئية / تحكم شائعة في أسماء تيليغرام
+_INVISIBLE = re.compile(
+    r"[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\uFEFF\u00ad]"
+)
+
+
+def _clean_name(name) -> str:
+    """يُنظّف الاسم ويُعيد '—' إذا كان فارغاً أو غير مرئي."""
+    if not name:
+        return "—"
+    name = str(name)
+    name = _INVISIBLE.sub("", name)   # أزل أحرف التحكم
+    name = " ".join(name.split())     # اضغط المسافات المتعددة
+    if not name.strip():
+        return "—"
+    # اقطع الأسماء الطويلة جداً
+    if len(name) > _MAX_NAME:
+        name = name[:_MAX_NAME].rstrip() + "…"
+    return name
+
+
+# ══════════════════════════════════════════
+# تطبيع الصفوف
+# ══════════════════════════════════════════
+
+def _normalize_rows(rows: list) -> list[dict]:
+    """يضمن أن كل صف يحتوي name و value، ويرتّب تنازلياً."""
+    out = []
     for r in rows:
-        name = str(r.get("name", "Unknown"))
+        name  = _clean_name(r.get("name"))
         value = r.get("value", 0)
-
-        # تحويل القيم لأرقام أو نص
         if isinstance(value, float):
             value = round(value, 2)
+        out.append({"name": name, "value": value})
 
-        normalized.append({
-            "name": name,
-            "value": value
-        })
-
-    return normalized
-
-
-# -----------------------------
-# ✨ تصميم 1: بسيط
-# -----------------------------
-def design_simple(title, rows, note=""):
-    text = f"🏆 {title}\n\n"
-
-    if note:
-        text += f"💡 {note}\n\n"
-
-    for i, r in enumerate(rows, 1):
-        medal = MEDALS[i - 1] if i <= 3 else "•"
-        text += f"{medal} {r['name']} | {r['value']}\n"
-
-    return text
+    # ترتيب صارم تنازلي بالقيمة
+    out.sort(key=lambda x: x["value"] if isinstance(x["value"], (int, float)) else 0,
+             reverse=True)
+    return out[:_TOP_LIMIT]
 
 
-# -----------------------------
-# ✨ تصميم 2: مرتب
-# -----------------------------
-def design_ranked(title, rows, note=""):
-    text = f"📊 {title}\n\n"
+# ══════════════════════════════════════════
+# تنسيق القيمة
+# ══════════════════════════════════════════
 
-    if note:
-        text += f"💡 {note}\n\n"
-
-    for i, r in enumerate(rows, 1):
-        text += f"{i}) {r['name']} → {r['value']}\n"
-
-    return text
+def _fmt_value(value) -> str:
+    if isinstance(value, (int, float)):
+        return f"{value:,.0f}"
+    return str(value)
 
 
-# -----------------------------
-# ✨ تصميم 3: تفصيلي
-# -----------------------------
-def design_card(title, rows, note=""):
-    text = f"🌟 {title}\n\n"
+# ══════════════════════════════════════════
+# البناء الرئيسي
+# ══════════════════════════════════════════
 
-    if note:
-        text += f"💡 {note}\n\n"
-
-    for i, r in enumerate(rows, 1):
-        medal = MEDALS[i - 1] if i <= 3 else f"{i}."
-        text += f"{medal} {r['name']}\n"
-        text += f"   📊 القيمة: {r['value']}\n\n"
-
-    return text
-
-
-# -----------------------------
-# ✨ تصميم 4: فاخر
-# -----------------------------
-def design_fancy(title, rows, note=""):
-    text = f"👑 ═══ {title} ═══ 👑\n\n"
-
-    if note:
-        text += f"💡 {note}\n\n"
-
-    for i, r in enumerate(rows, 1):
-        medal = MEDALS[i - 1] if i <= 3 else "🔹"
-        text += f"{medal} {r['name']}  ➤  {r['value']}\n"
-
-    text += "\n════════════════"
-    return text
-
-
-# -----------------------------
-# ✨ تصميم 5: احترافي
-# -----------------------------
-def design_pro(title, rows, note=""):
-    text = f"🏆 {title}\n"
-    text += f"{get_lines()}\n\n"
-
-    if note:
-        text += f"💡 {note}\n\n"
-
-    for i, r in enumerate(rows, 1):
-        medal = MEDALS[i - 1] if i <= 3 else f"{i}"
-        text += f"{medal} ⟫ {r['name']}\n"
-        text += f"   ↳ 📊 {r['value']}\n\n"
-
-    text += f"{get_lines()}"
-    return text
-
-
-# -----------------------------
-# 🎲 قائمة التصاميم
-# -----------------------------
-DESIGNS = [
-    design_simple,
-    design_ranked,
-    design_card,
-    design_fancy,
-    design_pro
-]
-
-
-# -----------------------------
-# 🧠 الدالة الأساسية
-# -----------------------------
-def build_top(title, rows, note=""):
+def build_top(title: str, rows: list, note: str = "") -> str:
     """
-    إنشاء رسالة التوب
-    """
+    يبني رسالة توب بتنسيق ثابت ومحاذاة يسارية.
 
+    الشكل:
+        🔥 Top Active Users
+        ─────────────────
+        1) 🥇  48825  |  Name
+        2) 🥈  33744  |  Name
+        3) 🥉  32023  |  Name
+        4)       712  |  Name
+        ...
+    """
     if not rows:
         return "❌ لا توجد بيانات."
 
     try:
         rows = _normalize_rows(rows)
-        design = random.choice(DESIGNS)
-        return design(title, rows, note)
+    except Exception:
+        pass
 
-    except Exception as e:
-        # fallback إذا حصل خطأ في أحد التصاميم
-        text = f"🏆 {title}\n\n"
-        for i, r in enumerate(rows, 1):
-            text += f"{i}. {r.get('name','Unknown')} | {r.get('value',0)}\n"
+    if not rows:
+        return "❌ لا توجد بيانات."
 
-        return text
+    # ── حساب أقصى عرض للقيمة لمحاذاة الأعمدة ──
+    formatted_values = [_fmt_value(r["value"]) for r in rows]
+    max_val_len      = max(len(v) for v in formatted_values)
+
+    lines = []
+
+    # ── رأس الرسالة ──
+    lines.append(f"{LTR_MARK}🏆 {title}")
+    lines.append(f"{LTR_MARK}{get_lines()}")
+    if note:
+        lines.append(f"{LTR_MARK}💡 {note}")
+        lines.append(f"{LTR_MARK}")
+
+    # ── صفوف التوب ──
+    for i, (row, val_str) in enumerate(zip(rows, formatted_values), 1):
+        medal      = MEDALS[i - 1] if i <= 3 else "  "
+        rank_label = f"{i})"
+        # محاذاة القيمة يميناً داخل عمود ثابت العرض
+        padded_val = val_str.rjust(max_val_len)
+        name       = row["name"]
+
+        # LTR_MARK يمنع انعكاس الترتيب عند وجود أسماء عربية
+        lines.append(
+            f"{LTR_MARK}{rank_label:<3} {medal}  {padded_val}  |  {name}"
+        )
+
+    lines.append(f"{LTR_MARK}{get_lines()}")
+
+    return "\n".join(lines)

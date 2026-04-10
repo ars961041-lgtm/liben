@@ -1,7 +1,7 @@
 """
 أوامر العقوبات والإدارة — كتم، حظر، تقييد، ترقية
 قواعد:
-  1. يجب الرد على رسالة المستخدم المستهدف
+  1. يجب الرد على رسالة المستخدم المستهدف، أو ذكر @username في نص الأمر
   2. لا يمكن تطبيق أي إجراء على مطور البوت
   3. المنفّذ يجب أن يكون مشرفاً
 """
@@ -11,6 +11,7 @@ from database.db_queries.group_punishments_queries import (
     delete_group_punishments, get_group_punishments, get_last_punishment,
     get_user_punishments, is_user_status, log_punishment, set_user_status,
 )
+from database.db_queries.users_queries import get_user_id_by_username
 from handlers.group_admin.permissions import is_admin, sender_can_restrict
 from utils.pagination import btn, register_action, send_ui
 from utils.constants import lines
@@ -38,7 +39,7 @@ _MSGS = {
 }
 
 _DEV_PROTECTED_MSG = "❌ لا يمكن تطبيق هذا الإجراء على مطور البوت."
-_REPLY_REQUIRED_MSG = "❌ يجب الرد على رسالة المستخدم لتنفيذ هذا الأمر."
+_REPLY_REQUIRED_MSG = "❌ يجب الرد على رسالة المستخدم أو ذكر @username في الأمر."
 
 
 # ══════════════════════════════════════════
@@ -46,11 +47,6 @@ _REPLY_REQUIRED_MSG = "❌ يجب الرد على رسالة المستخدم ل
 # ══════════════════════════════════════════
 
 def handle_punishment(message, field, action_name, apply_func=None, reverse=False, require_admin=True):
-    # 1. يجب الرد على رسالة
-    if not message.reply_to_message:
-        bot.reply_to(message, _REPLY_REQUIRED_MSG)
-        return
-
     if require_admin:
         if not is_admin(message):
             bot.reply_to(message, "❌ أنت لست مشرفاً في هذه المجموعة.", parse_mode="HTML")
@@ -62,8 +58,15 @@ def handle_punishment(message, field, action_name, apply_func=None, reverse=Fals
                 return
 
     user_id, name = get_target_user(message)
+
     if not user_id:
-        bot.reply_to(message, _REPLY_REQUIRED_MSG)
+        if name:  # كان هناك @username في النص لكنه غير مسجّل
+            bot.reply_to(message,
+                f"❌ المستخدم <code>{name}</code> غير موجود في قاعدة البيانات.\n"
+                "يجب أن يكون المستخدم قد تفاعل مع البوت مسبقاً.",
+                parse_mode="HTML")
+        else:
+            bot.reply_to(message, _REPLY_REQUIRED_MSG)
         return
 
     # 2. حماية المطورين
@@ -109,13 +112,19 @@ def handle_punishment(message, field, action_name, apply_func=None, reverse=Fals
         if action_type is not None:
             log_punishment(group_id, user_id, action_type, message.from_user.id, reverse)
 
+        executor_link = f"<a href='tg://user?id={message.from_user.id}'>{message.from_user.first_name}</a>"
+        user_link     = f"<a href='tg://user?id={user_id}'>{name}</a>"
+
         if msgs:
             template = msgs[3] if reverse else msgs[2]
-            text = template.format(name=f"<a href='tg://user?id={user_id}'>{name}</a>")
+            text = template.format(name=user_link)
+            # أضف اسم المنفّذ للحظر والطرد والتقييد
+            if not reverse and field in ("is_banned", "is_muted", "is_restricted"):
+                text += f"\n👮 بواسطة: {executor_link}"
         else:
             text = (
                 f"تم رفع {action_name}" if reverse
-                else f"تم {action_name} <a href='tg://user?id={user_id}'>{name}</a>"
+                else f"تم {action_name} {user_link}\n👮 بواسطة: {executor_link}"
             )
 
         bot.reply_to(message, text, parse_mode="HTML")
@@ -172,18 +181,15 @@ def unmute_user(message):
 # ══════════════════════════════════════════
 
 def promote_admin(message):
-    """رفع مشرف — يجب الرد على رسالة المستخدم."""
-    if not message.reply_to_message:
+    """رفع مشرف — يجب الرد على رسالة المستخدم أو ذكر @username."""
+    user_id, name = get_target_user(message)
+    if not user_id:
         bot.reply_to(message, _REPLY_REQUIRED_MSG)
         return
 
     if not is_admin(message):
         bot.reply_to(message, "❌ أنت لست مشرفاً في هذه المجموعة.")
         return
-
-    target = message.reply_to_message.from_user
-    user_id = target.id
-    name    = target.first_name or str(user_id)
 
     # حماية المطورين من التعديل غير المقصود
     if is_any_dev(user_id):
@@ -228,10 +234,28 @@ def handle_muted_users(message) -> bool:
 # ══════════════════════════════════════════
 
 def get_target_user(message):
-    """يجلب المستخدم المستهدف من الرد فقط."""
+    """
+    يجلب المستخدم المستهدف بالأولوية التالية:
+    1. الرد على رسالة المستخدم
+    2. @username مذكور في نص الأمر → يُحلّ من جدول users
+    يرجع (user_id, name) أو (None, None)
+    """
+    # 1. الرد على رسالة
     if message.reply_to_message:
         user = message.reply_to_message.from_user
         return user.id, user.first_name
+
+    # 2. @username في نص الأمر
+    text = (message.text or "").strip()
+    for token in text.split():
+        if token.startswith("@") and len(token) > 1:
+            user_id, name = get_user_id_by_username(token)
+            if user_id:
+                return user_id, name or token
+            else:
+                # username موجود في النص لكن غير مسجّل في قاعدة البيانات
+                return None, token  # نُعيد الـ token كـ hint للرسالة
+
     return None, None
 
 

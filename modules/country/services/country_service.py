@@ -6,8 +6,6 @@ from database.db_queries.countries_queries import (
     country_exists,
     create_country,
     get_country_by_user,
-    get_country_stats,
-    update_country_stats
 )
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
 from database.db_queries.cities_queries import get_cities_by_country
@@ -66,24 +64,11 @@ class CountryService:
 
     # =====================================
     # ⬆️ تحديث إحصائيات الدولة بناءً على المدن
+    # Stats are computed live from city_assets — nothing to store.
     # =====================================
     @staticmethod
     def update_country_stats(country_id: int):
-        stats = {
-            "economy_score": 0,
-            "health_level": 0,
-            "education_level": 0,
-            "military_power": 0,
-            "infrastructure_level": 0
-        }
-
-        cities = get_cities_by_country(country_id)
-        for city in cities:
-            city_stats = CityService.get_city_stats(city['id'])
-            for key in stats:
-                stats[key] += city_stats.get(key, 0)
-
-        update_country_stats(country_id, **stats)
+        # No-op: stats are always derived live from cities/assets.
         return True
 
     # =====================================
@@ -129,18 +114,15 @@ class CountryService:
         if not country:
             return None
 
-        stats = get_country_stats(country_id)
         economy = CountryService.calculate_economy(country_id)
-
-        cities = get_cities_by_country(country_id)
+        cities  = get_cities_by_country(country_id)
 
         return {
-            "id": country.id,
-            "name": country.name,
+            "id":       country.id,
+            "name":     country.name,
             "owner_id": country.owner_id,
-            "stats": stats,
-            "economy": economy,
-            "cities": [{"id": c['id'], "name": c['name']} for c in cities]
+            "economy":  economy,
+            "cities":   [{"id": c['id'], "name": c['name']} for c in cities]
         }
 
     # =====================================
@@ -148,17 +130,26 @@ class CountryService:
     # =====================================
     @staticmethod
     def get_user_country_info(user_id: int):
+        """Returns country info with stats aggregated live from its cities."""
         country = get_country_by_user(user_id)
         if not country:
             return None
+
+        cities = get_cities_by_country(country["id"])
+        totals = {"economy_score": 0, "health_level": 0, "education_level": 0,
+                  "military_power": 0, "infrastructure_level": 0}
+        for city in cities:
+            effects = CityService.get_city_stats(city["id"])
+            totals["economy_score"]        += effects.get("economy", 0)
+            totals["health_level"]         += effects.get("health", 0)
+            totals["education_level"]      += effects.get("education", 0)
+            totals["military_power"]       += effects.get("military", 0)
+            totals["infrastructure_level"] += effects.get("infrastructure", 0)
+
         return {
-            "id": country["id"],
+            "id":   country["id"],
             "name": country["name"],
-            "economy_score": country.get("economy_score", 0),
-            "health_level": country.get("health_level", 0),
-            "education_level": country.get("education_level", 0),
-            "military_power": country.get("military_power", 0),
-            "infrastructure_level": country.get("infrastructure_level", 0)
+            **totals,
         }
 
     # =====================================

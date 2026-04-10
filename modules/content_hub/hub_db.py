@@ -4,7 +4,6 @@
 import sqlite3
 import threading
 import os
-import uuid
 
 from core.config import DB_CONTENT
 
@@ -49,14 +48,20 @@ def create_tables():
     for table in CONTENT_TYPES.values():
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS {table} (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                content    TEXT    NOT NULL,
-                random_key TEXT    NOT NULL DEFAULT (lower(hex(randomblob(8))))
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT    NOT NULL UNIQUE
             )
         """)
-        cur.execute(
-            f"CREATE INDEX IF NOT EXISTS idx_{table}_rk ON {table}(random_key)"
+    # linked_channels: channel_id → content_type mapping
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS linked_channels (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id   INTEGER NOT NULL UNIQUE,
+            channel_name TEXT    DEFAULT '',
+            content_type TEXT    NOT NULL,
+            linked_at    INTEGER DEFAULT (strftime('%s','now'))
         )
+    """)
     conn.commit()
 
 
@@ -64,24 +69,23 @@ def create_tables():
 # استعلامات
 # ══════════════════════════════════════════
 
-def get_random(table: str) -> dict | None:
+def get_random_row(table: str) -> dict | None:
     """
-    يجلب صفاً عشوائياً بكفاءة عبر random_key بدلاً من ORDER BY RANDOM().
+    يجلب صفاً عشوائياً بكفاءة دون الحاجة لعمود random_key.
+    يستخدم OFFSET عشوائي بدلاً من ORDER BY RANDOM().
     """
     conn = _get_conn()
     cur  = conn.cursor()
-    # نختار random_key عشوائياً ثم نأخذ أقرب صف أكبر منه
-    rk = uuid.uuid4().hex[:16]
     cur.execute(
-        f"SELECT * FROM {table} WHERE random_key >= ? ORDER BY random_key LIMIT 1",
-        (rk,),
+        f"SELECT * FROM {table} LIMIT 1 OFFSET ABS(RANDOM()) % MAX(1, (SELECT COUNT(*) FROM {table}))"
     )
     row = cur.fetchone()
-    if not row:
-        # إذا لم يوجد صف أكبر — نأخذ الأول
-        cur.execute(f"SELECT * FROM {table} ORDER BY random_key LIMIT 1")
-        row = cur.fetchone()
     return dict(row) if row else None
+
+
+def get_random(table: str) -> dict | None:
+    """Alias for get_random_row — kept for backward compatibility."""
+    return get_random_row(table)
 
 
 def get_by_id(table: str, row_id: int) -> dict | None:
@@ -94,10 +98,9 @@ def get_by_id(table: str, row_id: int) -> dict | None:
 def insert_content(table: str, content: str) -> int:
     conn = _get_conn()
     cur  = conn.cursor()
-    rk   = uuid.uuid4().hex[:16]
     cur.execute(
-        f"INSERT INTO {table} (content, random_key) VALUES (?,?)",
-        (content.strip(), rk),
+        f"INSERT OR IGNORE INTO {table} (content) VALUES (?)",
+        (content.strip(),),
     )
     conn.commit()
     return cur.lastrowid
@@ -123,3 +126,51 @@ def count_rows(table: str) -> int:
     cur = _get_conn().cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")
     return cur.fetchone()[0]
+
+
+# ══════════════════════════════════════════
+# linked_channels
+# ══════════════════════════════════════════
+
+def link_channel(channel_id: int, content_type: str, channel_name: str = "") -> bool:
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO linked_channels (channel_id, content_type, channel_name)
+        VALUES (?, ?, ?)
+        ON CONFLICT(channel_id) DO UPDATE SET content_type = excluded.content_type,
+                                               channel_name = excluded.channel_name
+    """, (channel_id, content_type, channel_name))
+    conn.commit()
+    return True
+
+
+def unlink_channel(channel_id: int) -> bool:
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute("DELETE FROM linked_channels WHERE channel_id = ?", (channel_id,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def get_linked_channel(channel_id: int) -> dict | None:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM linked_channels WHERE channel_id = ?", (channel_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_all_linked_channels() -> list:
+    cur = _get_conn().cursor()
+    cur.execute("SELECT * FROM linked_channels ORDER BY linked_at DESC")
+    return [dict(r) for r in cur.fetchall()]
+
+
+def upsert_content_by_text(table: str, old_text: str, new_text: str) -> bool:
+    """يُحدّث محتوى موجود بالنص القديم — يُستخدم عند تعديل منشور القناة."""
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute(f"UPDATE {table} SET content = ? WHERE content = ?",
+                (new_text.strip(), old_text.strip()))
+    conn.commit()
+    return cur.rowcount > 0

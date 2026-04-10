@@ -116,11 +116,12 @@ def open_magazine_admin(cid, uid, call=None):
         btn("➕ إضافة منشور", "mag_adm_add",  {}, owner=owner, color="su"),
         btn("📋 كل المنشورات","mag_adm_list", {"p": 0}, owner=owner),
         btn("🎁 إرسال هدية",  "gift_menu",    {}, owner=owner, color="p"),
+        btn("⬅️ القائمة الرئيسية", "adm_main_back", {}, owner=owner, color="d"),
     ]
     if call:
-        edit_ui(call, text=text, buttons=buttons, layout=[1, 1, 1])
+        edit_ui(call, text=text, buttons=buttons, layout=[1, 1, 1, 1])
     else:
-        send_ui(cid, text=text, buttons=buttons, layout=[1, 1, 1], owner_id=uid)
+        send_ui(cid, text=text, buttons=buttons, layout=[1, 1, 1, 1], owner_id=uid)
 
 
 @register_action("mag_adm_add")
@@ -225,10 +226,10 @@ def open_gift_from_message(message):
         bot.reply_to(message, "❌ هذا الأمر للمطور الأساسي فقط.")
         return
     owner = (uid, cid)
-    _render_gift_menu(cid, uid, owner, reply_to=message.message_id)
+    _render_gift_menu(cid, uid, owner, reply_to=message.message_id, from_admin=False)
 
 
-def _render_gift_menu(cid, uid, owner, call=None, reply_to=None):
+def _render_gift_menu(cid, uid, owner, call=None, reply_to=None, from_admin=True):
     """يبني ويرسل/يعدّل قائمة الهدايا."""
     pending = _PENDING_GIFTS.get(uid)
     pending_line = ""
@@ -249,6 +250,8 @@ def _render_gift_menu(cid, uid, owner, call=None, reply_to=None):
             btn("🗑 إلغاء الهدية",  "gift_cancel",  {}, owner=owner, color="d"),
         ]
     buttons.append(btn("❌ إغلاق", "gift_close", {}, owner=owner, color="d"))
+    if from_admin:
+        buttons.append(btn("⬅️ القائمة الرئيسية", "adm_main_back", {}, owner=owner, color="d"))
     layout = [1] * len(buttons)
 
     if call:
@@ -384,7 +387,7 @@ def on_gift_cancel(call, data):
     _PENDING_GIFTS.pop(uid, None)
     bot.answer_callback_query(call.id, "✅ تم الإلغاء")
     owner = (uid, call.message.chat.id)
-    _render_gift_menu(call.message.chat.id, uid, owner, call=call)
+    _render_gift_menu(call.message.chat.id, uid, owner, call=call, from_admin=True)
 
 
 @register_action("gift_close")

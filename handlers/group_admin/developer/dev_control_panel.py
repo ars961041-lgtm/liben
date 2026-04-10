@@ -10,8 +10,7 @@ from utils.pagination import (
     paginate_list, set_state, get_state, clear_state,
 )
 from utils.pagination.buttons import build_keyboard
-from utils.helpers import get_lines
-
+from utils.helpers import get_lines, format_ayah_number
 # Content Hub imports
 from modules.content_hub.hub_db import CONTENT_TYPES, TYPE_LABELS, count_rows
 
@@ -107,24 +106,13 @@ def _show_content_hub_panel(call_or_message):
 
 @register_action("dev_back_main")
 def on_dev_back_main(call, data):
-    """العودة للوحة الرئيسية"""
-    uid = call.from_user.id
-    cid = call.message.chat.id
-    owner = (uid, cid)
-
-    text = (
-        "🛠️ <b>لوحة تحكم المطور</b>\n"
-        f"{get_lines()}\n\n"
-        "اختر النظام المراد إدارته:"
-    )
-
-    buttons = [
-        btn("📚 إدارة المحتوى", "dev_content_hub", {}, color=_B, owner=owner),
-        btn("📖 إدارة القرآن",   "dev_quran",       {}, color=_B, owner=owner),
-        btn("❌ إغلاق",          "dev_close",       {}, color=_R, owner=owner),
-    ]
-
-    edit_ui(call, text=text, buttons=buttons, layout=[1, 1, 1])
+    """العودة للوحة الإدارة الرئيسية"""
+    if not is_any_dev(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+    bot.answer_callback_query(call.id)
+    from handlers.group_admin.developer.admin_panel import back_to_main
+    back_to_main(call, {})
 
 
 @register_action("hub_dev_type")
@@ -575,8 +563,8 @@ def _show_quran_search_results(message_or_call, uid, cid, query, results, page, 
     text = f"🔍 <b>نتائج البحث: {query}</b> ({page+1}/{total_pages})\n{get_lines()}\n\n"
     for r in items:
         text += (
-            f"📖 <b>{r['sura_name']}</b> — آية {r['ayah_number']}\n"
-            f"{r['text_with_tashkeel']}\n\n"
+            f"📖 <b>{r['sura_name']}</b>\n\n"
+            f"{r['text_with_tashkeel']} {format_ayah_number(r['ayah_number'])}\n\n"
         )
 
     owner = (uid, cid)
@@ -585,7 +573,7 @@ def _show_quran_search_results(message_or_call, uid, cid, query, results, page, 
     # زر لكل نتيجة
     for r in items:
         buttons.append(btn(
-            f"📖 {r['sura_name']} {r['ayah_number']}",
+            f"{r['sura_name']} {format_ayah_number(r['ayah_number'])}",
             "qr_dev_select_ayah",
             {"aid": r["id"]},
             color=_B, owner=owner,
@@ -641,9 +629,9 @@ def on_qr_dev_select_ayah(call, data):
     owner = (uid, cid)
 
     text = (
-        f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
+        f"📖 <b>{ayah['sura_name']}</b>\n"
         f"{get_lines()}\n\n"
-        f"{ayah['text_with_tashkeel']}\n\n"
+        f"{ayah['text_with_tashkeel']} {format_ayah_number(ayah['ayah_number'])}\n\n"
         f"{get_lines()}\n"
         f"<i>آية #{ayah['id']}</i>"
     )
@@ -708,9 +696,9 @@ def on_qr_dev_edit_tafseer_selected(call, data):
 def _show_ayah_for_edit(message, uid, cid, ayah, mid):
     """عرض الآية مع زر التعديل"""
     text = (
-        f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
+        f"📖 <b>{ayah['sura_name']}</b>\n"
         f"{get_lines()}\n\n"
-        f"{ayah['text_with_tashkeel']}\n\n"
+        f"{ayah['text_with_tashkeel']} {format_ayah_number(ayah['ayah_number'])}\n\n"
         f"{get_lines()}\n"
         f"<i>آية #{ayah['id']}</i>"
     )
@@ -737,7 +725,7 @@ def _show_tafseer_selection(message, uid, cid, ayah, mid):
     """عرض أزرار اختيار التفسير"""
     text = (
         f"📖 <b>تعديل تفسير</b>\n"
-        f"<b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
+        f"<b>{ayah['sura_name']}</b> {format_ayah_number(ayah['ayah_number'])}\n"
         f"{get_lines()}\n\n"
         f"اختر نوع التفسير:"
     )

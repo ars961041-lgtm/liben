@@ -243,9 +243,9 @@ def get_season_leaderboard(season_id: int, category: str = "battles") -> list:
     cursor.execute("""
         SELECT 
             sh.*, 
-            COALESCE(un.name, 'مجهول') AS user_name
+            COALESCE(NULLIF(u.name, ''), 'مجهول') AS user_name
         FROM season_history sh
-        LEFT JOIN users_name un ON sh.user_id = un.user_id
+        LEFT JOIN users u ON sh.user_id = u.user_id
         WHERE sh.season_id = ? AND sh.category = ?
         ORDER BY sh.rank ASC 
         LIMIT 10

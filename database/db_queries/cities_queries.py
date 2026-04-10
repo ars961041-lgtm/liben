@@ -21,11 +21,21 @@ def create_city(name: str, owner_id: int, country_id: int = None) -> int:
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO cities (name, owner_id, country_id, last_collect_time) VALUES (?, ?, ?, strftime(\'%s\',\'now\'))',
+        "INSERT INTO cities (name, owner_id, country_id, last_collect_time) "
+        "VALUES (?, ?, ?, strftime('%s','now'))",
         (name.strip(), owner_id, country_id)
     )
-    conn.commit()
     city_id = cursor.lastrowid
+
+    # Seed related tables so they always exist for every city
+    cursor.execute(
+        "INSERT OR IGNORE INTO city_budget (city_id) VALUES (?)", (city_id,)
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO city_spending (city_id) VALUES (?)", (city_id,)
+    )
+
+    conn.commit()
     return city_id
 
 # -------------------------
@@ -159,10 +169,9 @@ def get_city_users(city_id: int):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT u.user_id, COALESCE(un.name, 'Unknown') AS name
+        SELECT u.user_id, COALESCE(NULLIF(u.name, ''), 'Unknown') AS name
         FROM cities c
         JOIN users u ON u.user_id = c.owner_id
-        LEFT JOIN users_name un ON un.user_id = u.user_id
         WHERE c.id = ?
     """, (city_id,))
 

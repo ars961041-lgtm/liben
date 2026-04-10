@@ -26,19 +26,6 @@ def _back_btn(user_id, chat_id):
     return btn("🔙 رجوع", "adv_war_main_back", data={}, owner=(user_id, chat_id))
 
 
-def _war_main_buttons(user_id, chat_id):
-    return [
-        btn("⚔️ شن هجوم",       "adv_war_attack",     data={"page": 0}, owner=(user_id, chat_id), color="d"),
-        btn("🕵️ إرسال جواسيس",  "adv_war_spy",        data={"page": 0}, owner=(user_id, chat_id)),
-        btn("🃏 متجر البطاقات",  "adv_war_cards_shop", data={"page": 0}, owner=(user_id, chat_id)),
-        btn("🎒 بطاقاتي",        "adv_war_my_cards",   data={"page": 0}, owner=(user_id, chat_id)),
-        btn("📊 سجل المعارك",    "adv_war_history",    data={},          owner=(user_id, chat_id)),
-        btn("🏆 سمعتي",          "adv_war_reputation", data={},          owner=(user_id, chat_id), color="su"),
-        btn("🔍 معاركي النشطة",  "adv_war_active",     data={},          owner=(user_id, chat_id), color="su"),
-        btn("📣 طلبات الدعم",    "adv_war_support_menu", data={},        owner=(user_id, chat_id), color="su"),
-    ]
-
-
 # ══════════════════════════════════════════
 # 🏠 القائمة الرئيسية
 # ══════════════════════════════════════════
@@ -105,13 +92,20 @@ def back_to_war_main(call, data):
     from database.db_queries.advanced_war_queries import get_visibility
     vis = get_visibility(country["id"])
     vis_icon = "🌑 مخفية" if vis and vis["visibility_mode"] == "hidden" else "☀️ ظاهرة"
+
+    buttons = _war_main_buttons(user_id, chat_id)
+    has_alliance = any(b["action"] == "alliance_buy_upgrade" for b in buttons)
+    n = len(buttons) - (1 if has_alliance else 0)
+    layout = ([1] if has_alliance else []) + [2] * (n // 2) + ([1] if n % 2 else [])
+
+    bot.answer_callback_query(call.id)
     edit_ui(call,
             text=(f"⚔️ <b>نظام الحرب المتقدم</b>\n"
                   f"🏳️ دولتك: <b>{country['name']}</b>\n"
                   f"💪 قوتك: {power:.0f} | 👁 الرؤية: {vis_icon}\n"
                   f"{status_line}\n\nاختر ما تريد:"),
-            buttons=_war_main_buttons(user_id, chat_id),
-            layout=[2, 2, 2, 2])
+            buttons=buttons,
+            layout=layout)
 
 
 # ══════════════════════════════════════════
@@ -1122,36 +1116,6 @@ def show_country_status(call, data):
 
 
 # ══════════════════════════════════════════
-# 🔄 تحديث القائمة الرئيسية لتشمل الأزرار الجديدة
-# ══════════════════════════════════════════
-
-def _war_main_buttons(user_id, chat_id):
-    from database.db_queries.alliances_queries import get_alliance_by_user
-    alliance = get_alliance_by_user(user_id)
-    buttons = []
-    # متجر التحالف — أول زر إذا كان في تحالف
-    if alliance:
-        alliance = dict(alliance)
-        buttons.append(btn("🏰 متجر التحالف", "alliance_buy_upgrade",
-                           data={"aid": alliance["id"], "page": 0},
-                           owner=(user_id, chat_id), color="su"))
-    buttons += [
-        btn("⚔️ شن هجوم",        "adv_war_attack",         data={"page": 0}, owner=(user_id, chat_id), color="d"),
-        btn("🪖 متجر القوات",     "adv_war_force_shop",     data={"tab": "troops", "page": 0}, owner=(user_id, chat_id)),
-        btn("🕵️ إرسال جواسيس",   "adv_war_spy",            data={"page": 0}, owner=(user_id, chat_id)),
-        btn("🃏 متجر البطاقات",   "adv_war_cards_shop",     data={"page": 0}, owner=(user_id, chat_id)),
-        btn("🎒 بطاقاتي",         "adv_war_my_cards",       data={"page": 0}, owner=(user_id, chat_id)),
-        btn("📊 سجل المعارك",     "adv_war_history",        data={},          owner=(user_id, chat_id)),
-        btn("📜 سجل الحروب",      "adv_war_war_log",        data={"page": 0}, owner=(user_id, chat_id)),
-        btn("🏆 سمعتي",           "adv_war_reputation",     data={},          owner=(user_id, chat_id), color="su"),
-        btn("🔍 معاركي النشطة",   "adv_war_active",         data={},          owner=(user_id, chat_id), color="su"),
-        btn("📣 طلبات الدعم",     "adv_war_support_menu",   data={},          owner=(user_id, chat_id), color="su"),
-        btn("🏥 المستشفى",        "adv_war_country_status", data={},          owner=(user_id, chat_id)),
-    ]
-    return buttons
-
-
-# ══════════════════════════════════════════
 # 📝 تحديث الأوامر النصية
 # ══════════════════════════════════════════
 
@@ -1181,6 +1145,22 @@ def handle_war_text_commands(message):
         open_hospital_menu(message)
         return True
 
+    if normalized in ["متجر القوات", "متجر الجيش", "متجر الحرب"]:
+        open_force_shop_command(message)
+        return True
+
+    if normalized in ["متجر المعدات", "معدات الحرب"]:
+        open_equipment_shop_command(message)
+        return True
+
+    if normalized in ["متجر البطاقات", "بطاقات الحرب"]:
+        open_cards_shop_command(message)
+        return True
+
+    if normalized in ["متجر التحالف", "ترقيات التحالف"]:
+        open_alliance_shop_command(message)
+        return True
+
     if normalized.startswith("كود "):
         _handle_code_input(message, text)
         return True
@@ -1195,6 +1175,163 @@ def handle_war_text_commands(message):
     return False
 
 
+def open_force_shop_command(message):
+    """يفتح متجر الجنود مباشرة من أمر نصي."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    country = get_country_by_owner(user_id)
+    if not country:
+        bot.reply_to(message, "❌ لا تملك دولة! أنشئ دولة أولاً.")
+        return
+    country = dict(country)
+    from modules.war.force_shop import get_available_troops
+    troops = get_available_troops()
+    balance = get_user_balance(user_id)
+    text = f"🪖 <b>متجر الجنود</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    for t in troops[:5]:
+        text += f"🪖 <b>{t['name_ar']}</b>\n   ⚔️ هجوم: {t['attack']} | 🛡 دفاع: {t['defense']}\n   💵 {t['base_cost']:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    buttons = [
+        btn(f"🪖 شراء {t['name_ar']}", "adv_war_buy_troop",
+            data={"troop_id": t["id"], "qty": 1}, owner=(user_id, chat_id), color="su")
+        for t in troops[:5]
+    ]
+    send_ui(chat_id, text=text, buttons=buttons,
+            layout=[3] * ((len(troops[:5]) + 2) // 3),
+            reply_to=message.message_id)
+
+
+def open_equipment_shop_command(message):
+    """يفتح متجر المعدات مباشرة من أمر نصي."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    country = get_country_by_owner(user_id)
+    if not country:
+        bot.reply_to(message, "❌ لا تملك دولة! أنشئ دولة أولاً.")
+        return
+    country = dict(country)
+    from modules.war.force_shop import get_available_equipment
+    equipment = get_available_equipment()
+    balance = get_user_balance(user_id)
+    text = f"🛡 <b>متجر المعدات</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    for e in equipment[:5]:
+        text += f"{e.get('emoji','🛡')} <b>{e['name_ar']}</b>\n   💵 {e['base_cost']:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    buttons = [
+        btn(f"{e.get('emoji','🛡')} شراء {e['name_ar']}", "adv_war_buy_equip",
+            data={"eq_id": e["id"], "qty": 1}, owner=(user_id, chat_id), color="su")
+        for e in equipment[:5]
+    ]
+    send_ui(chat_id, text=text, buttons=buttons,
+            layout=[3] * ((len(equipment[:5]) + 2) // 3),
+            reply_to=message.message_id)
+
+
+def open_cards_shop_command(message):
+    """يفتح متجر البطاقات مباشرة من أمر نصي."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    all_cards = get_all_cards()
+    items, _ = paginate_list(all_cards, 0, per_page=5)
+    balance = get_user_balance(user_id)
+    text = f"🃏 <b>متجر البطاقات</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    for c in items:
+        text += f"{c['emoji']} <b>{c['name_ar']}</b>\n   📝 {c['description_ar']}\n   💵 {c['price']:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+    buttons = [
+        btn(f"{c['emoji']} شراء {c['name_ar']}", "adv_war_buy_card",
+            data={"card_id": c["id"]}, owner=(user_id, chat_id), color="su")
+        for c in items
+    ]
+    if len(all_cards) > 5:
+        buttons.append(btn("▶️ المزيد", "adv_war_cards_shop", data={"page": 1}, owner=(user_id, chat_id)))
+    send_ui(chat_id, text=text, buttons=buttons,
+            layout=[1] * len(buttons), owner_id=user_id,
+            reply_to=message.message_id)
+
+
+def open_alliance_shop_command(message):
+    """يفتح متجر التحالف مباشرة من أمر نصي."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    from database.db_queries.alliances_queries import (
+        get_alliance_by_user, get_all_upgrade_types, get_alliance_upgrades
+    )
+    from database.db_queries.bank_queries import get_user_balance
+    from utils.pagination import paginate_list
+
+    alliance = get_alliance_by_user(user_id)
+    if not alliance:
+        bot.reply_to(message, "❌ لست في أي تحالف! انضم لتحالف أولاً.")
+        return
+
+    alliance = dict(alliance)
+    alliance_id = alliance["id"]
+
+    all_types = get_all_upgrade_types()
+    upgrades = get_alliance_upgrades(alliance_id)
+    owned = {u["name"]: u["level"] for u in upgrades}
+    balance = get_user_balance(user_id)
+
+    page = 0
+    items, total_pages = paginate_list(all_types, page, per_page=6)
+
+    text = f"🛒 <b>شراء ترقية</b>\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+
+    buttons = []
+
+    for t in items:
+        lvl = owned.get(t["name"], 0)
+        cost = t["price"] * (lvl + 1)
+
+        if lvl < t["max_level"]:
+            text += f"{t['emoji']} <b>{t['name_ar']}</b> مستوى {lvl}→{lvl+1} | {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+
+            buttons.append(
+                btn(
+                    f"{t['emoji']} {t['name_ar']}",
+                    "alliance_do_buy_upgrade",
+                    data={"aid": alliance_id, "upg_id": t["id"]},
+                    owner=(user_id, chat_id),
+                    color="su"
+                )
+            )
+        else:
+            text += f"{t['emoji']} <b>{t['name_ar']}</b> ✅ مكتمل\n"
+
+    # أزرار التنقل
+    nav = []
+
+    if page > 0:
+        nav.append(
+            btn(
+                "⬅️ السابق",
+                "alliance_buy_upgrade",
+                data={"aid": alliance_id, "page": page-1},
+                owner=(user_id, chat_id)
+            )
+        )
+
+    if page < total_pages - 1:
+        nav.append(
+            btn(
+                "▶️ التالي",
+                "alliance_buy_upgrade",
+                data={"aid": alliance_id, "page": page+1},
+                owner=(user_id, chat_id)
+            )
+        )
+
+    # layout: 3 أزرار في الصف + صف للتنقل
+    rows = [3] * ((len(buttons) + 2) // 3)
+    layout = rows + ([len(nav)] if nav else [])
+
+    send_ui(
+        chat_id,
+        text=text,
+        buttons=buttons + nav,
+        layout=layout,
+        owner_id=user_id,
+        reply_to=message.message_id
+    )
 # ══════════════════════════════════════════
 # 📜 سجل الحروب
 # ══════════════════════════════════════════
@@ -1309,7 +1446,6 @@ def show_country_status(call, data):
 def show_force_shop(call, data):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
-    tab  = data.get("tab", "troops")
     page = int(data.get("page", 0))
 
     country = get_country_by_owner(user_id)
@@ -1318,53 +1454,75 @@ def show_force_shop(call, data):
         return
     country = dict(country)
 
-    from modules.war.force_shop import get_available_troops, get_available_equipment
+    from modules.war.force_shop import get_available_troops
     from database.db_queries.bank_queries import get_user_balance
 
     balance = get_user_balance(user_id)
-
-    if tab == "troops":
-        items_all = get_available_troops()
-        title = "🪖 متجر الجنود"
-        buy_action = "adv_war_buy_troop"
-        id_key = "troop_id"
-    else:
-        items_all = get_available_equipment()
-        title = "🛡 متجر المعدات"
-        buy_action = "adv_war_buy_equip"
-        id_key = "eq_id"
-
+    items_all = get_available_troops()
     items, total_pages = paginate_list(items_all, page, per_page=5)
 
-    text = f"{title}\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n{get_lines()}\n\n"
+    text = f"🪖 متجر الجنود\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n{get_lines()}\n\n"
     buttons = []
     for item in items:
         emoji = item.get("emoji", "⚔️")
         name  = item.get("name_ar", item.get("name", ""))
         cost  = item.get("base_cost", 0)
         text += f"{emoji} <b>{name}</b> — {cost:.0f} {CURRENCY_ARABIC_NAME}/وحدة\n"
-        buttons.append(btn(f"{emoji} شراء {name}", buy_action,
-                           data={id_key: item["id"], "qty": 1},
+        buttons.append(btn(f"{emoji} شراء {name}", "adv_war_buy_troop",
+                           data={"troop_id": item["id"], "qty": 1},
                            owner=(user_id, chat_id), color="su"))
-
-    # تبويب الجنود / المعدات
-    tab_btns = [
-        btn("🪖 الجنود",  "adv_war_force_shop", data={"tab": "troops", "page": 0},
-            owner=(user_id, chat_id), color="d" if tab == "troops" else "p"),
-        btn("🛡 المعدات", "adv_war_force_shop", data={"tab": "equip",  "page": 0},
-            owner=(user_id, chat_id), color="d" if tab == "equip" else "p"),
-    ]
 
     nav = []
     if page > 0:
-        nav.append(btn("◀️", "adv_war_force_shop", data={"tab": tab, "page": page-1}, owner=(user_id, chat_id)))
+        nav.append(btn("◀️", "adv_war_force_shop", data={"page": page - 1}, owner=(user_id, chat_id)))
     if page < total_pages - 1:
-        nav.append(btn("▶️", "adv_war_force_shop", data={"tab": tab, "page": page+1}, owner=(user_id, chat_id)))
+        nav.append(btn("▶️", "adv_war_force_shop", data={"page": page + 1}, owner=(user_id, chat_id)))
     nav.append(btn("🪖 قواتي", "adv_war_my_forces", data={}, owner=(user_id, chat_id)))
     nav.append(_back_btn(user_id, chat_id))
 
-    layout = [1]*len(items) + [2] + ([len(nav)-2] if len(nav) > 2 else []) + [2]
-    edit_ui(call, text=text, buttons=buttons + tab_btns + nav, layout=layout)
+    layout = [3] * ((len(items) + 2) // 3) + ([len(nav) - 1] if len(nav) > 1 else []) + [1]
+    edit_ui(call, text=text, buttons=buttons + nav, layout=layout)
+
+
+@register_action("adv_war_equip_shop")
+def show_equip_shop(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    page = int(data.get("page", 0))
+
+    country = get_country_by_owner(user_id)
+    if not country:
+        bot.answer_callback_query(call.id, "❌ لا تملك دولة!")
+        return
+    country = dict(country)
+
+    from modules.war.force_shop import get_available_equipment
+    from database.db_queries.bank_queries import get_user_balance
+
+    balance = get_user_balance(user_id)
+    items_all = get_available_equipment()
+    items, total_pages = paginate_list(items_all, page, per_page=5)
+
+    text = f"🛡 متجر المعدات\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n{get_lines()}\n\n"
+    buttons = []
+    for item in items:
+        emoji = item.get("emoji", "🛡")
+        name  = item.get("name_ar", item.get("name", ""))
+        cost  = item.get("base_cost", 0)
+        text += f"{emoji} <b>{name}</b> — {cost:.0f} {CURRENCY_ARABIC_NAME}/وحدة\n"
+        buttons.append(btn(f"{emoji} شراء {name}", "adv_war_buy_equip",
+                           data={"eq_id": item["id"], "qty": 1},
+                           owner=(user_id, chat_id), color="su"))
+
+    nav = []
+    if page > 0:
+        nav.append(btn("◀️", "adv_war_equip_shop", data={"page": page - 1}, owner=(user_id, chat_id)))
+    if page < total_pages - 1:
+        nav.append(btn("▶️", "adv_war_equip_shop", data={"page": page + 1}, owner=(user_id, chat_id)))
+    nav.append(_back_btn(user_id, chat_id))
+
+    layout = [3] * ((len(items) + 2) // 3) + [len(nav)]
+    edit_ui(call, text=text, buttons=buttons + nav, layout=layout)
 
 
 @register_action("adv_war_buy_troop")
@@ -1417,8 +1575,8 @@ def show_my_forces(call, data):
 
     edit_ui(call, text=text,
             buttons=[
-                btn("🪖 متجر القوات", "adv_war_force_shop",
-                    data={"tab": "troops", "page": 0}, owner=(user_id, chat_id)),
+                btn("🪖 متجر الجنود", "adv_war_force_shop",
+                    data={"page": 0}, owner=(user_id, chat_id)),
                 _back_btn(user_id, chat_id),
             ], layout=[2])
 
@@ -1464,10 +1622,46 @@ def do_explore(call, data):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
 
-    from modules.war.spy_service import explore_targets
-    ok, result = explore_targets(user_id)
+    from database.db_queries.advanced_war_queries import (
+        get_explore_cooldown, set_explore_cooldown, clear_explore_cooldown,
+    )
+    from database.db_queries.bank_queries import get_user_balance, deduct_user_balance, update_bank_balance
+    from modules.war.spy_service import explore_targets, _c
+
+    # ── STEP 1: كولداون — أول وأوحد بوابة ──
+    can_explore, remaining = get_explore_cooldown(user_id)
+    if not can_explore:
+        mins, secs = divmod(remaining, 60)
+        bot.answer_callback_query(
+            call.id,
+            f"⏳ يمكنك الاستكشاف مجدداً بعد {mins} دقيقة و{secs} ثانية.",
+            show_alert=True,
+        )
+        return
+
+    # ── STEP 2: فحص الرصيد قبل أي إجراء ──
+    cost = _c("exploration_cost", 200)
+    if get_user_balance(user_id) < cost:
+        bot.answer_callback_query(
+            call.id,
+            f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME} للاستكشاف.",
+            show_alert=True,
+        )
+        return
+
+    # ── STEP 3: تسجيل الكولداون فوراً (يمنع أي ضغط متكرر) ──
+    set_explore_cooldown(user_id)
+
+    # ── STEP 4: خصم العملات ──
+    deduct_user_balance(user_id, cost)
+
+    # ── STEP 5: تنفيذ منطق الاستكشاف (بدون خصم داخلي) ──
+    ok, result = explore_targets(user_id, cost)
 
     if not ok:
+        # استرداد العملات + إلغاء الكولداون عند الفشل
+        update_bank_balance(user_id, cost)
+        clear_explore_cooldown(user_id)
         bot.answer_callback_query(call.id, result, show_alert=True)
         return
 
@@ -1527,7 +1721,7 @@ def show_agents_menu(call, data):
     from modules.war.spy_service import get_agents, AGENT_TYPES, _c
 
     agents = get_agents(country["id"])
-    text   = "🕵️ <b>عملاء التجسس</b>\n{get_lines()}\n\n"
+    text   = f"🕵️ <b>عملاء التجسس</b>\n{get_lines()}\n\n"
 
     if agents:
         for a in agents:
@@ -1694,7 +1888,7 @@ def _war_main_buttons(user_id, chat_id):
     if alliance:
         alliance = dict(alliance)
         buttons.append(btn("🏰 متجر التحالف", "alliance_buy_upgrade",
-                           data={"aid": alliance["id"], "page": 0},
+                           data={"aid": alliance["id"], "page": 0, "src": "war"},
                            owner=(user_id, chat_id), color="su"))
 
     buttons += [

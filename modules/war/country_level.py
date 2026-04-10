@@ -2,7 +2,6 @@
 نظام مستويات الدول — حساب ديناميكي + نظام الفئات الثلاث للهجوم
 """
 import math
-from database.connection import get_db_conn
 from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
 
 # ══════════════════════════════════════════
@@ -107,30 +106,23 @@ def get_country_score(country_id: int) -> float:
     يحسب النقاط الإجمالية للدولة من مجموع إحصائيات مدنها.
     يشمل مكافأة التحالف.
     """
+    from database.db_queries.assets_queries import calculate_city_effects, get_city_military_power
+
     cities = get_all_cities_of_country_by_country_id(country_id)
     if not cities:
         return 0.0
 
-    conn = get_db_conn()
-    cursor = conn.cursor()
     total = 0.0
-
     for city in cities:
         cid = city["id"] if isinstance(city, dict) else city[0]
-        cursor.execute("""
-            SELECT military_power, economy_score, health_level,
-                   education_level, infrastructure_level
-            FROM cities WHERE id = ?
-        """, (cid,))
-        row = cursor.fetchone()
-        if not row:
-            continue
+        fx = calculate_city_effects(cid)
+        military = get_city_military_power(cid)
         total += (
-            (row[0] or 0) * STAT_WEIGHTS["military_power"] +
-            (row[1] or 0) * STAT_WEIGHTS["economy_score"] +
-            (row[2] or 0) * STAT_WEIGHTS["health_level"] +
-            (row[3] or 0) * STAT_WEIGHTS["education_level"] +
-            (row[4] or 0) * STAT_WEIGHTS["infrastructure_level"]
+            military                      * STAT_WEIGHTS["military_power"] +
+            fx.get("economy", 0)          * STAT_WEIGHTS["economy_score"] +
+            fx.get("health", 0)           * STAT_WEIGHTS["health_level"] +
+            fx.get("education", 0)        * STAT_WEIGHTS["education_level"] +
+            fx.get("infrastructure", 0)   * STAT_WEIGHTS["infrastructure_level"]
         )
 
     # مكافأة التحالف

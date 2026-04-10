@@ -49,7 +49,6 @@ commands = {
 
 def receive_responses(message):
     """نقطة الدخول الرئيسية — حدود الخطأ الإلزامية."""
-    # Guard: some update types have no from_user
     if not message.from_user:
         return
 
@@ -64,7 +63,9 @@ def receive_responses(message):
             if _flow_dispatch(message, uid, cid):
                 return
 
-        _public_commands(message)
+        # أوامر عامة
+        if _public_commands(message):
+            return
 
         if _is_group(message):
             _dispatch(message)
@@ -133,13 +134,23 @@ def _report_error_to_devs(uid: int, cid: int, exc: Exception, tb: str):
 # أوامر عامة (خاص + مجموعات)
 # ══════════════════════════════════════════
 
-def _public_commands(message):
-    if message.text == "/start":
+def _public_commands(message) -> bool:
+    """
+    يعالج الأوامر العامة (خاص + مجموعات).
+    يرجع True إذا تم التعامل مع الرسالة.
+    ملاحظة: deep links الهمسات تُعالَج في receive_responses مباشرة.
+    """
+    text = message.text or ""
+
+    if text == "/start":
         send_welcome(message)
-        return
-    if message.text == "المطور":
+        return True
+
+    if text == "المطور":
         show_developer(message)
-        return
+        return True
+
+    return False
 
 
 # ══════════════════════════════════════════
@@ -205,7 +216,7 @@ def _dispatch(message):
 
     # ── ردود تلقائية ──
     from database.db_queries.group_features_queries import is_feature_enabled as _feat
-    if _feat(cid, "feat_replies"):
+    if _feat(cid, "enable_replies"):
         chat_responses(message)
 
 
@@ -225,15 +236,16 @@ def _dispatch_private(message):
 
     memory.set_last_interaction(uid, message.chat.type)
 
+    # ── معالجات الإدخال (حالات الانتظار) — قبل فحص النص ──
+    # يجب أن تعمل حتى لو كانت الرسالة غير نصية (ستيكر، صوت، إلخ)
+    if _handle_input_states(message):
+        return
+
     if not message.text:
         return
 
     text            = message.text.strip()
     normalized_text = text.lower()
-
-    # ── معالجات الإدخال (حالات الانتظار) ──
-    if _handle_input_states(message):
-        return
 
     memory.set_last_command(uid, text)
 
@@ -277,8 +289,15 @@ def _handle_input_states(message) -> bool:
     if handle_developer_input(message): return True
     if handle_dev_quran_input(message): return True
     if handle_hub_input(message):       return True
+
+    from modules.content_hub.channel_admin import handle_channel_admin_input
+    if handle_channel_admin_input(message): return True
+
     if handle_promote_input(message):   return True
     if handle_rename_input(message):    return True
+
+    from modules.whispers.whisper_handler import handle_whisper_private_input
+    if handle_whisper_private_input(message): return True
 
     from modules.azkar.azkar_handler import handle_azkar_input
     if handle_azkar_input(message):     return True

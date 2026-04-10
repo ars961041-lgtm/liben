@@ -22,7 +22,15 @@ def salary(user_id, username=None):
     ok, remain = can_use_cooldown(user_id, "salary", SALARY_COOLDOWN)
     if not ok:
         return False, f"⏳ يمكنك أخذ الراتب بعد {format_remaining_time(remain)}"
+
     amount = SALARY_AMOUNT
+    try:
+        from modules.economy.services.economy_service import adapt_salary_amount
+        amount = round(adapt_salary_amount(amount, user_id))
+    except Exception:
+        pass
+
+    # apply global event bonus
     try:
         from modules.progression.global_events import get_event_effect
         bonus = get_event_effect("salary_bonus")
@@ -30,8 +38,18 @@ def salary(user_id, username=None):
             amount = round(amount * (1 + bonus))
     except Exception:
         pass
+
     update_bank_balance(user_id, amount)
     set_cooldown(user_id, "salary")
+
+    # track in economy_stats
+    try:
+        from database.db_queries.economy_queries import get_economy_stat, set_economy_stat
+        set_economy_stat("total_salary_paid",
+                         get_economy_stat("total_salary_paid", 0.0) + amount)
+    except Exception:
+        pass
+
     return True, f"💰 تم صرف راتبك اليومي: {amount} {CURRENCY_ARABIC_NAME}"
 
 # -------------------------------
@@ -93,13 +111,35 @@ def invest(user_id, amount=None):
     if amount < INVEST_MIN:
         return False, f"❌ الحد الأدنى للاستثمار {INVEST_MIN} {CURRENCY_ARABIC_NAME}"
 
-    outcome = random.choices(["profit", "loss"], weights=[0.65, 0.35])[0]
-    percent = random.uniform(0.05, 0.2)
-    change = round(amount * percent, 2)
-    if outcome == "loss":
-        change = -change
+    # use inflation-aware outcome
+    try:
+        from modules.economy.services.economy_service import adapt_investment_outcome
+        outcome, change = adapt_investment_outcome(amount)
+        change = round(change, 2)
+    except Exception:
+        outcome = random.choices(["profit", "loss"], weights=[0.65, 0.35])[0]
+        percent = random.uniform(0.05, 0.2)
+        change  = round(amount * percent, 2)
+        if outcome == "loss":
+            change = -change
+
     update_bank_balance(user_id, change)
     set_cooldown(user_id, "invest")
+
+    # track in economy_stats
+    try:
+        from database.db_queries.economy_queries import get_economy_stat, set_economy_stat
+        set_economy_stat("total_investments",
+                         get_economy_stat("total_investments", 0.0) + 1)
+        if change > 0:
+            set_economy_stat("total_investment_profit",
+                             get_economy_stat("total_investment_profit", 0.0) + change)
+        else:
+            set_economy_stat("total_investment_loss",
+                             get_economy_stat("total_investment_loss", 0.0) + abs(change))
+    except Exception:
+        pass
+
     if change >= 0:
         return True, f"📈 استثمار ناجح! ربحت {change} {CURRENCY_ARABIC_NAME}"
     return True, f"📉 استثمار خاسر! خسرت {-change} {CURRENCY_ARABIC_NAME}"

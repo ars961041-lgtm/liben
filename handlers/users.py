@@ -18,34 +18,36 @@ gender_emojis = {
 }
 
 def add_user_if_not_exists(msg):
-  user_id = msg.from_user.id
+    user_id   = msg.from_user.id
+    full_name = (msg.from_user.first_name or "") + (
+        " " + msg.from_user.last_name if msg.from_user.last_name else ""
+    )
+    username = msg.from_user.username or None
 
-  try:
-    conn = get_db_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    if not user:
-        cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
+    try:
+        from database.db_queries.groups_queries import upsert_user_identity
+        upsert_user_identity(user_id, full_name, username)
+    except Exception as e:
+        send_reply(msg, send_error("add_user_if_not_exists", e))
 
-  except Exception as e:
-      send_reply(msg, send_error("add_user_if_not_exists", e))
 
 def track_group_members(msg):
-  try:
-    if not (is_group(msg)):
-      return
+    try:
+        if not is_group(msg):
+            return
 
-    group_id = msg.chat.id
-    group_name = msg.chat.title 
-    user_id = msg.from_user.id  
-    full_name = msg.from_user.first_name + (" " + msg.from_user.last_name if msg.from_user.last_name else "") 
-    
-    upsert_group_member(group_id, user_id, full_name, group_name)
+        group_id   = msg.chat.id
+        group_name = msg.chat.title
+        user_id    = msg.from_user.id
+        full_name  = (msg.from_user.first_name or "") + (
+            " " + msg.from_user.last_name if msg.from_user.last_name else ""
+        )
+        username = msg.from_user.username or None
 
-  except Exception as e:
-    send_reply(msg, send_error("track_group_members", e))
+        upsert_group_member(group_id, user_id, full_name, group_name, username)
+
+    except Exception as e:
+        send_reply(msg, send_error("track_group_members", e))
 
 def send_account_info(message):
     """Display current user account info and stats."""
@@ -126,10 +128,13 @@ def send_welcome(message):
     # Build buttons: PM button (groups only) + channel button
     from utils.helpers import get_bot_username
     buttons = []
+    username = get_bot_username()
     if message.chat.type != "private":
-        username = get_bot_username()
         if username:
             buttons.append(ui_btn(bot_name, url=f"https://t.me/{username}", style="success"))
+    else:
+        buttons.append(ui_btn("اضفني لمجموعتك", url=f"https://t.me/{username}?startgroup=true", style="success"))
+
     buttons.append(ui_btn("📢 قناة التحديثات", url="https://t.me/BotBeloPro", style="primary"))
 
     markup = build_keyboard(buttons, [1] * len(buttons)) if buttons else None
@@ -291,7 +296,7 @@ def send_user_profile(message):
         show_photo = True
         if is_group(message):
             from database.db_queries.group_features_queries import is_feature_enabled
-            show_photo = is_feature_enabled(chat_id, "feat_profile")
+            show_photo = is_feature_enabled(chat_id, "enable_profile")
 
         if show_photo:
             # الوضع الكامل — صورة + بروفايل مفصّل
@@ -311,17 +316,11 @@ def send_user_profile(message):
             else:
                 bot.reply_to(message, caption, parse_mode="HTML")
         else:
-            # الوضع المبسّط — نص فقط بدون صورة أو تنسيق زخرفي
-            full_name = (target.first_name or "") + (
-                " " + target.last_name if getattr(target, "last_name", None) else ""
-            )
-            username  = f"@{target.username}" if getattr(target, "username", None) else "لا يوجد"
-            plain = (
-                f"👤 الاسم: {full_name}\n"
-                f"🆔 الآيدي: {user_id}\n"
-                f"🔗 اليوزر: {username}"
-            )
-            bot.reply_to(message, plain, parse_mode="HTML")
+            # الميزة معطّلة — نفس المحتوى الكامل لكن بدون صورة
+            user_data   = get_user_data(target)
+            group_stats = get_group_stats(user_id, chat_id) if is_group(message) else None
+            caption     = build_profile(user_id, chat_id, user_data, group_stats)
+            bot.reply_to(message, caption, parse_mode="HTML")
 
     except Exception as e:
         send_error_reply(message, send_error("send_user_profile", e))

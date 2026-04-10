@@ -385,6 +385,7 @@ def show_buy_upgrade(call, data):
     chat_id = call.message.chat.id
     alliance_id = int(data["aid"])
     page = int(data.get("page", 0))
+    src  = data.get("src", "")   # "war" = opened from War Throne
 
     all_types = get_all_upgrade_types()
     upgrades = get_alliance_upgrades(alliance_id)
@@ -399,7 +400,7 @@ def show_buy_upgrade(call, data):
         cost = t["price"] * (lvl + 1)
         if lvl < t["max_level"]:
             text += f"{t['emoji']} <b>{t['name_ar']}</b> مستوى {lvl}→{lvl+1} | {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-            buttons.append(btn(f"{t['emoji']} شراء {t['name_ar']}", "alliance_do_buy_upgrade",
+            buttons.append(btn(f"{t['name_ar']}", "alliance_do_buy_upgrade",
                                data={"aid": alliance_id, "upg_id": t["id"]},
                                owner=(user_id, chat_id), color="su"))
         else:
@@ -407,10 +408,19 @@ def show_buy_upgrade(call, data):
 
     nav = []
     if page > 0:
-        nav.append(btn("◀️", "alliance_buy_upgrade", data={"aid": alliance_id, "page": page-1}, owner=(user_id, chat_id)))
+        nav.append(btn("◀️", "alliance_buy_upgrade",
+                       data={"aid": alliance_id, "page": page-1, "src": src},
+                       owner=(user_id, chat_id)))
     if page < total_pages - 1:
-        nav.append(btn("▶️", "alliance_buy_upgrade", data={"aid": alliance_id, "page": page+1}, owner=(user_id, chat_id)))
-    nav.append(btn("🔙 رجوع", "alliance_back_main", data={}, owner=(user_id, chat_id)))
+        nav.append(btn("▶️", "alliance_buy_upgrade",
+                       data={"aid": alliance_id, "page": page+1, "src": src},
+                       owner=(user_id, chat_id)))
+
+    # back button destination depends on where the store was opened from
+    if src == "war":
+        nav.append(btn("🔙 رجوع", "adv_war_main_back", data={}, owner=(user_id, chat_id)))
+    else:
+        nav.append(btn("🔙 رجوع", "alliance_back_main", data={}, owner=(user_id, chat_id)))
 
     layout = [1] * len(buttons) + ([len(nav)-1] if len(nav) > 1 else []) + [1]
     edit_ui(call, text=text, buttons=buttons + nav, layout=layout)

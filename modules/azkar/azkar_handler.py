@@ -4,7 +4,7 @@
 from core.bot import bot
 from utils.pagination import btn, send_ui, edit_ui, register_action
 from utils.helpers import get_lines
-from modules.azkar import azkar_db as db
+from database.db_queries import azkar_queries as db
 
 TYPE_MORNING = 0
 TYPE_EVENING = 1
@@ -278,11 +278,12 @@ def _send_admin_panel(cid, uid, owner, call=None):
         btn("➕ إضافة مساء",  "azkar_adm_add",  {"t": TYPE_EVENING},         owner=owner, color="su"),
         btn("➕ إضافة نوم",   "azkar_adm_add",  {"t": TYPE_SLEEP},           owner=owner, color="su"),
         btn("➕ إضافة استيقاظ","azkar_adm_add", {"t": TYPE_WAKEUP},          owner=owner, color="su"),
+        btn("⬅️ القائمة الرئيسية", "adm_main_back", {},                      owner=owner, color="d"),
     ]
     if call:
-        edit_ui(call, text=text, buttons=buttons, layout=[2, 2, 2, 2])
+        edit_ui(call, text=text, buttons=buttons, layout=[2, 2, 2, 2, 1])
     else:
-        send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 2, 2], owner_id=uid)
+        send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 2, 2, 1], owner_id=uid)
 
 
 @register_action("azkar_adm_list")

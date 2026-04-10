@@ -78,6 +78,26 @@ def get_ticket(ticket_id):
     return dict(row) if row else None
 
 
+def get_user_tickets(user_id, page=0, per_page=5):
+    """يرجع تذاكر مستخدم محدد مرتبة من الأحدث."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM tickets
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+    """, (user_id, per_page, page * per_page))
+    return [dict(r) for r in cursor.fetchall()]
+
+
+def count_user_tickets(user_id):
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE user_id = ?", (user_id,))
+    return cursor.fetchone()[0]
+
+
 def get_open_ticket_for_user(user_id):
     """يرجع آخر تذكرة مفتوحة للمستخدم"""
     conn = get_db_conn()

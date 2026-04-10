@@ -67,6 +67,11 @@ def handle_shared_commands(message, normalized_text: str, text: str) -> bool:
     if handle_content_command(message):
         return True
 
+    # ── إدارة ربط القنوات (مطورون فقط) ──
+    from modules.content_hub.channel_admin import handle_channel_admin_command
+    if handle_channel_admin_command(message):
+        return True
+
     # ── التنسيق والاستبدال ──
     if normalized_text == "تنسيق":
         handle_format_command(message)
@@ -87,7 +92,7 @@ def handle_shared_commands(message, normalized_text: str, text: str) -> bool:
         return True
 
     # ── لوحة الإدارة ──
-    if normalized_text in ["لوحة الإدارة", "لوحة الادارة", "ثوابت البوت", "/admin"]:
+    if normalized_text in ["لوحة الإدارة", "لوحة الادارة", "لوحة المطور", "/admin"]:
         open_admin_panel(message)
         return True
     if normalized_text in ["شرح المطور", "دليل المطور"]:

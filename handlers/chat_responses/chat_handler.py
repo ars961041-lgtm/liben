@@ -1,3 +1,5 @@
+from email import message
+
 from core.bot import bot
 
 from .chat_responses import *
@@ -23,11 +25,12 @@ def chat_responses(message):
         send_random(message, salam_responses)
 
     # ===== صباح الخير =====
-    elif text in MORNING:
+    elif any(text.startswith(m) for m in MORNING):
         send_random(message, morning_responses)
 
     # ===== مساء الخير =====
-    elif text in NIGHT:
+
+    elif any(text.startswith(n) for n in NIGHT):
         send_random(message, night_responses)
 
     # ===== السؤال عن الحال =====

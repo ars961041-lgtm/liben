@@ -362,20 +362,20 @@ def on_show_tafseer(call, data):
 # ══════════════════════════════════════════
 
 def handle_search(message) -> bool:
-    """أمر: آية <كلمة>"""
+    """أمر: آية <نص البحث>"""
     text = (message.text or "").strip()
     if not text.startswith("آية "):
         return False
 
-    query = text[4:].strip()
+    query = text[4:]
     if not query:
         bot.reply_to(message, "❌ أدخل كلمة للبحث.\nمثال: <code>آية الرحمن</code>",
                      parse_mode="HTML")
         return True
 
-    uid     = message.from_user.id
-    cid     = message.chat.id
-    results = svc.search(query)
+    uid             = message.from_user.id
+    cid             = message.chat.id
+    results, total  = svc.search(query)
 
     if not results:
         bot.reply_to(
@@ -385,16 +385,19 @@ def handle_search(message) -> bool:
         )
         return True
 
-    _show_search_results(message, uid, cid, query, results, page=0,
+    _show_search_results(message, uid, cid, query, results, total, page=0,
                          reply_to=message.message_id)
     return True
 
 
 def _show_search_results(message_or_none, uid: int, cid: int,
-                          query: str, results: list, page: int,
-                          reply_to: int = None, edit_call=None):
+                          query: str, results: list, total_occurrences: int,
+                          page: int, reply_to: int = None, edit_call=None):
     items, total_pages = paginate_list(results, page, per_page=_PER_PAGE)
-    text    = ui.build_search_result_text(items, page, total_pages)
+    text    = ui.build_search_result_text(items, page, total_pages,
+                                          query=query,
+                                          ayat_count=len(results),
+                                          total_occurrences=total_occurrences)
     buttons, layout = ui.build_search_buttons(uid, cid, query, page, total_pages, items)
 
     if edit_call:
@@ -411,9 +414,9 @@ def on_search_page(call, data):
     query = data.get("q", "")
     page  = int(data.get("p", 0))
 
-    results = svc.search(query)
+    results, total = svc.search(query)
     bot.answer_callback_query(call.id)
-    _show_search_results(None, uid, cid, query, results, page, edit_call=call)
+    _show_search_results(None, uid, cid, query, results, total, page, edit_call=call)
 
 
 # ══════════════════════════════════════════

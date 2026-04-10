@@ -42,6 +42,17 @@ def collect_income_for_country(country_id: int, owner_user_id: int) -> dict:
     # تحديث last_update_time في city_budget
     _touch_city_budgets(country_id)
 
+    # increment collect_income task counter for each city
+    try:
+        from database.db_queries.daily_tasks_queries import increment_income_collected
+        conn2 = get_db_conn()
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT id FROM cities WHERE country_id = ?", (country_id,))
+        for city_row in cur2.fetchall():
+            increment_income_collected(city_row[0])
+    except Exception:
+        pass
+
     if net > 0:
         msg = (
             f"💰 <b>دخل المدن:</b> +{income:.0f} {CURRENCY_ARABIC_NAME}\n"

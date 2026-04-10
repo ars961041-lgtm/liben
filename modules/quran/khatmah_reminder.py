@@ -1,8 +1,13 @@
 """
-مُجدوِل تذكيرات الختمة — يعمل في الخلفية.
+modules/quran/khatmah_reminder.py
+
+Khatmah reminder logic.
+The scheduler loop has been removed — reminders are now fired by the
+unified IntervalScheduler in database/daily_tasks.py every 5 minutes.
+
+Public API:
+  fire_due_reminders(utc_hour, utc_minute) — called by the interval scheduler.
 """
-import time
-import threading
 from datetime import datetime, timezone
 
 from core.bot import bot
@@ -11,24 +16,24 @@ from utils.pagination import btn
 from utils.pagination.buttons import build_keyboard
 
 
-def _scheduler_loop():
-    while True:
-        try:
-            now    = datetime.now(timezone.utc)
-            due    = db.get_due_khatma_reminders(now.hour, now.minute)
-            for r in due:
-                _fire(r)
-        except Exception as e:
-            print(f"[KhatmahReminder] {e}")
-        time.sleep(60 - datetime.now().second)
+def fire_due_reminders(utc_hour: int, utc_minute: int):
+    """
+    Sends khatmah reminders whose local time matches utc_hour:utc_minute.
+    Called by the interval scheduler — no thread management here.
+    """
+    try:
+        due = db.get_due_khatma_reminders(utc_hour, utc_minute)
+        for r in due:
+            _fire(r)
+    except Exception as e:
+        print(f"[KhatmahReminder] {e}")
 
 
 def _fire(r: dict):
-    uid    = r["user_id"]
-    goal   = db.get_khatma_goal(uid)
-    today  = db.get_today_count(uid)
+    uid   = r["user_id"]
+    goal  = db.get_khatma_goal(uid)
+    today = db.get_today_count(uid)
 
-    # Skip if daily goal already completed
     if goal > 0 and today >= goal:
         return
 
@@ -62,5 +67,7 @@ def _fire(r: dict):
         pass   # silent fail — user may have blocked the bot
 
 
+# ── Backward-compat stub — no longer starts a thread ─────────────
 def start_khatmah_reminder_scheduler():
-    threading.Thread(target=_scheduler_loop, daemon=True).start()
+    """Deprecated. Reminders are now handled by the unified IntervalScheduler."""
+    pass

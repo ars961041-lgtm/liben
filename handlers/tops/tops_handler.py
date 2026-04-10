@@ -91,14 +91,8 @@ def _send_top(cat: str, chat_id: int, uid: int, owner: tuple,
     unit  = TOP_UNITS.get(cat, "")
     title = TOP_TITLES.get(cat, cat)
 
-    display = [
-        {"name": r["name"],
-         "value": f"{r['value']:,.0f} {unit}" if isinstance(r["value"], (int, float))
-                  else f"{r['value']} {unit}"}
-        for r in items
-    ]
-
-    caption = build_top(title, display) if display else f"❌ لا توجد بيانات لـ {title}."
+    # أضف الوحدة كملاحظة بدلاً من دمجها في القيمة حتى تبقى المحاذاة صحيحة
+    caption = build_top(title, items, note=unit) if items else f"❌ لا توجد بيانات لـ {title}."
     if total_pages > 1:
         caption += f"\n\n📄 صفحة {page+1}/{total_pages}"
 
@@ -153,7 +147,8 @@ def top_commands(message) -> bool:
     if text == "توب":
         # القائمة الرئيسية
         rows    = get_top_richest(10)
-        caption = build_top("💰 توب الأغنى", rows) if rows else "❌ لا توجد بيانات."
+        unit    = TOP_UNITS.get("richest", "")
+        caption = build_top("💰 توب الأغنى", rows, note=unit) if rows else "❌ لا توجد بيانات."
         send_ui(cid, text=caption, buttons=_main_buttons(owner),
                 layout=[3, 2, 2], owner_id=uid)
     else:
@@ -178,7 +173,8 @@ def handle_top_show(call, data):
 def handle_top_main_menu(call, data):
     o       = (call.from_user.id, call.message.chat.id)
     rows    = get_top_richest(10)
-    caption = build_top("💰 توب الأغنى", rows) if rows else "❌ لا توجد بيانات."
+    unit    = TOP_UNITS.get("richest", "")
+    caption = build_top("💰 توب الأغنى", rows, note=unit) if rows else "❌ لا توجد بيانات."
     edit_ui(call, text=caption, buttons=_main_buttons(o), layout=[3, 2, 2])
 
 

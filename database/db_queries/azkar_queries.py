@@ -1,5 +1,5 @@
 """
-عمليات قاعدة بيانات الأذكار — تستخدم قاعدة البيانات الرئيسية.
+عمليات قاعدة بيانات الأذكار — تستخدم قاعدة البيانات الرئيسية DB_CONTENT.
 الجداول: azkar, azkar_progress, azkar_reminders
 """
 from database.connection import get_db_conn
@@ -10,7 +10,6 @@ from database.connection import get_db_conn
 # ══════════════════════════════════════════
 
 def get_azkar_list(zikr_type: int) -> list:
-    """Returns ordered list of azkar dicts for the given type."""
     cur = get_db_conn().cursor()
     cur.execute(
         "SELECT id, text, repeat_count, zikr_type FROM azkar WHERE zikr_type=? ORDER BY id",
@@ -95,36 +94,33 @@ def reset_progress(user_id: int, zikr_type: int):
 
 # ══════════════════════════════════════════
 # التذكيرات
+# tz_offset is no longer stored here — always fetched from user_timezone
 # ══════════════════════════════════════════
 
-def add_reminder(user_id: int, azkar_type: int, hour: int,
-                 minute: int, tz_offset: int = 0) -> int:
+def add_reminder(user_id: int, azkar_type: int, hour: int, minute: int) -> int:
     """Inserts a reminder and returns its new id."""
     conn = get_db_conn()
     cur  = conn.cursor()
     cur.execute(
-        """INSERT INTO azkar_reminders (user_id, azkar_type, hour, minute, tz_offset)
-           VALUES (?,?,?,?,?)""",
-        (user_id, azkar_type, hour, minute, tz_offset),
+        "INSERT INTO azkar_reminders (user_id, azkar_type, hour, minute) VALUES (?,?,?,?)",
+        (user_id, azkar_type, hour, minute),
     )
     conn.commit()
     return cur.lastrowid
+
 
 def get_user_reminders(user_id: int) -> list:
     """Returns all reminders for a user ordered by hour/minute."""
     cur = get_db_conn().cursor()
     cur.execute(
-        """SELECT id, user_id, azkar_type, hour, minute, tz_offset, created_at
-           FROM azkar_reminders
-           WHERE user_id=?
-           ORDER BY hour, minute""",
+        "SELECT id, user_id, azkar_type, hour, minute, created_at "
+        "FROM azkar_reminders WHERE user_id=? ORDER BY hour, minute",
         (user_id,),
     )
     return [dict(r) for r in cur.fetchall()]
 
 
 def delete_reminder(reminder_id: int, user_id: int) -> bool:
-    """Deletes a reminder — only if it belongs to user_id."""
     conn = get_db_conn()
     cur  = conn.cursor()
     cur.execute(
@@ -138,10 +134,15 @@ def delete_reminder(reminder_id: int, user_id: int) -> bool:
 def get_due_reminders(utc_hour: int, utc_minute: int) -> list:
     """
     Returns reminders whose local time matches utc_hour:utc_minute.
-    Local time = UTC + tz_offset (minutes).
+    Timezone is fetched from user_timezone table (tz_offset in minutes).
     """
     cur = get_db_conn().cursor()
-    cur.execute("SELECT * FROM azkar_reminders")
+    cur.execute("""
+        SELECT r.id, r.user_id, r.azkar_type, r.hour, r.minute,
+               COALESCE(tz.tz_offset, 0) AS tz_offset
+        FROM azkar_reminders r
+        LEFT JOIN user_timezone tz ON tz.user_id = r.user_id
+    """)
     due = []
     for r in cur.fetchall():
         r = dict(r)
@@ -153,10 +154,6 @@ def get_due_reminders(utc_hour: int, utc_minute: int) -> list:
 
 
 def count_user_reminders(user_id: int) -> int:
-    """Returns the number of active reminders for a user."""
     cur = get_db_conn().cursor()
-    cur.execute(
-        "SELECT COUNT(*) FROM azkar_reminders WHERE user_id=?",
-        (user_id,),
-    )
+    cur.execute("SELECT COUNT(*) FROM azkar_reminders WHERE user_id=?", (user_id,))
     return cur.fetchone()[0]

@@ -28,75 +28,90 @@ def _owner(call):
 # ══════════════════════════════════════════
 
 def open_troop_store(message, user_id: int, city_id: int):
-    """Called from city_commands (text) — uses send_ui."""
+    """Called from city store — opens troops list directly."""
     owner   = (user_id, message.chat.id)
-    balance = get_user_balance(user_id)
-    text    = _hub_text(balance)
-    buttons = _hub_buttons(city_id, owner)
-    send_ui(message.chat.id, text=text, buttons=buttons,
-            layout=[2, 1], owner_id=user_id)
-
-
-def _hub_text(balance: float) -> str:
-    return (
-        f"🪖 القوات العسكرية\n"
-        f"{get_lines()}\n"
-        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
-        f"اختر القسم:"
-    )
-
-
-def _hub_buttons(city_id, owner):
-    return [
-        btn("🪖 الجنود",    "open_troop_list",     {"cid": city_id}, color=GREEN, owner=owner),
-        btn("🛡 المعدات",   "open_equipment_list",  {"cid": city_id}, color=BLUE,  owner=owner),
-        btn("رجوع",         "store_back_sectors",   {"cid": city_id}, color=RED,   owner=owner),
-    ]
-
-
-# ══════════════════════════════════════════
-# Hub من زر (edit_ui)
-# ══════════════════════════════════════════
-
-@register_action("open_troop_store")
-def handle_open_troop_store(call, data):
-    city_id = data.get("cid")
-    owner   = _owner(call)
-    balance = get_user_balance(call.from_user.id)
-    edit_ui(call, text=_hub_text(balance),
-            buttons=_hub_buttons(city_id, owner), layout=[2, 1])
-
-
-# ══════════════════════════════════════════
-# 🪖 قائمة الجنود
-# ══════════════════════════════════════════
-
-@register_action("open_troop_list")
-def handle_open_troop_list(call, data):
-    city_id = data.get("cid")
-    owner   = _owner(call)
     troops  = [dict(t) for t in get_all_troop_types()]
-    balance = get_user_balance(call.from_user.id)
+    balance = get_user_balance(user_id)
+    text, buttons, layout = _troop_list_content(city_id, troops, balance, owner)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=layout, owner_id=user_id)
 
-    if not troops:
-        bot.answer_callback_query(call.id, "❌ لتوجد قوات متاحة", show_alert=True)
-        return
 
+def open_equipment_store(message, user_id: int, city_id: int):
+    """Called from city store — opens equipment list directly."""
+    owner     = (user_id, message.chat.id)
+    equipment = [dict(e) for e in get_all_equipment_types()]
+    balance   = get_user_balance(user_id)
+    text, buttons, layout = _equipment_list_content(city_id, equipment, balance, owner)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=layout, owner_id=user_id)
+
+
+def _troop_list_content(city_id, troops, balance, owner):
     text = (
         f"🪖 متجر الجنود\n"
         f"{get_lines()}\n"
         f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر نوع الجنود:"
     )
-
     buttons = [
         btn(f"{t['emoji']} {t['name_ar']}",
             "troop_item", {"tid": t["id"], "cid": city_id}, color=BLUE, owner=owner)
         for t in troops
     ]
-    back = [btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner)]
-    edit_ui(call, text=text, buttons=buttons + back,
-            layout=grid(len(buttons), 3) + [1])
+    back = [btn("رجوع", "store_back_sectors", {"cid": city_id}, color=RED, owner=owner)]
+    layout = grid(len(buttons), 3) + [1]
+    return text, buttons + back, layout
+
+
+def _equipment_list_content(city_id, equipment, balance, owner):
+    text = (
+        f"🛡 متجر المعدات\n"
+        f"{get_lines()}\n"
+        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
+        f"اختر نوع المعدات:"
+    )
+    buttons = [
+        btn(f"{e['emoji']} {e['name_ar']}",
+            "equipment_item", {"eid": e["id"], "cid": city_id}, color=BLUE, owner=owner)
+        for e in equipment
+    ]
+    back = [btn("رجوع", "store_back_sectors", {"cid": city_id}, color=RED, owner=owner)]
+    layout = grid(len(buttons), 3) + [1]
+    return text, buttons + back, layout
+
+
+# ══════════════════════════════════════════
+# Callbacks (edit_ui)
+# ══════════════════════════════════════════
+
+@register_action("open_troop_store")
+def handle_open_troop_store(call, data):
+    city_id = data.get("cid")
+    owner   = _owner(call)
+    troops  = [dict(t) for t in get_all_troop_types()]
+    balance = get_user_balance(call.from_user.id)
+    if not troops:
+        bot.answer_callback_query(call.id, "❌ لا توجد قوات متاحة", show_alert=True)
+        return
+    text, buttons, layout = _troop_list_content(city_id, troops, balance, owner)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
+
+
+@register_action("open_equipment_store")
+def handle_open_equipment_store(call, data):
+    city_id   = data.get("cid")
+    owner     = _owner(call)
+    equipment = [dict(e) for e in get_all_equipment_types()]
+    balance   = get_user_balance(call.from_user.id)
+    if not equipment:
+        bot.answer_callback_query(call.id, "❌ لا توجد معدات متاحة", show_alert=True)
+        return
+    text, buttons, layout = _equipment_list_content(city_id, equipment, balance, owner)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
+
+
+# ══════════════════════════════════════════
+# 🪖 تفاصيل جندي + كمية (back → open_troop_store)
+# ══════════════════════════════════════════
 
 
 # ══════════════════════════════════════════
@@ -131,7 +146,7 @@ def handle_troop_item(call, data):
     )
     qty_btns = _qty_buttons("troop_buy", {"tid": troop_id, "cid": city_id},
                              troop_type["base_cost"], balance, owner=owner)
-    back = [btn("رجوع", "open_troop_list", {"cid": city_id}, color=RED, owner=owner)]
+    back = [btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=text, buttons=qty_btns + back,
             layout=grid(len(qty_btns), 3) + [1])
 
@@ -164,7 +179,7 @@ def handle_troop_buy(call, data):
         f"💸 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
         f"💰 الرصيد المتبقي: {balance - total_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
-    back = [btn("رجوع", "open_troop_list", {"cid": city_id}, color=RED, owner=owner)]
+    back = [btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])
 
 
@@ -194,7 +209,7 @@ def handle_open_equipment_list(call, data):
             "equipment_item", {"eid": e["id"], "cid": city_id}, color=BLUE, owner=owner)
         for e in equipment
     ]
-    buttons.append(btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner))
+    buttons.append(btn("رجوع", "open_equipment_store", {"cid": city_id}, color=RED, owner=owner))
     edit_ui(call, text=text, buttons=buttons,
             layout=grid(len(equipment), 3) + [1])
 

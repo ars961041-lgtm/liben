@@ -16,12 +16,12 @@ from .war_extensions import create_war_extension_tables
 from .progression import create_progression_tables
 
 def create_all_tables():
-    # ─── admin_system يجب أن يكون أولاً لأن bot_constants يُستخدم في seed functions لاحقة ───
+    # users أولاً — جميع الجداول الأخرى تعتمد على users(user_id) كـ FK
+    create_users_table()
+
+    # admin_system بعد users مباشرةً لأن bot_developers يرجع إلى users(user_id)
     from database.db_schema.admin_system import create_admin_tables
     create_admin_tables()
-
-    # users أولاً لأن جميع الجداول الأخرى تعتمد على users(user_id) كـ FK
-    create_users_table()
     create_user_timezone_table()
     create_banks_tables()
     create_groups_tables()
@@ -56,5 +56,11 @@ def create_all_tables():
 
     from modules.quran.quran_db import create_tables as create_quran_tables
     create_quran_tables()
+
+    from database.db_schema.whispers import create_whispers_table
+    create_whispers_table()
+
+    # تسجيل معالجات أزرار الهمسات
+    import modules.whispers.whisper_handler  # noqa: F401 — registers @register_action
 
     print("✅ تم إنشاء جميع جداول قاعدة البيانات بنجاح.")

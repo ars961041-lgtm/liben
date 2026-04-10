@@ -21,6 +21,28 @@ def get_user_info(user_id):
         print(send_error("get_user_info", e))
         return None
 
+
+def get_user_id_by_username(username: str):
+    """
+    يبحث عن user_id بناءً على @username (بدون أو مع @).
+    يرجع (user_id, name) أو (None, None) إذا لم يُوجد.
+    """
+    try:
+        uname = username.lstrip("@").lower()
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT user_id, name FROM users WHERE LOWER(username) = ?',
+            (uname,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return row[0], row[1]
+        return None, None
+    except Exception as e:
+        print(send_error("get_user_id_by_username", e))
+        return None, None
+
 # ----------------------------------
 # الحصول على عدد الرسائل لمستخدم في مجموعة معينة
 # ----------------------------------

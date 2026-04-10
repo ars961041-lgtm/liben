@@ -399,9 +399,10 @@ def _apply_assassination(target_cid: int, kill_pct: float) -> int:
 # 📡 نظام الاستكشاف والرادار
 # ══════════════════════════════════════════
 
-def explore_targets(attacker_user_id: int) -> tuple:
+def explore_targets(attacker_user_id: int, cost: int) -> tuple:
     """
     يستكشف هدفاً عشوائياً قابلاً للهجوم.
+    لا يخصم عملات — الخصم يتم في الطبقة الأعلى (الهاندلر).
     يرجع (True, country_dict) أو (False, error_msg)
     """
     country = get_country_by_owner(attacker_user_id)
@@ -409,13 +410,6 @@ def explore_targets(attacker_user_id: int) -> tuple:
         return False, "❌ لا تملك دولة!"
     country = dict(country)
     cid = country["id"]
-
-    cost = _c("exploration_cost", 200)
-    balance = get_user_balance(attacker_user_id)
-    if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME} للاستكشاف."
-
-    deduct_user_balance(attacker_user_id, cost)
 
     from database.db_queries.countries_queries import get_all_countries
     from database.db_queries.advanced_war_queries import get_visibility
@@ -431,20 +425,17 @@ def explore_targets(attacker_user_id: int) -> tuple:
         if not ALLOWED_ATTACKS.get((my_tier, target_tier), True):
             continue
         vis = get_visibility(c["id"])
-        # الدول العامة أو المخفية (بفرصة أقل)
         if not vis or vis["visibility_mode"] == "public":
             candidates.append({**c, "visibility": "public"})
-        elif random.random() < 0.3:  # 30% فرصة اكتشاف مخفية
+        elif random.random() < 0.3:
             candidates.append({**c, "visibility": "hidden"})
 
     if not candidates:
         _log_exploration(cid, "failed", None, cost)
-        return False, f"❌ لم يُعثر على أهداف مناسبة.\n💸 خسرت {cost} {CURRENCY_ARABIC_NAME}"
+        return False, "❌ لم يُعثر على أهداف مناسبة."
 
-    # اختيار عشوائي مع تفضيل الأقرب في القوة
     target = random.choice(candidates[:min(5, len(candidates))])
 
-    # إضافة للمكتشفات
     add_discovered_country(cid, target["id"])
     _log_exploration(cid, "success", target["id"], cost)
 

@@ -10,7 +10,7 @@ from database.db_queries.assets_queries import (
 )
 from database.db_queries.bank_queries import get_user_balance
 from modules.city.asset_service import buy_asset, upgrade_asset, calc_buy_cost, calc_upgrade_cost
-from modules.war.war_store_integration import open_troop_store
+from modules.war.war_store_integration import open_troop_store, open_equipment_store
 from utils.pagination import  btn, edit_ui, paginate_list, register_action, send_ui, grid
 from utils.helpers import get_lines
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
@@ -45,10 +45,11 @@ def open_city_store(message, user_id: int, city_id: int):
     ]
     
     buttons.append(btn("🪖 قوات المدينة", "open_troop_store", {"cid": city_id}, color=GREEN, owner=owner))
+    buttons.append(btn("🛡 معدات المدينة", "open_equipment_store", {"cid": city_id}, color=GREEN, owner=owner))
     
     buttons.append(btn("مدينتي", "city_back", {"cid": city_id}, color=RED, owner=owner))
     send_ui(message.chat.id, text=text, buttons=buttons,
-            layout=grid(len(sectors), 2) + [1, 1], owner_id=user_id)
+            layout=grid(len(sectors), 2) + [2, 1], owner_id=user_id)
 
 
 # ══════════════════════════════════════════
@@ -455,11 +456,12 @@ def handle_back_sectors(call, data):
 
     # ✅ أضف زر قوات المدينة
     buttons.append(btn("🪖 قوات المدينة", "open_troop_store", {"cid": city_id}, color=GREEN, owner=owner))
+    buttons.append(btn("🛡 معدات المدينة", "open_equipment_store", {"cid": city_id}, color=GREEN, owner=owner))
 
     # زر الرجوع
     buttons.append(btn("مدينتي", "city_back", {"cid": city_id}, color=RED, owner=owner))
 
-    edit_ui(call, text=text, buttons=buttons, layout=grid(len(sectors), 2) + [1, 1])
+    edit_ui(call, text=text, buttons=buttons, layout=grid(len(sectors), 2) + [2, 1])
 
 @register_action("upgrade_back")
 def handle_upgrade_back(call, data):

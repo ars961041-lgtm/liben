@@ -214,14 +214,14 @@ def get_alliance_support_leaderboard(alliance_id: int) -> list:
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT 
+        SELECT
             ass.user_id,
             ass.battles_supported,
             ass.total_power_contributed,
             ass.resource_sent,
-            COALESCE(un.name, 'مجهول') AS name
+            COALESCE(NULLIF(u.name, ''), 'مجهول') AS name
         FROM alliance_support_stats ass
-        LEFT JOIN users_name un ON ass.user_id = un.user_id
+        LEFT JOIN users u ON ass.user_id = u.user_id
         WHERE ass.alliance_id = ?
         ORDER BY ass.total_power_contributed DESC
     """, (alliance_id,))

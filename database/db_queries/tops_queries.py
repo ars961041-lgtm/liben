@@ -17,10 +17,10 @@ def get_top_active_users(limit=10) -> list[dict]:
     cursor.execute("""
         SELECT
             gm.user_id AS id,
-            COALESCE(un.name, 'مجهول') AS name,
+            COALESCE(NULLIF(un.name, ''), 'مجهول') AS name,
             SUM(COALESCE(gm.messages_count, 0)) AS value
         FROM group_members gm
-        LEFT JOIN users_name un ON gm.user_id = un.user_id
+        LEFT JOIN users un ON gm.user_id = un.user_id
         GROUP BY gm.user_id
         ORDER BY value DESC
         LIMIT ?
@@ -35,11 +35,12 @@ def get_top_active_in_group(chat_id: int, limit=10) -> list[dict]:
     cursor.execute("""
         SELECT
             gm.user_id AS id,
-            COALESCE(un.name, 'مجهول') AS name,
+            COALESCE(NULLIF(un.name, ''), 'مجهول') AS name,
             COALESCE(gm.messages_count, 0) AS value
         FROM group_members gm
-        LEFT JOIN users_name un ON gm.user_id = un.user_id
-        WHERE gm.group_id = ?
+        JOIN groups g ON g.id = gm.group_id
+        LEFT JOIN users un ON gm.user_id = un.user_id
+        WHERE g.group_id = ?
         ORDER BY value DESC
         LIMIT ?
     """, (chat_id, limit))
@@ -126,8 +127,8 @@ def get_top_groups(limit=10) -> list[dict]:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT
-            g.id,
-            COALESCE(g.name, 'مجموعة ' || g.id) AS name,
+            g.group_id AS id,
+            COALESCE(g.name, 'مجموعة ' || g.group_id) AS name,
             COALESCE(SUM(gm.messages_count), 0) AS value,
             COUNT(DISTINCT gm.user_id) AS member_count
         FROM groups g
@@ -150,10 +151,10 @@ def get_top_betrayals(limit=10) -> list[dict]:
     cursor.execute("""
         SELECT
             ac.user_id AS id,
-            COALESCE(un.name, 'مجهول') AS name,
+            COALESCE(NULLIF(un.name, ''), 'مجهول') AS name,
             COUNT(*) AS value
         FROM action_cooldowns ac
-        LEFT JOIN users_name un ON ac.user_id = un.user_id
+        LEFT JOIN users un ON ac.user_id = un.user_id
         WHERE ac.action = 'betray'
         GROUP BY ac.user_id
         ORDER BY value DESC
@@ -172,10 +173,10 @@ def get_top_richest(limit=10) -> list[dict]:
     cursor.execute("""
         SELECT
             ua.user_id AS id,
-            COALESCE(un.name, 'مجهول') AS name,
+            COALESCE(NULLIF(un.name, ''), 'مجهول') AS name,
             COALESCE(ua.balance, 0) AS value
         FROM user_accounts ua
-        LEFT JOIN users_name un ON ua.user_id = un.user_id
+        LEFT JOIN users un ON ua.user_id = un.user_id
         ORDER BY ua.balance DESC
         LIMIT ?
     """, (limit,))

@@ -104,7 +104,6 @@ def open_dev_store(message):
 def _render_main(chat_id: int, user_id: int):
     owner = (user_id, chat_id)
     buttons = [
-        btn("⚙️ كل الثوابت",        "dstore_constants", {"cat": "all",       "p": 0}, color=_B, owner=owner),
         btn("💰 الاقتصاد والبنك",    "dstore_constants", {"cat": "economy",   "p": 0}, color=_B, owner=owner),
         btn("⚔️ الحرب والمعارك",     "dstore_constants", {"cat": "war",       "p": 0}, color=_R, owner=owner),
         btn("🕵️ الجواسيس",           "dstore_constants", {"cat": "spy",       "p": 0}, color=_B, owner=owner),
@@ -131,7 +130,6 @@ def back_to_main(call, data):
     cid   = call.message.chat.id
     owner = (uid, cid)
     buttons = [
-        btn("⚙️ كل الثوابت",        "dstore_constants", {"cat": "all",       "p": 0}, color=_B, owner=owner),
         btn("💰 الاقتصاد والبنك",    "dstore_constants", {"cat": "economy",   "p": 0}, color=_B, owner=owner),
         btn("⚔️ الحرب والمعارك",     "dstore_constants", {"cat": "war",       "p": 0}, color=_R, owner=owner),
         btn("🕵️ الجواسيس",           "dstore_constants", {"cat": "spy",       "p": 0}, color=_B, owner=owner),

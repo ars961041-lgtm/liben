@@ -5,22 +5,60 @@ def create_asset_tables():
     conn = get_db_conn()
     cursor = conn.cursor()
 
-    # ─── القطاعات ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: asset_sectors
+    # PURPOSE: Categories that group assets together in the store UI.
+    #          (Health, Education, Economy, Infrastructure)
+    #
+    # COLUMNS:
+    #   id    — Internal autoincrement PK.
+    #   name  — Sector name (e.g. 'صحة', 'اقتصاد'). Unique.
+    #   emoji — Display emoji shown in the store UI.
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS asset_sectors (
-        id   INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        name  TEXT NOT NULL UNIQUE,
         emoji TEXT DEFAULT '🏗'
     )
     """)
 
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: assets
+    # PURPOSE: Master catalog of all purchasable assets (hospitals,
+    #          factories, airports, etc.). Seeded at startup.
+    #          Players buy from this catalog into city_assets.
+    #
+    # COLUMNS:
+    #   id                  — Internal autoincrement PK.
+    #   name                — Unique English key (e.g. 'hospital').
+    #   name_ar             — Arabic display name shown to players.
+    #   emoji               — Display emoji.
+    #   sector_id           — References asset_sectors.id.
+    #   base_price          — Base purchase cost per unit.
+    #   base_value          — Base stat contribution per unit.
+    #   cost_scale          — Multiplier applied to cost per upgrade level.
+    #   maintenance         — Hourly maintenance cost per unit.
+    #   income              — Hourly income generated per unit.
+    #   max_level           — Maximum upgrade level allowed.
+    #   build_time          — Build time in seconds (0 = instant).
+    #   required_level      — Minimum city level required to purchase.
+    #   stat_economy        — Economy stat contribution per unit per level.
+    #   stat_health         — Health stat contribution per unit per level.
+    #   stat_education      — Education stat contribution per unit per level.
+    #   stat_military       — Military stat contribution per unit per level.
+    #   stat_infrastructure — Infrastructure stat contribution per unit per level.
+    #   pop_effect          — Population growth effect per unit.
+    #   eco_effect          — Economy bonus effect per unit.
+    #   prot_effect         — Protection/defense effect per unit.
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS assets (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         name        TEXT NOT NULL UNIQUE,
         name_ar     TEXT NOT NULL,
         emoji       TEXT DEFAULT '🏗',
-        sector_id   INTEGER NOT NULL REFERENCES asset_sectors(id),
+        sector_id   INTEGER NOT NULL,
         base_price  REAL NOT NULL,
         base_value  REAL NOT NULL DEFAULT 1.0,
         cost_scale  REAL NOT NULL DEFAULT 1.5,
@@ -36,49 +74,88 @@ def create_asset_tables():
         stat_infrastructure REAL DEFAULT 0,
         pop_effect    REAL DEFAULT 0,
         eco_effect    REAL DEFAULT 0,
-        prot_effect   REAL DEFAULT 0
+        prot_effect   REAL DEFAULT 0,
+        FOREIGN KEY (sector_id) REFERENCES asset_sectors(id)
     )
     """)
 
-    # ─── الفروع (مثلاً مصنع → سيارات، هواتف) ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: asset_branches
+    # PURPOSE: Optional specialization branches for an asset.
+    #          A player can choose a branch focus when buying
+    #          (e.g. a factory can be 'production' or 'export').
+    #          Each branch adds an income bonus on top of the base.
+    #
+    # COLUMNS:
+    #   id        — Internal autoincrement PK.
+    #   asset_id  — References assets.id. Which asset this branch belongs to.
+    #   name      — English key for the branch (e.g. 'production').
+    #   name_ar   — Arabic display name.
+    #   emoji     — Display emoji.
+    #   bonus_pct — Income bonus multiplier (e.g. 0.10 = +10% income).
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS asset_branches (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        asset_id  INTEGER NOT NULL REFERENCES assets(id),
+        asset_id  INTEGER NOT NULL,
         name      TEXT NOT NULL,
         name_ar   TEXT NOT NULL,
         emoji     TEXT DEFAULT '📦',
         bonus_pct REAL DEFAULT 0.1,
-        UNIQUE(asset_id, name)
+        UNIQUE(asset_id, name),
+        FOREIGN KEY (asset_id) REFERENCES assets(id)
     )
     """)
 
-    # ─── مشتريات المدينة ───
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: city_assets
+    # PURPOSE: The assets a city actually owns. Each row represents
+    #          a quantity of one asset at one level in one city.
+    #          Separate rows exist for each level (e.g. 3 hospitals
+    #          at level 1 and 2 hospitals at level 2 = 2 rows).
+    #
+    # COLUMNS:
+    #   id             — Internal autoincrement PK.
+    #   city_id        — References cities.id.
+    #   asset_id       — References assets.id. Which asset type.
+    #   branch_id      — References asset_branches.id. NULL = no branch.
+    #   level          — Current upgrade level of this batch.
+    #   quantity       — How many units of this asset at this level.
+    #   disabled_until — Unix timestamp until which this asset is
+    #                    disabled (e.g. after an enemy raid).
+    #
+    # UNIQUE: (city_id, asset_id, branch_id, level)
+    # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS city_assets (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        city_id   INTEGER NOT NULL REFERENCES cities(id),
-        asset_id  INTEGER NOT NULL REFERENCES assets(id),
-        branch_id INTEGER REFERENCES asset_branches(id),
+        city_id   INTEGER NOT NULL,
+        asset_id  INTEGER NOT NULL,
+        branch_id INTEGER,
         level     INTEGER NOT NULL DEFAULT 1,
         quantity  INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(city_id, asset_id, branch_id, level)
+        UNIQUE(city_id, asset_id, branch_id, level),
+        FOREIGN KEY (city_id)   REFERENCES cities(id),
+        FOREIGN KEY (asset_id)  REFERENCES assets(id),
+        FOREIGN KEY (branch_id) REFERENCES asset_branches(id)
     )
     """)
 
-    # ─── سجل العمليات ───
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS asset_log (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        city_id    INTEGER NOT NULL REFERENCES cities(id),
-        user_id    INTEGER NOT NULL REFERENCES users(user_id),
-        asset_id   INTEGER NOT NULL REFERENCES assets(id),
-        action     TEXT NOT NULL,   -- 'buy' | 'upgrade'
+        city_id    INTEGER NOT NULL,
+        user_id    INTEGER NOT NULL,
+        asset_id   INTEGER NOT NULL,
+        action     TEXT NOT NULL,
         quantity   INTEGER DEFAULT 0,
         from_level INTEGER DEFAULT 1,
         to_level   INTEGER DEFAULT 1,
         cost       REAL DEFAULT 0,
-        ts         INTEGER DEFAULT (strftime('%s','now'))
+        ts         INTEGER DEFAULT (strftime('%s','now')),
+        FOREIGN KEY (city_id)  REFERENCES cities(id),
+        FOREIGN KEY (user_id)  REFERENCES users(user_id),
+        FOREIGN KEY (asset_id) REFERENCES assets(id)
     )
     """)
 

@@ -41,10 +41,6 @@ def create_country(name: str, owner_id: int) -> int:
         (name.strip(), owner_id)
     )
     country_id = cursor.lastrowid
-    cursor.execute(
-        'INSERT OR IGNORE INTO country_stats (country_id) VALUES (?)',
-        (country_id,)
-    )
     conn.commit()
     return country_id
 
@@ -92,42 +88,6 @@ def get_user_country_id(user_id: int):
     return row["country_id"] if row else None
 
 # -------------------------
-# إحصائيات الدولة
-# -------------------------
-def get_country_stats(country_id: int):
-    try:
-        conn = get_db_conn()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM country_stats WHERE country_id = ?', (country_id,))
-        row = cursor.fetchone()
-
-        return dict(row) if row else None
-    except Exception as e:
-        print(send_error("get_country_stats", e))
-        return None
-
-def update_country_stats(country_id: int, economy_score=0, health_level=0, education_level=0,
-                         military_power=0, infrastructure_level=0):
-    try:
-        conn = get_db_conn()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO country_stats (
-                country_id, economy_score, health_level, education_level, military_power, infrastructure_level
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(country_id) DO UPDATE SET
-                economy_score=excluded.economy_score,
-                health_level=excluded.health_level,
-                education_level=excluded.education_level,
-                military_power=excluded.military_power,
-                infrastructure_level=excluded.infrastructure_level
-        ''', (country_id, economy_score, health_level, education_level, military_power, infrastructure_level))
-        conn.commit()
-
-    except Exception as e:
-        print(send_error("update_country_stats", e))
-        
-# -------------------------
 # حساب الميزانية الإجمالية للدولة من جميع المدن
 # -------------------------
 def get_country_budget(country_id: int) -> float:
@@ -160,7 +120,7 @@ def get_cities_by_country(country_id):
     return [dict(r) for r in rows]
 
 # -------------------------
-# أفضل الدول حسب مجموع الإحصائيات
+# أفضل الدول حسب مجموع إنفاق مدنها
 # -------------------------
 def get_top_countries(limit=10):
     conn = get_db_conn()
@@ -168,24 +128,20 @@ def get_top_countries(limit=10):
     cursor = conn.cursor()
     cursor.execute(
         '''
-        SELECT 
-            id,
-            name,
-            (
-                economy_score +
-                health_level +
-                education_level +
-                military_power +
-                infrastructure_level
-            ) AS value
-        FROM countries
+        SELECT
+            co.id,
+            co.name,
+            COALESCE(SUM(cs.total_spent), 0) AS value
+        FROM countries co
+        LEFT JOIN cities ci ON ci.country_id = co.id
+        LEFT JOIN city_spending cs ON cs.city_id = ci.id
+        GROUP BY co.id, co.name
         ORDER BY value DESC
         LIMIT ?
         ''',
         (limit,)
     )
-    result = [dict(row) for row in cursor.fetchall()]
-    return result
+    return [dict(row) for row in cursor.fetchall()]
 
 
 
@@ -386,6 +342,10 @@ def accept_country_invite_atomic(invite_id: int, user_id: int) -> tuple[bool, st
             (invite["city_name"], user_id, country_id)
         )
         city_id = cursor.lastrowid
+
+        # Seed related tables
+        cursor.execute("INSERT OR IGNORE INTO city_budget (city_id) VALUES (?)", (city_id,))
+        cursor.execute("INSERT OR IGNORE INTO city_spending (city_id) VALUES (?)", (city_id,))
 
         # ربط المستخدم بالدولة عبر المدينة (لا يوجد city_id/country_id على جدول users)
         cursor.execute(

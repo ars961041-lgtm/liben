@@ -313,16 +313,5 @@ def get_recent_events(limit: int = 5) -> list:
 # ══════════════════════════════════════════
 
 def schedule_event_checker():
-    """يُشغَّل كل ساعة للتحقق من إطلاق حدث جديد"""
-    interval = _c("event_check_interval", 3600)
-
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                if random.random() < 0.30:
-                    trigger_random_event()
-            except Exception as e:
-                print(f"[GlobalEvents] {e}")
-
-    threading.Thread(target=_loop, daemon=True).start()
+    """Deprecated — event checking is now handled by the unified IntervalScheduler."""
+    pass

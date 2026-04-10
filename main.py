@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import logging
 import time
 import traceback
@@ -8,7 +12,6 @@ from telebot.apihelper import ApiTelegramException
 from web.app import keep_alive
 from core.config import IS_TEST, DB_NAME, DB_CONTENT
 from handlers.members.welcome import welcome_member, left_member
-from database.daily_tasks import run_daily_tasks
 
 
 logging.basicConfig(
@@ -32,6 +35,24 @@ def _ensure_databases():
             print(f"✅ Database exists: {path}")
 
 
+@bot.channel_post_handler(func=lambda m: True)
+def on_channel_post(message):
+    try:
+        from modules.content_hub.channel_sync import handle_channel_post
+        handle_channel_post(message)
+    except Exception as e:
+        print(f"[channel_post] Error: {e}")
+
+
+@bot.edited_channel_post_handler(func=lambda m: True)
+def on_channel_post_edit(message):
+    try:
+        from modules.content_hub.channel_sync import handle_channel_post_edit
+        handle_channel_post_edit(message)
+    except Exception as e:
+        print(f"[edited_channel_post] Error: {e}")
+
+
 @bot.chat_member_handler()
 def on_chat_member_update(update):
     old = update.old_chat_member.status
@@ -40,6 +61,50 @@ def on_chat_member_update(update):
         welcome_member(update)
     elif old == "member" and new in ("left", "kicked"):
         left_member(update)
+
+
+@bot.message_handler(commands=["start"])
+def handle_start_command(message):
+    """
+    معالج /start — مسجَّل قبل func=lambda لضمان الأولوية.
+    يتعامل مع جميع deep links الهمسات.
+    """
+    print(f"[START] uid={message.from_user.id} text='{message.text}'")
+    try:
+        parts = message.text.split(maxsplit=1)
+        arg   = parts[1].strip() if len(parts) > 1 else ""
+
+        if arg:
+            print(f"[START] arg='{arg}'")
+
+            # ── Whisper deep links ──
+            if arg.startswith("hms"):
+                # /start hms<TOKEN> — كتابة همسة جديدة
+                token = arg[3:]
+                print(f"[WHISPER] hms token={token}")
+                from modules.whispers.whisper_handler import handle_hms_start
+                handle_hms_start(message, token)
+                return
+
+            if arg.startswith("hmrp"):
+                # /start hmrp<id> — الرد على همسة
+                wid = arg[4:]
+                print(f"[WHISPER] hmrp wid={wid}")
+                from modules.whispers.whisper_handler import handle_hmrp_start
+                handle_hmrp_start(message, wid)
+                return
+
+        # /start بدون payload أو payload غير معروف
+        from handlers.replies import receive_responses
+        receive_responses(message)
+
+    except Exception as e:
+        import traceback
+        print(f"[START] ERROR: {e}\n{traceback.format_exc()}")
+        try:
+            bot.send_message(message.from_user.id, "❌ حدث خطأ. حاول مجدداً.")
+        except Exception:
+            pass
 
 
 @bot.message_handler(func=lambda message: True)
@@ -72,6 +137,8 @@ def start_bot():
                     "chat_member",
                     "inline_query",
                     "my_chat_member",
+                    "channel_post",
+                    "edited_channel_post",
                 ]
             )
         except ApiTelegramException as e:
@@ -97,10 +164,8 @@ if __name__ == "__main__":
     from modules.rules.rules_handler import register_rules_callbacks
     register_rules_callbacks()
 
-    # Start khatmah reminder scheduler
-    from modules.quran.khatmah_reminder import start_khatmah_reminder_scheduler
-    start_khatmah_reminder_scheduler()
-
+    # Start unified scheduler and run first daily cycle
+    from database.daily_tasks import run_daily_tasks
     run_daily_tasks()
-    
+
     start_bot()

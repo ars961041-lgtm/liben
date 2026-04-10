@@ -5,9 +5,13 @@ from modules.bank.services.bank_service import (
     take_loan, list_loans, repay_user_loan,
     purchase_in_city, can_purchase, can_risk, can_invest, can_take_loan
 )
-from database.db_queries.bank_queries import check_bank_account, create_bank_account
+from database.db_queries.bank_queries import (
+    check_bank_account, create_bank_account,
+    get_user_balance, get_active_loans
+)
 from core.bot import bot
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
+from utils.helpers import get_lines
 
 # أوامر تحتاج حساب بنكي
 _NEEDS_ACCOUNT = {"راتب", "مهمة", "يومي", "مخاطرة", "استثمر", "استثمار",
@@ -17,13 +21,67 @@ def _requires_account(text):
     first = text.split()[0] if text.split() else text
     return first in _NEEDS_ACCOUNT or text in _NEEDS_ACCOUNT
 
+
+def _build_account_info(target_user_id: int, display_name: str) -> str:
+    """
+    Builds the bank account info card for a given user.
+    Returns a formatted string ready to send.
+    """
+    if not check_bank_account(target_user_id):
+        return (
+            f"👤 <b>{display_name}</b>\n"
+            f"❌ لا يملك حساباً بنكياً بعد."
+        )
+
+    balance = get_user_balance(target_user_id)
+    loans   = get_active_loans(target_user_id)
+
+    total_loan_debt = 0.0
+    for loan in loans:
+        # loan row: (id, amount, due_date, repaid, status)
+        amount = loan[1] if not isinstance(loan, dict) else loan["amount"]
+        repaid = loan[3] if not isinstance(loan, dict) else loan["repaid"]
+        total_loan_debt += max(0.0, amount - repaid)
+
+    loan_line = (
+        f"💳 القروض النشطة: {len(loans)} قرض "
+        f"(متبقي: {total_loan_debt:,.2f} {CURRENCY_ARABIC_NAME})"
+        if loans else
+        "💳 القروض: لا توجد قروض نشطة"
+    )
+
+    return (
+        f"🏦 <b>معلومات الحساب البنكي</b>\n"
+        f"{get_lines()}\n"
+        f"👤 الاسم: <b>{display_name}</b>\n"
+        f"🆔 رقم الحساب: <code>{target_user_id}</code>\n"
+        f"💰 الرصيد: <b>{balance:,.2f} {CURRENCY_ARABIC_NAME}</b>\n"
+        f"{loan_line}"
+    )
+
+
 def bank_commands(message):
-    text = message.text.strip().lower()
+    text    = message.text.strip().lower()
     user_id = message.from_user.id
+
+    # ─── حسابي / حسابه ───────────────────────────────────────────
+    if text in ("حسابي", "حسابه"):
+        if text == "حسابه" and message.reply_to_message:
+            # target = the user whose message was replied to
+            target    = message.reply_to_message.from_user
+            target_id = target.id
+            name      = target.first_name or "مجهول"
+        else:
+            # target = the sender
+            target_id = user_id
+            name      = message.from_user.first_name or "مجهول"
+
+        reply = _build_account_info(target_id, name)
+        bot.reply_to(message, reply, parse_mode="HTML")
+        return True
 
     # 💰 عرض الرصيد
     if text == "فلوسي":
-        from database.db_queries.bank_queries import get_user_balance
         if not check_bank_account(user_id):
             bot.reply_to(message, "❌ ليس لديك حساب بنكي.\nاكتب '<code>انشاء حساب بنكي</code>' أولاً.", parse_mode='HTML')
             return True
