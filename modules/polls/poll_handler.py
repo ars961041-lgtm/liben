@@ -185,6 +185,55 @@ def on_option_done(call, data):
     _panel(uid, cid, call=call)
 
 
+_COLOR_LABELS = [
+    ("🔵 أزرق",  "p"),
+    ("🟢 أخضر",  "su"),
+    ("🔴 أحمر",  "d"),
+    ("⚪ افتراضي", "de"),
+]
+
+
+def _ask_option_color(uid, cid):
+    mid   = StateManager.get_mid(uid, cid)
+    owner = (uid, cid)
+    extra = StateManager.get_extra(uid, cid)
+    text  = (
+        f"📊 <b>إنشاء تصويت</b>  ·  لون الخيار\n\n"
+        f"✏️ <b>الخيار:</b> {extra.get('_pending_opt', '')}\n\n"
+        "اختر لون الزر:"
+    )
+    buttons = [
+        btn(label, "poll_opt_color", {"c": color}, owner=owner, color=color)
+        for label, color in _COLOR_LABELS
+    ]
+    markup = build_keyboard(buttons, [2, 2], uid)
+    _edit_or_send(cid, mid, text, markup, uid)
+
+
+@register_action("poll_opt_color")
+def on_opt_color(call, data):
+    uid   = call.from_user.id
+    cid   = call.message.chat.id
+    if not StateManager.is_state(uid, cid, _STATE):
+        bot.answer_callback_query(call.id); return
+    bot.answer_callback_query(call.id)
+
+    color = data.get("c", "p")
+    extra = StateManager.get_extra(uid, cid)
+    opts  = extra.get("options", [])
+    text  = extra.get("_pending_opt", "")
+
+    if not text:
+        StateManager.update(uid, cid, {"step": "await_options"})
+        _panel(uid, cid, call=call)
+        return
+
+    opts.append({"text": text, "color": color})
+    _set_extra(uid, cid, options=opts, _pending_opt=None)
+    StateManager.update(uid, cid, {"step": "await_options"})
+    _panel(uid, cid, call=call)
+
+
 @register_action("poll_setting")
 def on_setting(call, data):
     uid = call.from_user.id
@@ -252,7 +301,7 @@ def on_publish(call, data):
         return
 
     for opt in options:
-        add_poll_option(poll_id, opt["text"])
+        add_poll_option(poll_id, opt["text"], opt.get("color", "p"))
 
     poll_data = get_poll(poll_id)
     poll_opts = get_poll_options(poll_id)
@@ -559,8 +608,9 @@ def _panel(uid, cid, call=None):
 
     elif step == "await_options":
         opts = extra.get("options", [])
+        _COLOR_EMOJI = {"p": "🔵", "su": "🟢", "d": "🔴", "de": "⚪"}
         opts_text = "".join(
-            f"  {i}. {o['text']}\n"
+            f"  {i}. {_COLOR_EMOJI.get(o.get('color','p'),'🔵')} {o['text']}\n"
             for i, o in enumerate(opts, 1)
         )
         text = (
@@ -709,9 +759,10 @@ def handle_poll_input(message) -> bool:
         if len(opts) >= _MAX_OPTIONS:
             _toast(cid, f"❌ الحد الأقصى {_MAX_OPTIONS} خيارات.")
             return True
-        opts.append({"text": opt_text})
-        _set_extra(uid, cid, options=opts)
-        _panel(uid, cid)
+        # save text temporarily and ask for color
+        _set_extra(uid, cid, _pending_opt=opt_text)
+        StateManager.update(uid, cid, {"step": "await_opt_color"})
+        _ask_option_color(uid, cid)
         return True
 
     return False
@@ -837,34 +888,37 @@ def _build_stats_text(poll_id: int, poll: dict, show_voters: bool = False) -> st
     type_l = "🧠 اختبار" if poll.get("poll_type") == "quiz" else "📊 تصويت"
     status = "🔒 مغلق" if poll.get("is_closed") else "🟢 مفتوح"
 
-    remaining = ""
+    _DIV = "─────────────────"
+
+    lines = [
+        f"<b>{type_l} — #{poll_id}</b>",
+        _DIV,
+        "",
+        f"❓ <b>{poll['question']}</b>",
+        "",
+        f"الحالة: {status}",
+    ]
+
     if poll.get("end_time") and not poll.get("is_closed"):
         left = poll["end_time"] - int(time.time())
         if left > 0:
-            remaining = f"\n⏳ الوقت المتبقي: <b>{_fmt_duration(left)}</b>"
+            lines.append(f"⏳ الوقت المتبقي: <b>{_fmt_duration(left)}</b>")
 
-    text = (
-        f"{type_l} — <b>تفاصيل التصويت #{poll_id}</b>\n"
-        f"{get_lines()}\n\n"
-        f"❓ <b>{poll['question']}</b>\n\n"
-        f"الحالة: {status}{remaining}\n"
-        f"👥 إجمالي الأصوات: <b>{total}</b>\n\n"
-        f"{get_lines()}\n"
-    )
+    lines += [f"👥 إجمالي الأصوات: <b>{total}</b>", "", _DIV]
 
     for opt in opts:
         pct = int((opt["votes_count"] / total) * 100) if total else 0
         bar = _progress_bar(pct)
-        text += f"\n{bar} <b>{opt['text']}</b>\n"
-        text += f"   {pct}% — {opt['votes_count']} صوت\n"
+        lines.append(f"\n{bar} {opt['text']}")
+        lines.append(f"   {pct}% — {opt['votes_count']} صوت")
 
         if show_voters and opt["votes_count"] > 0:
             voters = get_option_voters(opt["id"], limit=10)
             if voters:
                 ids_str = " | ".join(f"<code>{v}</code>" for v in voters)
-                text += f"   👤 {ids_str}\n"
+                lines.append(f"   👤 {ids_str}")
 
-    return text
+    return "\n".join(lines)
 
 
 # ══════════════════════════════════════════
@@ -877,32 +931,36 @@ def _build_poll_message(poll_id: int, poll: dict, options: list) -> tuple:
     is_hidden  = bool(poll.get("is_hidden"))
     is_closed  = bool(poll.get("is_closed"))
 
-    status_line = ""
+    _DIV = "─────────────────"
+
+    lines = [f"<b>{type_label}</b>", _DIV, ""]
+
+    lines.append(f"❓ <b>{poll['question']}</b>")
+
+    if poll.get("description"):
+        lines.append(f"📝 {poll['description']}")
+
     if is_closed:
-        status_line = "\n🔒 <b>التصويت مغلق</b>"
+        lines.append("🔒 <b>التصويت مغلق</b>")
     elif poll.get("end_time"):
         left = poll["end_time"] - int(time.time())
         if left > 0:
-            status_line = f"\n⏳ ينتهي خلال: <b>{_fmt_duration(left)}</b>"
+            lines.append(f"⏳ ينتهي خلال: <b>{_fmt_duration(left)}</b>")
 
-    desc_line = f"\n📝 {poll['description']}\n" if poll.get("description") else ""
-
-    text = f"{type_label}\n{get_lines()}\n\n❓ <b>{poll['question']}</b>{desc_line}{status_line}\n\n"
+    lines.append("")
 
     if not is_hidden and total > 0:
         for opt in options:
             pct = int((opt["votes_count"] / total) * 100) if total else 0
             bar = _colored_bar(pct)
-            text += f"{bar} <b>{opt['text']}</b>  {pct}%  ({opt['votes_count']})\n"
+            lines.append(f"{opt['text']}\n{bar}  {pct}% ({opt['votes_count']})\n\n")
     else:
         for opt in options:
-            text += f"🔘 <b>{opt['text']}</b>\n"
+            lines.append(f"🔘 {opt['text']}")
 
-    text += f"\n{get_lines()}\n👥 إجمالي الأصوات: <b>{total}</b>"
+    lines += ["", _DIV, f"👥 {total}"]
 
-    creator_id = poll["created_by"]
-    chat_id    = poll["chat_id"]
-    owner      = (creator_id, chat_id)
+    text = "\n".join(lines)
 
     if is_closed:
         markup = None
@@ -910,7 +968,8 @@ def _build_poll_message(poll_id: int, poll: dict, options: list) -> tuple:
         buttons = [
             btn(opt["text"], "poll_vote",
                 {"pid": poll_id, "oid": opt["id"]},
-                owner=owner, color="p")
+                owner=None,
+                color=opt.get("color") or "p")
             for opt in options
         ]
         cols = 2 if len(options) <= 4 else 3
@@ -919,7 +978,7 @@ def _build_poll_message(poll_id: int, poll: dict, options: list) -> tuple:
         while rem > 0:
             layout.append(min(cols, rem))
             rem -= cols
-        markup = build_keyboard(buttons, layout, creator_id)
+        markup = build_keyboard(buttons, layout, None)
 
     return text, markup
 

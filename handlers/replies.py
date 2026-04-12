@@ -83,6 +83,13 @@ def receive_responses(message):
             "chat not found",
             "have no rights",
             "not enough rights",
+            "connection aborted",
+            "remote end closed connection",
+            "remotedisconnected",
+            "connectionerror",
+            "connection error",
+            "timed out",
+            "read timed out",
         ))
         StateManager.clear(uid, cid)
         tb = traceback.format_exc()

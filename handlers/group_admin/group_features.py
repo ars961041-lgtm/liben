@@ -28,13 +28,14 @@ _LABELS = {
     "enable_lock_stickers": ("🎭", "حذف الستيكرات",       "يحذف ستيكرات غير المشرفين تلقائياً"),
     "enable_lock_media":    ("🖼", "حذف الوسائط",         "يحذف صور/فيديو/ملفات غير المشرفين تلقائياً"),
     "quotes_enabled":       ("💬", "الاقتباسات التلقائية", "يرسل اقتباسات وحكم دورياً للمجموعة"),
+    "azkar_enabled":        ("📿", "الأذكار التلقائية",    "يرسل أذكاراً دورياً للمجموعة"),
     "enable_whispers":      ("💌", "الهمسات",              "يتيح إرسال همسات خاصة بين الأعضاء"),
 }
 
 
 def handle_features_control(message) -> bool:
     """أمر: الأوامر — يفتح لوحة تحكم الميزات للمشرفين."""
-    if (message.text or "").strip() != "الأوامر":
+    if (message.text or "").strip() not in ["الأوامر", "الاوامر"]:
         return False
     if message.chat.type not in ("group", "supergroup"):
         return False
@@ -64,6 +65,7 @@ def _send_panel(cid, uid, reply_to=None, call=None):
         enabled = bool(features.get(feat, 1))
         status  = "✅" if enabled else "❌"
         text   += f"{status} {emoji} <b>{label}</b>\n<i>{desc}</i>\n\n"
+
         buttons.append(btn(
             f"{emoji} {label} {status}",
             "grp_feat_toggle",
@@ -72,17 +74,25 @@ def _send_panel(cid, uid, reply_to=None, call=None):
             owner=owner,
         ))
 
+    # زر الإغلاق
     buttons.append(btn("❌ إغلاق", "grp_feat_close", {}, color=_R, owner=owner))
 
-    layout = [1] * len(_LABELS) + [1]
+    # layout ديناميكي (2 في كل صف)
+    count = len(_LABELS)
+    layout = [2] * (count // 2)
+
+    if count % 2:
+        layout.append(1)
+
+    layout.append(1)
 
     if call:
         edit_ui(call, text=text, buttons=buttons, layout=layout)
     else:
         send_ui(cid, text=text, buttons=buttons, layout=layout,
                 owner_id=uid, reply_to=reply_to)
-
-
+        
+        
 @register_action("grp_feat_toggle")
 def on_toggle(call, data):
     uid  = call.from_user.id

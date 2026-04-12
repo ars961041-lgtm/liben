@@ -36,11 +36,14 @@ def open_admin_panel(message):
         bot.reply_to(message, "❌ هذا الأمر للمطورين فقط.")
         return
 
-    _send_main_panel(chat_id, user_id)
+    _send_main_panel(message)
 
 
-def _send_main_panel(chat_id, user_id):
+def _send_main_panel(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
     owner = (user_id, chat_id)
+    
     buttons = [
         btn("⚙️ ثوابت البوت",        "adm_constants",   data={"page": 0}, owner=owner, color=_BLUE),
         btn("👨‍💻 المطورون",           "adm_devs",        data={},          owner=owner, color=_BLUE),
@@ -56,7 +59,7 @@ def _send_main_panel(chat_id, user_id):
     ]
     send_ui(chat_id,
             text=f"🛠 <b>لوحة إدارة البوت</b>\n{get_lines()}\nاختر ما تريد إدارته:",
-            buttons=buttons, layout=[2, 2, 2, 2, 2, 1], owner_id=user_id)
+            buttons=buttons, layout=[2, 2, 2, 2, 2, 1], owner_id=user_id, reply_to=message.message_id)
 
 
 # ══════════════════════════════════════════

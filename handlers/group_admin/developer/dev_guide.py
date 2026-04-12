@@ -959,7 +959,13 @@ _SECTIONS = {
                     "  <code>النص | عدد التكرار</code>\n\n"
                     "🗄 <b>قاعدة البيانات:</b>\n"
                     "الأذكار محفوظة في <code>azkar.db</code> منفصلة عن باقي البيانات.\n"
-                    "تقدم المستخدمين محفوظ في جدول <code>azkar_progress</code>."
+                    "تقدم المستخدمين محفوظ في جدول <code>azkar_progress</code>.\n\n"
+                    "📌 <b>تفعيل الأذكار التلقائية للمجموعة:</b>\n"
+                    "• من لوحة <code>الأوامر</code> → 📿 الأذكار التلقائية (زر toggle)\n"
+                    "• أو بالأمر: <code>تفعيل الأذكار</code> / <code>إيقاف الأذكار</code>\n"
+                    "• العمود: <code>groups.azkar_enabled</code>\n"
+                    "• الدالة: <code>toggle_azkar()</code> في <code>azkar_sender.py</code>\n"
+                    "• أو عبر النظام العام: <code>toggle_feature(cid, 'azkar_enabled')</code>"
                 ),
             },
             {
@@ -1139,14 +1145,16 @@ _SECTIONS = {
                     "• <code>modules/content_hub/quotes_sender.py</code> — المنطق الرئيسي\n"
                     "• <code>modules/content_hub/seed_content.py</code> — البيانات الافتراضية\n"
                     "• <code>database/daily_tasks.py</code> — التسجيل في المُجدوِل\n\n"
+                    "⚠️ <b>سياسة النشر التلقائي:</b>\n"
+                    "فقط <b>الاقتباسات</b> و<b>الأذكار</b> تُنشر تلقائياً.\n"
+                    "anecdotes / stories / wisdom / poetry — بالأمر المباشر فقط.\n\n"
                     "🔄 <b>دورة الحياة:</b>\n"
                     "1️⃣ المُجدوِل يستدعي <code>send_periodic_quotes()</code> كل 5 دقائق\n"
                     "2️⃣ تقرأ الدالة <code>quotes_interval_minutes</code> من bot_constants\n"
                     "3️⃣ تجلب المجموعات التي <code>quotes_enabled = 1</code>\n"
                     "4️⃣ لكل مجموعة: تتحقق من آخر إرسال (throttle في الذاكرة)\n"
-                    "5️⃣ إذا حان الوقت → تختار جدولاً عشوائياً من الخمسة\n"
-                    "6️⃣ تجلب صفاً عشوائياً بكفاءة عبر <code>random_key</code>\n"
-                    "7️⃣ ترسل المحتوى للمجموعة\n\n"
+                    "5️⃣ إذا حان الوقت → تجلب صفاً عشوائياً من جدول quotes\n"
+                    "6️⃣ ترسل المحتوى للمجموعة\n\n"
                     "⚙️ <b>الثابت القابل للتعديل:</b>\n"
                     "• <code>quotes_interval_minutes</code> — الفترة بالدقائق (افتراضي: 10)"
                 ),
@@ -1154,21 +1162,44 @@ _SECTIONS = {
             {
                 "title": "💬 التفعيل والإيقاف",
                 "content": (
-                    "📌 <b>أوامر المشرف:</b>\n"
-                    "• <code>تفعيل الاقتباسات</code> — يضع <code>quotes_enabled=1</code>\n"
-                    "• <code>إيقاف الاقتباسات</code> — يضع <code>quotes_enabled=0</code>\n\n"
+                    "📌 <b>طريقتان للتفعيل (للمشرفين):</b>\n"
+                    "• من لوحة <code>الأوامر</code> → 💬 الاقتباسات التلقائية (زر toggle)\n"
+                    "• أو بالأمر: <code>تفعيل الاقتباسات</code> / <code>إيقاف الاقتباسات</code>\n\n"
                     "📌 <b>في الكود:</b>\n"
                     "<code>from modules.content_hub.quotes_sender import toggle_quotes\n"
                     "toggle_quotes(tg_group_id, enable=True)</code>\n\n"
                     "📌 <b>جداول المحتوى (في content_hub.db):</b>\n"
-                    "• <code>quotes</code> — اقتباسات\n"
-                    "• <code>anecdotes</code> — نوادر\n"
-                    "• <code>stories</code> — قصص\n"
-                    "• <code>wisdom</code> — حكم\n"
-                    "• <code>poetry</code> — شعر\n\n"
+                    "• <code>quotes</code> — اقتباسات ✅ تُنشر تلقائياً\n"
+                    "• <code>azkar</code> — أذكار ✅ تُنشر تلقائياً\n"
+                    "• <code>anecdotes / stories / wisdom / poetry</code> — بالأمر فقط ❌\n\n"
                     "📌 <b>إضافة محتوى جديد:</b>\n"
                     "من لوحة المطور → 📜 اقتباسات\n"
                     "أو عبر <code>insert_content(table, text)</code> في hub_db.py"
+                ),
+            },
+            {
+                "title": "📿 الأذكار التلقائية — التقنية",
+                "content": (
+                    "📌 <b>الملف:</b> <code>modules/content_hub/azkar_sender.py</code>\n\n"
+                    "🔄 <b>دورة الحياة (مطابقة للاقتباسات):</b>\n"
+                    "1️⃣ المُجدوِل يستدعي <code>send_periodic_azkar()</code> كل 5 دقائق\n"
+                    "2️⃣ تقرأ الدالة <code>azkar_interval_minutes</code> من bot_constants\n"
+                    "3️⃣ تجلب المجموعات التي <code>azkar_enabled = 1</code>\n"
+                    "4️⃣ throttle في الذاكرة يمنع الإرسال المتكرر\n"
+                    "5️⃣ تجلب صفاً عشوائياً من جدول <code>azkar</code> في content_hub.db\n\n"
+                    "⚙️ <b>الثابت القابل للتعديل:</b>\n"
+                    "• <code>azkar_interval_minutes</code> — الفترة بالدقائق (افتراضي: 10)\n\n"
+                    "📌 <b>طريقتان للتفعيل (للمشرفين):</b>\n"
+                    "• من لوحة <code>الأوامر</code> → 📿 الأذكار التلقائية (زر toggle)\n"
+                    "• أو بالأمر: <code>تفعيل الأذكار</code> / <code>إيقاف الأذكار</code>\n\n"
+                    "📌 <b>في الكود:</b>\n"
+                    "<code>from modules.content_hub.azkar_sender import toggle_azkar\n"
+                    "toggle_azkar(tg_group_id, enable=True)</code>\n\n"
+                    "📌 <b>ملاحظة:</b>\n"
+                    "الاقتباسات والأذكار مستقلان تماماً — كل منهما له:\n"
+                    "• عمود DB خاص به (quotes_enabled / azkar_enabled)\n"
+                    "• ثابت interval خاص به\n"
+                    "• throttle cache مستقل في الذاكرة"
                 ),
             },
         ],

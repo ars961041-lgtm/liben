@@ -1,5 +1,19 @@
 # utils/pagination/ui.py
+import time
 from core.bot import bot
+
+_RETRYABLE = (
+    "connection aborted",
+    "remote end closed connection",
+    "remotedisconnected",
+    "connectionerror",
+    "timed out",
+    "read timed out",
+)
+
+def _is_retryable(e: Exception) -> bool:
+    return any(x in str(e).lower() for x in _RETRYABLE)
+
 
 def send_ui(chat_id, text=None, photo=None, buttons=None, layout=None, owner_id=None,
             precheck=None, reply_to=None):
@@ -13,9 +27,22 @@ def send_ui(chat_id, text=None, photo=None, buttons=None, layout=None, owner_id=
     kwargs = {"parse_mode": "HTML"}
     if reply_to:
         kwargs["reply_to_message_id"] = reply_to
-    if photo:
-        return bot.send_photo(chat_id, photo, caption=text, reply_markup=markup, **kwargs)
-    return bot.send_message(chat_id, text, reply_markup=markup, **kwargs)
+
+    last_exc = None
+    for attempt in range(2):   # 1 retry on connection error
+        try:
+            if photo:
+                return bot.send_photo(chat_id, photo, caption=text, reply_markup=markup, **kwargs)
+            return bot.send_message(chat_id, text, reply_markup=markup, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if _is_retryable(e) and attempt == 0:
+                time.sleep(1.5)
+                # drop reply_to on retry — original message may be gone
+                kwargs.pop("reply_to_message_id", None)
+                continue
+            raise
+    raise last_exc  # unreachable but satisfies type checkers
 
 def edit_ui(call, text=None, buttons=None, layout=None, precheck=None):
     from .history import push_history
@@ -54,8 +81,6 @@ def edit_ui(call, text=None, buttons=None, layout=None, precheck=None):
             bot.answer_callback_query(call.id, "Error loading page ❌")
         except:
             pass
-
-        # مهم جدًا: لا نخفي الخطأ
         raise
 
 def grid(n: int, cols: int = 3) -> list:

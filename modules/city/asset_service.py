@@ -65,9 +65,11 @@ def buy_asset(user_id: int, city_id: int, asset_name: str, quantity: int):
     _record_spending(city_id, cost)
 
     return True, (
-        f"✅ تم شراء {quantity} × {asset['emoji']} {asset['name_ar']}\n"
-        f"💸 التكلفة: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-        f"💰 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"✅ تم الشراء بنجاح\n"
+        f"📦 العنصر: {asset['emoji']} {asset['name_ar']}\n"
+        f"🔢 الكمية: {quantity}\n"
+        f"💰 السعر الإجمالي: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 

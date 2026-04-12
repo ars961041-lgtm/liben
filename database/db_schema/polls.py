@@ -46,6 +46,7 @@ def create_polls_tables():
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         poll_id       INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
         text          TEXT    NOT NULL,
+        color         TEXT    NOT NULL DEFAULT 'p',
         votes_count   INTEGER NOT NULL DEFAULT 0
     );
     """)
@@ -72,3 +73,10 @@ def create_polls_tables():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_poll_options_poll ON poll_options(poll_id);")
 
     conn.commit()
+
+    # safe migration for existing databases
+    try:
+        cursor.execute("ALTER TABLE poll_options ADD COLUMN color TEXT NOT NULL DEFAULT 'p'")
+        conn.commit()
+    except Exception:
+        pass  # column already exists

@@ -71,9 +71,13 @@ def buy_troops(user_id: int, country_id: int, troop_type_id: int,
     deduct_user_balance(user_id, total_cost)
     add_city_troops(city_id, troop_type_id, quantity)
 
+    remaining = get_user_balance(user_id)
     return True, (
-        f"✅ تم شراء {quantity} × {troop['emoji']} {troop['name_ar']}\n"
-        f"💰 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"✅ تم الشراء بنجاح\n"
+        f"📦 العنصر: {troop['emoji']} {troop['name_ar']}\n"
+        f"🔢 الكمية: {quantity}\n"
+        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 
@@ -110,9 +114,13 @@ def buy_equipment(user_id: int, country_id: int, eq_type_id: int,
     deduct_user_balance(user_id, total_cost)
     add_city_equipment(city_id, eq_type_id, quantity)
 
+    remaining = get_user_balance(user_id)
     return True, (
-        f"✅ تم شراء {quantity} × {eq['emoji']} {eq['name_ar']}\n"
-        f"💰 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"✅ تم الشراء بنجاح\n"
+        f"📦 العنصر: {eq['emoji']} {eq['name_ar']}\n"
+        f"🔢 الكمية: {quantity}\n"
+        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 

@@ -17,6 +17,13 @@ def chat_responses(message):
     # نص الرسالة بعد تنظيف الفراغات وتحويلها إلى أحرف صغيرة
     text = message.text.strip().lower()
 
+    # ===== مناداة البوت =====
+    if any(text.startswith(b) for b in BOT_WORDS):
+        send_random(message, belo_responses)
+        
+    elif any(text.startswith(b) for b in BOT_WORDS):
+        send_random(message, bot_responses)
+        
     # ===== التحيات =====
     if text in HELLO_WORDS:
         send_random(message, hello_responses)
@@ -49,9 +56,6 @@ def chat_responses(message):
     elif any(text.startswith(f) for f in FAREWELL_WORDS):
         send_random(message, farewell_responses)
     
-    # ===== مناداة البوت =====
-    elif any(text.startswith(b) for b in BOT_WORDS):
-        send_random(message, bot_responses)
 
     # ===== الضحك =====
     elif text.startswith("هه") and len(text) <= 4:

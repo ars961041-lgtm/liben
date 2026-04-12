@@ -3,12 +3,15 @@ modules/content_hub/azkar_sender.py
 
 Periodic Azkar sender — registered with the unified IntervalScheduler.
 
-Works identically to quotes_sender but uses the azkar table and
-the azkar_enabled column in groups.
+Auto-posting policy: ONLY quotes and azkar are auto-posted.
+anecdotes / stories / wisdom / poetry are available on-demand only.
 
 Enabling/disabling per group:
-  Admins use: "تفعيل الأذكار" / "إيقاف الأذكار"
-  These commands update groups.azkar_enabled via toggle_azkar().
+  • From 'الأوامر' panel → 📿 الأذكار التلقائية (toggle button)
+  • Or text command: "تفعيل الأذكار" / "إيقاف الأذكار"
+  These update groups.azkar_enabled via toggle_azkar().
+
+Interval: controlled by bot_constants.azkar_interval_minutes (default 10).
 """
 import time
 

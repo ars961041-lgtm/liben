@@ -58,13 +58,13 @@ def create_poll(chat_id: int, question: str, poll_type: str,
         return None
 
 
-def add_poll_option(poll_id: int, text: str) -> int | None:
+def add_poll_option(poll_id: int, text: str, color: str = "p") -> int | None:
     try:
         conn = get_db_conn()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO poll_options (poll_id, text) VALUES (?,?)",
-            (poll_id, text)
+            "INSERT INTO poll_options (poll_id, text, color) VALUES (?,?,?)",
+            (poll_id, text, color or "p")
         )
         conn.commit()
         return cur.lastrowid

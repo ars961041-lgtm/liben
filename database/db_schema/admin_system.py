@@ -122,6 +122,7 @@ def _seed_defaults(conn):
         ("transfer_max_amount",   "100000",        "الحد الأقصى للتحويل البنكي"),
         ("max_loan_amount",       "10000",         "الحد الأقصى لمبلغ القرض"),
         ("quotes_interval_minutes", "10",          "فترة إرسال الاقتباسات التلقائية للمجموعات (دقائق)"),
+        ("azkar_interval_minutes",  "10",          "فترة إرسال الأذكار التلقائية للمجموعات (دقائق)"),
         ("weekly_ranking_reward",   "500",          "مكافأة بطل الأسبوع في المجلة"),
         ("monthly_ranking_reward",  "2000",         "مكافأة بطل الشهر في المجلة"),
     ]

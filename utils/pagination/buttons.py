@@ -6,7 +6,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 _STYLE_MAP = {
     "p": "primary",   # أزرق
     "su": "success",  # أخضر
-    "d": "danger"     # أحمر
+    "d": "danger",     # أحمر
+    "de": "default",     # أحمر
 }
 
 def btn(text: str, action: str, data: dict = None, color: str = "p", owner: tuple = None):

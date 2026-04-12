@@ -77,7 +77,7 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
         return handle_whisper_command(message)
 
     # ── لوحة تحكم ميزات المجموعة ──
-    if normalized_text == "الأوامر":
+    if normalized_text in ["الأوامر", "الاوامر"]:
         from handlers.group_admin.group_features import handle_features_control
         return handle_features_control(message)
 

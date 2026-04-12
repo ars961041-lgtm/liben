@@ -70,7 +70,7 @@ def city_commands(message):
     # ─── متجر / شراء بدون args → فتح المتجر ───
     if text in ("متجر", "شراء"):
         if not city_id:
-            bot.reply_to(message, "❌ يجب أن يكون لديك دولة أولاً.\nاستخدم: <code>انشاء دولة [الاسم]</code>", parse_mode="HTML")
+            bot.reply_to(message, "❌ يجب أن يكون لديك دولة أولاً.\nاستخدم: <code>انشاء دولة </code>[الاسم]", parse_mode="HTML")
             return True
         from modules.city.asset_ui import open_city_store
         open_city_store(message=message, user_id=message.from_user.id, city_id=city_id)
@@ -79,7 +79,7 @@ def city_commands(message):
     # ─── شراء [اسم] [كمية؟] ───
     if first_word == "شراء" and len(text.split()) > 1:
         if not city_id:
-            bot.reply_to(message, "❌ يجب أن يكون لديك دولة أولاً.\nاستخدم: <code>انشاء دولة [الاسم]</code>", parse_mode="HTML")
+            bot.reply_to(message, "❌ يجب أن يكون لديك دولة أولاً.\nاستخدم: <code>انشاء دولة </code>[الاسم]", parse_mode="HTML")
             return True
         success, msg = _handle_buy_command(message, user_id, city_id, text)
         bot.reply_to(message, msg, parse_mode="HTML")

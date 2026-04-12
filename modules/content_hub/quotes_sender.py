@@ -3,12 +3,15 @@ modules/content_hub/quotes_sender.py
 
 Periodic quotes sender — registered with the unified IntervalScheduler.
 
-Only quotes are auto-posted. anecdotes/stories/wisdom/poetry/azkar
-are available on-demand via commands only.
+Auto-posting policy: ONLY quotes and azkar are auto-posted.
+anecdotes / stories / wisdom / poetry are available on-demand only.
 
 Enabling/disabling per group:
-  Admins use: "تفعيل الاقتباسات" / "إيقاف الاقتباسات"
-  These commands update groups.quotes_enabled via toggle_quotes().
+  • From 'الأوامر' panel → 💬 الاقتباسات التلقائية (toggle button)
+  • Or text command: "تفعيل الاقتباسات" / "إيقاف الاقتباسات"
+  These update groups.quotes_enabled via toggle_quotes().
+
+Interval: controlled by bot_constants.quotes_interval_minutes (default 10).
 """
 import time
 

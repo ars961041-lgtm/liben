@@ -160,7 +160,7 @@ def handle_troop_buy(call, data):
 
     troop_type = get_troop_type_by_id(troop_id)
     if not troop_type:
-        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
         return
 
     total_cost = troop_type["base_cost"] * quantity
@@ -174,11 +174,15 @@ def handle_troop_buy(call, data):
     deduct_user_balance(call.from_user.id, total_cost)
     add_city_troops(city_id, troop_id, quantity)
 
+    remaining = get_user_balance(call.from_user.id)
     msg = (
-        f"✅ تم شراء {quantity} × {troop_type['emoji']} {troop_type['name_ar']}\n"
-        f"💸 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"✅ تم الشراء بنجاح\n"
+        f"📦 العنصر: {troop_type['emoji']} {troop_type['name_ar']}\n"
+        f"🔢 الكمية: {quantity}\n"
+        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
+    bot.answer_callback_query(call.id)
     back = [btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])
 
@@ -268,7 +272,7 @@ def handle_equipment_buy(call, data):
 
     eq = get_equipment_type_by_id(eq_id)
     if not eq:
-        bot.answer_callback_query(call.id, "❌ هذالنوع غير موجود", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ هذا النوع غير موجود", show_alert=True)
         return
 
     total_cost = eq["base_cost"] * quantity
@@ -282,11 +286,15 @@ def handle_equipment_buy(call, data):
     deduct_user_balance(call.from_user.id, total_cost)
     add_city_equipment(city_id, eq_id, quantity)
 
+    remaining = get_user_balance(call.from_user.id)
     msg = (
-        f"✅ تم شراء {quantity} × {eq['emoji']} {eq['name_ar']}\n"
-        f"💸 التكلفة: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-        f"💰 الرصيد المتبقي: {balance - total_cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"✅ تم الشراء بنجاح\n"
+        f"📦 العنصر: {eq['emoji']} {eq['name_ar']}\n"
+        f"🔢 الكمية: {quantity}\n"
+        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
+    bot.answer_callback_query(call.id)
     back = [btn("رجوع", "open_equipment_list", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])
 
