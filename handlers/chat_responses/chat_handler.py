@@ -18,7 +18,7 @@ def chat_responses(message):
     text = message.text.strip().lower()
 
     # ===== مناداة البوت =====
-    if any(text.startswith(b) for b in BOT_WORDS):
+    if any(text.startswith(b) for b in BELO_WORDS):
         send_random(message, belo_responses)
         
     elif any(text.startswith(b) for b in BOT_WORDS):
