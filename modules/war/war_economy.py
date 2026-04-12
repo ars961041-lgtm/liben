@@ -101,6 +101,7 @@ def _log_war_cost(user_id, battle_id, action, amount):
 def apply_proportional_losses(country_id, initial_power, final_power):
     """
     يحسب نسبة الخسارة ويطبقها على الجنود والمعدات الفعلية.
+    Health reduces casualties (up to 30%).
     يرجع dict مع تفاصيل الخسائر والمصابين والتالف.
     """
     if initial_power <= 0:
@@ -109,6 +110,10 @@ def apply_proportional_losses(country_id, initial_power, final_power):
     loss_pct = max(0.0, min(1.0, (initial_power - final_power) / initial_power))
     if loss_pct < 0.01:
         return _empty_loss_report()
+
+    # Health reduces actual casualties (up to 30%)
+    health_reduction = _get_country_health_reduction(country_id)
+    effective_loss_pct = loss_pct * (1.0 - health_reduction)
 
     cities = get_all_cities_of_country_by_country_id(country_id)
     if not cities:
@@ -121,20 +126,42 @@ def apply_proportional_losses(country_id, initial_power, final_power):
 
     for city in cities:
         city_id = city["id"] if isinstance(city, dict) else city[0]
-        k, inj = _apply_troop_losses_proportional(city_id, loss_pct)
-        d, dmg = _apply_equipment_losses_proportional(city_id, loss_pct)
+        k, inj = _apply_troop_losses_proportional(city_id, effective_loss_pct)
+        d, dmg = _apply_equipment_losses_proportional(city_id, effective_loss_pct)
         total_killed   += k
         total_injured  += inj
         total_eq_destroyed += d
         total_eq_damaged   += dmg
 
+        # Apply satisfaction penalty from war losses
+        try:
+            from modules.city.city_stats import apply_war_satisfaction_penalty
+            apply_war_satisfaction_penalty(city_id, effective_loss_pct * 100)
+        except Exception:
+            pass
+
     return {
-        "loss_pct":       round(loss_pct * 100, 1),
+        "loss_pct":       round(effective_loss_pct * 100, 1),
         "killed":         total_killed,
         "injured":        total_injured,
         "eq_destroyed":   total_eq_destroyed,
         "eq_damaged":     total_eq_damaged,
     }
+
+
+def _get_country_health_reduction(country_id: int) -> float:
+    """Health stats reduce casualties (up to 30%)."""
+    try:
+        from database.db_queries.assets_queries import calculate_city_effects
+        cities = get_all_cities_of_country_by_country_id(country_id)
+        total = 0.0
+        for city in cities:
+            cid = city["id"] if isinstance(city, dict) else city[0]
+            effects = calculate_city_effects(cid)
+            total += effects.get("health_bonus", 0.0)
+        return min(0.30, total)
+    except Exception:
+        return 0.0
 
 
 def _apply_troop_losses_proportional(city_id, loss_pct):
@@ -291,18 +318,16 @@ def heal_ready_troops(country_id):
 
 
 def get_heal_time_reduction(country_id):
-    """يحسب تخفيض وقت الشفاء من المستشفيات وترقيات التحالف"""
+    """يحسب تخفيض وقت الشفاء من إحصائيات الصحة وترقيات التحالف"""
     reduction = 0
     try:
-        # مستشفيات المدينة
-        from database.db_queries.assets_queries import get_city_assets
+        from database.db_queries.assets_queries import calculate_city_effects
         cities = get_all_cities_of_country_by_country_id(country_id)
         for city in cities:
             cid = city["id"] if isinstance(city, dict) else city[0]
-            assets = get_city_assets(cid)
-            for a in assets:
-                if a.get("name", "").lower() in ("hospital", "clinic"):
-                    reduction += a.get("quantity", 0) * a.get("level", 1) * 300
+            effects = calculate_city_effects(cid)
+            # health_bonus up to 0.25 → up to 25% heal time reduction
+            reduction += int(effects.get("health_bonus", 0.0) * BASE_HEAL_TIME)
     except Exception:
         pass
 

@@ -124,4 +124,13 @@ def handle_shared_commands(message, normalized_text: str, text: str) -> bool:
         send_user_profile(message)
         return True
 
+    # ── التصويت ──
+    if normalized_text in ["إنشاء تصويت", "انشاء تصويت", "بناء تصويت"]:
+        from modules.polls import open_poll_creator
+        open_poll_creator(message)
+        return True
+    if text == "لوحة التصويت":
+        from modules.polls import handle_poll_control_panel
+        return handle_poll_control_panel(message)
+
     return False

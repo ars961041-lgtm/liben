@@ -9,7 +9,9 @@ from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 ALLIANCE_COMMANDS = {
     "تحالفي", "التحالفات", "إنشاء تحالف", "انشاء تحالف",
-    "دعوات التحالف", "الانسحاب من التحالف", "قوة التحالف",
+    "دعوات التحالف", "دعوات تحالف", "دعوة تحالف",
+    "الانسحاب من التحالف", "قوة التحالف",
+    "حوكمة التحالف", "خزينة التحالف", "سمعة التحالف",
 }
 
 
@@ -27,8 +29,12 @@ def alliance_commands(message):
         _create_alliance(message, text)
         return True
 
-    if normalized == "دعوات التحالف":
+    if normalized in ("دعوات التحالف", "دعوات تحالف"):
         _show_invites(message)
+        return True
+
+    if normalized == "دعوة تحالف":
+        _quick_invite(message)
         return True
 
     if normalized in ["الانسحاب من التحالف", "انسحاب من التحالف"]:
@@ -39,6 +45,17 @@ def alliance_commands(message):
         _dissolve_alliance(message)
         return True
 
+    if normalized in ["حوكمة التحالف", "خزينة التحالف", "سمعة التحالف", "حوكمة"]:
+        from modules.alliances.governance_handler import open_governance_menu
+        open_governance_menu(message)
+        return True
+
+    if normalized in ["دبلوماسية التحالف", "دبلوماسية", "معاهدات التحالف",
+                      "توسع التحالف", "اتحادات التحالف"]:
+        from modules.alliances.diplomacy_handler import open_diplomacy_menu
+        open_diplomacy_menu(message)
+        return True
+
     return False
 
 
@@ -46,7 +63,7 @@ def _create_alliance(message, text):
     user_id = message.from_user.id
     name = text.replace("إنشاء تحالف", "").replace("انشاء تحالف", "").strip()
     if not name:
-        bot.reply_to(message, "❌ اكتب اسم التحالف.\nمثال: إنشاء تحالف [الاسم]")
+        bot.reply_to(message, "❌ اكتب اسم التحالف.\nمثال: <code>إنشاء تحالف</code> <b>[الاسم]</b>", parse_mode="HTML")
         return
 
     country = get_country_by_owner(user_id)
@@ -130,3 +147,68 @@ def _dissolve_alliance(message):
                 btn("✅ ابدأ التصويت", "alliance_dissolve_vote_send",
                     data={"aid": alliance["id"]}, owner=(user_id, chat_id), color="d"),
             ], layout=[1], owner_id=user_id)
+
+
+def _quick_invite(message):
+    """دعوة تحالف — رد على رسالة المستخدم المراد دعوته."""
+    user_id = message.from_user.id
+
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        bot.reply_to(message, "↩️ رد على رسالة المستخدم الذي تريد دعوته.")
+        return
+
+    target     = message.reply_to_message.from_user
+    target_id  = target.id
+    target_name = target.first_name or str(target_id)
+
+    if target_id == user_id:
+        bot.reply_to(message, "❌ لا يمكنك دعوة نفسك.")
+        return
+
+    from database.db_queries.alliances_queries import (
+        get_alliance_by_user, send_alliance_invite,
+    )
+    from database.db_queries.countries_queries import get_country_by_owner
+
+    # المُرسِل يجب أن يكون في تحالف
+    alliance = get_alliance_by_user(user_id)
+    if not alliance:
+        bot.reply_to(message, "❌ لست في أي تحالف.")
+        return
+    alliance = dict(alliance)
+
+    # الهدف يجب أن يملك دولة
+    target_country = get_country_by_owner(target_id)
+    if not target_country:
+        bot.reply_to(message, f"❌ <b>{target_name}</b> لا يملك دولة.", parse_mode="HTML")
+        return
+
+    # الهدف يجب ألا يكون في تحالف بالفعل
+    if get_alliance_by_user(target_id):
+        bot.reply_to(message, f"❌ <b>{target_name}</b> بالفعل في تحالف.", parse_mode="HTML")
+        return
+
+    ok, result = send_alliance_invite(alliance["id"], user_id, target_id)
+    if not ok:
+        bot.reply_to(message, result)
+        return
+
+    # إشعار المدعو في الخاص
+    try:
+        from utils.pagination import btn, send_ui
+        owner = (target_id, None)
+        text = (
+            f"📩 <b>دعوة تحالف</b>\n\n"
+            f"🏰 التحالف: <b>{alliance['name']}</b>\n"
+            f"👤 من: <b>{message.from_user.first_name}</b>\n\n"
+            f"اكتب <code>دعوات تحالف</code> للرد على الدعوة."
+        )
+        bot.send_message(target_id, text, parse_mode="HTML")
+    except Exception:
+        pass  # المستخدم لم يبدأ محادثة مع البوت — الدعوة محفوظة في DB
+
+    bot.reply_to(
+        message,
+        f"✅ تم إرسال دعوة التحالف لـ <b>{target_name}</b>.",
+        parse_mode="HTML"
+    )

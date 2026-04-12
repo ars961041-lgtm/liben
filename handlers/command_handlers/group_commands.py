@@ -38,6 +38,33 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     uid = message.from_user.id
     cid = message.chat.id
 
+    # ── رابط المجموعة ──
+    if normalized_text in ("الرابط", "رابط القروب"):
+        _send_group_link(message)
+        return True
+
+    # ── معلومات المستخدم المُشار إليه ──
+    if normalized_text in ("دولته", "تحالفه", "مدينته"):
+        if not message.reply_to_message or not message.reply_to_message.from_user:
+            bot.reply_to(message, "↩️ رد على رسالة المستخدم أولاً.")
+            return True
+        target_id = message.reply_to_message.from_user.id
+        if normalized_text == "دولته":
+            from database.db_queries.countries_queries import get_user_country_name
+            name = get_user_country_name(target_id)
+            bot.reply_to(message, f"🏳️ الدولة: {name}" if name else "لا يوجد")
+        elif normalized_text == "تحالفه":
+            from database.db_queries.alliances_queries import get_alliance_by_user
+            alliance = get_alliance_by_user(target_id)
+            name = alliance.get("name") if alliance else None
+            bot.reply_to(message, f"🤝 التحالف: {name}" if name else "لا يوجد")
+        elif normalized_text == "مدينته":
+            from database.db_queries.cities_queries import get_user_city
+            city = get_user_city(target_id)
+            name = city["name"] if city else None
+            bot.reply_to(message, f"🏙 المدينة: {name}" if name else "لا يوجد")
+        return True
+
     # ── الصياح ──
     if normalized_text == "صيح":
         from handlers.shout_handler import handle_shout
@@ -88,6 +115,24 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             open_post_creator(message)
             return True
 
+    # ── قوائم الإجراءات التأديبية (مشرفون / مطورون) ──
+    if normalized_text in ("المكتومين", "المكتومون"):
+        from handlers.group_admin.moderation_list import show_moderation_list
+        show_moderation_list(message, "muted")
+        return True
+    if normalized_text in ("المحظورين", "المحظورون"):
+        from handlers.group_admin.moderation_list import show_moderation_list
+        show_moderation_list(message, "banned")
+        return True
+    if normalized_text in ("المقيدين", "المقيدون"):
+        from handlers.group_admin.moderation_list import show_moderation_list
+        show_moderation_list(message, "restricted")
+        return True
+    if normalized_text in ("مكتومين سورس", "كتم عالمي قائمة"):
+        from handlers.group_admin.moderation_list import show_moderation_list
+        show_moderation_list(message, "global_muted")
+        return True
+
     # ── قوانين المجموعة ──
     from modules.rules import handle_rules_command
     if handle_rules_command(message):
@@ -137,6 +182,17 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
         if normalized_text in ["دخل", "دخل مدينتي", "جمع الدخل", "اقتصادي"]:
             collect_city_income(message)
             return True
+        if normalized_text in ("ترتيبات", "تصنيفات", "ترتيب المدن", "ترتيب الدول"):
+            from handlers.rankings_handler import handle_rankings_command
+            handle_rankings_command(message)
+            return True
+        if normalized_text in ("اقتصاد مدينتي", "سكان مدينتي", "حالة مدينتي", "مدينة"):
+            if city_commands(message):
+                return True
+        if normalized_text in ("قرار حكومي", "قرارات الدولة", "قراراتي"):
+            from handlers.government_handler import handle_government_command
+            handle_government_command(message)
+            return True
 
     # ── التحالفات ──
     if is_feature_enabled(cid, "enable_games"):
@@ -146,6 +202,17 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     # ── الحرب ──
     if is_feature_enabled(cid, "enable_games"):
         if handle_war_text_commands(message):
+            return True
+
+    # ── الحرب السياسية ──
+    if is_feature_enabled(cid, "enable_games"):
+        if normalized_text in ("الحرب السياسية", "حرب سياسية", "political war", "/political_war"):
+            from modules.war.handlers.political_war_handler import open_political_war_menu
+            open_political_war_menu(message)
+            return True
+        if normalized_text in ("سجل الحروب السياسية", "تاريخ الحروب", "سجل الحروب"):
+            from modules.war.political_history import open_political_history
+            open_political_history(message)
             return True
 
     # ── أوامر إدارة المجموعة ──
@@ -177,6 +244,22 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             ok = toggle_quotes(cid, enable)
             if ok:
                 status = "✅ تم تفعيل الاقتباسات التلقائية." if enable else "❌ تم إيقاف الاقتباسات التلقائية."
+            else:
+                status = "⚠️ تعذّر تحديث الإعداد، تأكد أن المجموعة مسجّلة."
+            bot.reply_to(message, status)
+            return True
+
+        # ── تفعيل / إيقاف الأذكار التلقائية ──
+        if normalized_text in ("تفعيل الأذكار", "إيقاف الأذكار"):
+            from handlers.group_admin.permissions import is_admin as _is_admin
+            if not _is_admin(message):
+                bot.reply_to(message, "❌ هذا الأمر للمشرفين فقط.")
+                return True
+            enable = normalized_text == "تفعيل الأذكار"
+            from modules.content_hub.azkar_sender import toggle_azkar
+            ok = toggle_azkar(cid, enable)
+            if ok:
+                status = "✅ تم تفعيل الأذكار التلقائية." if enable else "❌ تم إيقاف الأذكار التلقائية."
             else:
                 status = "⚠️ تعذّر تحديث الإعداد، تأكد أن المجموعة مسجّلة."
             bot.reply_to(message, status)
@@ -226,6 +309,44 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
         return True
 
     return False
+
+
+def _send_group_link(message):
+    """يرسل رابط دعوة المجموعة مع معلومات المرسل."""
+    from utils.keyboards import ui_btn, build_keyboard
+
+    cid        = message.chat.id
+    user       = message.from_user
+    first_name = user.first_name or ""
+    uid        = user.id
+    group_name = message.chat.title or "المجموعة"
+
+    try:
+        invite_link = bot.export_chat_invite_link(cid)
+    except Exception:
+        invite_link = None
+
+    sender_line = f"<a href='tg://user?id={uid}'>{first_name}</a> (<code>{uid}</code>)"
+
+    if invite_link:
+        text = (
+            f"🔗 <b>رابط المجموعة</b>\n\n"
+            f"👤 الطالب: {sender_line}\n"
+            f"👥 المجموعة: <b>{group_name}</b>\n\n"
+            f"<code>{invite_link}</code>"
+        )
+        buttons = [ui_btn("🔗 رابط المجموعة", url=invite_link)]
+        markup  = build_keyboard(buttons, [1])
+    else:
+        text = (
+            f"⚠️ تعذّر جلب رابط المجموعة.\n\n"
+            f"👤 الطالب: {sender_line}\n"
+            f"👥 المجموعة: <b>{group_name}</b>\n\n"
+            f"تأكد أن البوت يملك صلاحية <b>دعوة المستخدمين</b>."
+        )
+        markup = None
+
+    bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup)
 
 
 def _set_dev_group(message):

@@ -12,6 +12,8 @@ from database.db_queries.alliances_queries import (
     accept_invite, reject_invite, leave_alliance,
     kick_member, transfer_leadership, get_alliance_member_count,
     get_invite_by_id,
+    get_war_momentum,
+    blacklist_country, unblacklist_country, is_country_blacklisted, get_alliance_blacklist,
 )
 from database.db_queries.bank_queries import get_user_balance
 from utils.helpers import get_lines
@@ -46,7 +48,7 @@ def _show_no_alliance_menu(message, user_id, chat_id):
             owner=(user_id, chat_id), color="p"),
     ]
     send_ui(chat_id,
-            text="🏰 <b>نظام التحالفات</b>\n\nلست في أي تحالف حالياً.\nأنشئ تحالفاً: <code>إنشاء تحالف [الاسم]</code>",
+            text="🏰 <b>نظام التحالفات</b>\n\nلست في أي تحالف حالياً.\nأنشئ تحالفاً: <code>إنشاء تحالف </code>[الاسم]",
             buttons=buttons, layout=[2, 1], owner_id=user_id,
             reply_to=message.message_id)
 
@@ -56,11 +58,18 @@ def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=Non
     member_count = get_alliance_member_count(alliance["id"])
     is_leader = alliance["leader_id"] == user_id
 
+    streak = get_war_momentum(alliance["id"])
+    momentum_line = ""
+    if streak > 0:
+        bonus_pct = min(streak, 5) * 2
+        momentum_line = f"🔥 زخم الحرب: {streak} انتصار متتالي (+{bonus_pct}% قوة)\n"
+
     text = (
         f"🏰 <b>تحالف: {alliance['name']}</b>\n"
         f"{get_lines()}\n"
         f"💪 القوة: {power:.0f}\n"
-        f"👥 الأعضاء: {member_count}/{alliance.get('max_countries', 10)}\n\n"
+        f"👥 الأعضاء: {member_count}/{alliance.get('max_countries', 10)}\n"
+        f"{momentum_line}\n"
         f"اختر ما تريد:"
     )
 
@@ -84,6 +93,9 @@ def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=Non
         buttons.append(btn("🛒 شراء ترقية", "alliance_buy_upgrade",
                             data={"aid": alliance["id"], "page": 0},
                             owner=(user_id, owner_chat_id), color="su"))
+        buttons.append(btn("🚫 القائمة السوداء", "alliance_blacklist_view",
+                            data={"aid": alliance["id"]},
+                            owner=(user_id, owner_chat_id), color="d"))
 
     layout = [2, 2, 2] if is_leader else [2, 2, 1]
 
@@ -447,7 +459,7 @@ def back_to_main(call, data):
     alliance = get_alliance_by_user(user_id)
     if not alliance:
         edit_ui(call,
-                text="🏰 <b>نظام التحالفات</b>\n\nلست في أي تحالف.\nأنشئ تحالفاً: <code>إنشاء تحالف [الاسم]</code>",
+                text="🏰 <b>نظام التحالفات</b>\n\nلست في أي تحالف.\nأنشئ تحالفاً: <code>إنشاء تحالف </code>[الاسم]",
                 buttons=[
                     btn("📋 قائمة التحالفات", "alliance_list", data={"page": 0}, owner=(user_id, chat_id)),
                     btn("📩 دعواتي", "alliance_my_invites", data={}, owner=(user_id, chat_id), color="su"),
@@ -612,3 +624,158 @@ def _transfer_to_strongest(alliance_id, alliance):
 
     if best_uid and best_uid != alliance["leader_id"]:
         transfer_leadership(alliance_id, alliance["leader_id"], best_uid)
+
+
+# ══════════════════════════════════════════
+# 🚫 القائمة السوداء
+# ══════════════════════════════════════════
+
+
+@register_action("alliance_blacklist_view")
+def show_blacklist(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    alliance_id = int(data["aid"])
+
+    alliance = get_alliance_by_id(alliance_id)
+    if not alliance or alliance["leader_id"] != user_id:
+        bot.answer_callback_query(call.id, "❌ فقط القائد يمكنه إدارة القائمة السوداء.", show_alert=True)
+        return
+
+    entries = get_alliance_blacklist(alliance_id)
+    if not entries:
+        text = "🚫 <b>القائمة السوداء</b>\n\nلا توجد دول محظورة حالياً."
+    else:
+        text = "🚫 <b>القائمة السوداء</b>\n\n"
+        for e in entries[:10]:
+            reason = e["reason"] or "—"
+            text += f"🏳️ <b>{e['country_name']}</b>\n   📝 {reason}\n\n"
+
+    buttons = [
+        btn("➕ حظر دولة", "alliance_blacklist_add_menu",
+            data={"aid": alliance_id, "page": 0}, owner=(user_id, chat_id), color="d"),
+    ]
+    if entries:
+        buttons.append(btn("🗑 رفع الحظر", "alliance_blacklist_remove_menu",
+                           data={"aid": alliance_id, "page": 0}, owner=(user_id, chat_id), color="su"))
+    buttons.append(btn("🔙 رجوع", "alliance_back_main", data={}, owner=(user_id, chat_id)))
+
+    layout = [1] * len(buttons)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
+
+
+@register_action("alliance_blacklist_add_menu")
+def blacklist_add_menu(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    alliance_id = int(data["aid"])
+    page = int(data.get("page", 0))
+
+    from database.db_queries.countries_queries import get_all_countries
+    alliance = get_alliance_by_id(alliance_id)
+    if not alliance:
+        bot.answer_callback_query(call.id, "❌ التحالف غير موجود")
+        return
+
+    member_country_ids = {m["country_id"] for m in alliance["members"] if m.get("country_id")}
+    blacklisted_ids = {e["country_id"] for e in get_alliance_blacklist(alliance_id)}
+    candidates = [
+        dict(c) for c in get_all_countries()
+        if c["id"] not in member_country_ids and c["id"] not in blacklisted_ids
+    ]
+
+    if not candidates:
+        edit_ui(call, text="❌ لا توجد دول يمكن حظرها.",
+                buttons=[btn("🔙 رجوع", "alliance_blacklist_view",
+                             data={"aid": alliance_id}, owner=(user_id, chat_id))],
+                layout=[1])
+        return
+
+    items, total_pages = paginate_list(candidates, page, per_page=6)
+    buttons = [
+        btn(f"🏳️ {c['name']}", "alliance_blacklist_do_add",
+            data={"aid": alliance_id, "cid": c["id"], "cname": c["name"]},
+            owner=(user_id, chat_id), color="d")
+        for c in items
+    ]
+    nav = []
+    if page > 0:
+        nav.append(btn("◀️", "alliance_blacklist_add_menu",
+                       data={"aid": alliance_id, "page": page - 1}, owner=(user_id, chat_id)))
+    if page < total_pages - 1:
+        nav.append(btn("▶️", "alliance_blacklist_add_menu",
+                       data={"aid": alliance_id, "page": page + 1}, owner=(user_id, chat_id)))
+    nav.append(btn("🔙 رجوع", "alliance_blacklist_view",
+                   data={"aid": alliance_id}, owner=(user_id, chat_id)))
+
+    layout = grid(len(items), 2) + [len(nav)]
+    edit_ui(call, text=f"🚫 اختر دولة لحظرها (صفحة {page+1}/{total_pages}):",
+            buttons=buttons + nav, layout=layout)
+
+
+@register_action("alliance_blacklist_do_add")
+def blacklist_do_add(call, data):
+    user_id = call.from_user.id
+    alliance_id = int(data["aid"])
+    country_id = int(data["cid"])
+    cname = data.get("cname", "")
+
+    ok, msg = blacklist_country(alliance_id, country_id, banned_by=user_id)
+    bot.answer_callback_query(call.id, msg, show_alert=True)
+    if ok:
+        # إلغاء أي دعوات معلقة لهذه الدولة
+        from database.connection import get_db_conn
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE alliance_invites SET status = 'rejected'
+            WHERE alliance_id = ? AND status = 'pending'
+              AND to_user_id IN (
+                  SELECT owner_id FROM countries WHERE id = ?
+              )
+        """, (alliance_id, country_id))
+        conn.commit()
+
+
+@register_action("alliance_blacklist_remove_menu")
+def blacklist_remove_menu(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    alliance_id = int(data["aid"])
+    page = int(data.get("page", 0))
+
+    entries = get_alliance_blacklist(alliance_id)
+    if not entries:
+        bot.answer_callback_query(call.id, "✅ القائمة السوداء فارغة.", show_alert=True)
+        return
+
+    items, total_pages = paginate_list(entries, page, per_page=6)
+    buttons = [
+        btn(f"🗑 {e['country_name']}", "alliance_blacklist_do_remove",
+            data={"aid": alliance_id, "cid": e["country_id"]},
+            owner=(user_id, chat_id), color="su")
+        for e in items
+    ]
+    nav = []
+    if page > 0:
+        nav.append(btn("◀️", "alliance_blacklist_remove_menu",
+                       data={"aid": alliance_id, "page": page - 1}, owner=(user_id, chat_id)))
+    if page < total_pages - 1:
+        nav.append(btn("▶️", "alliance_blacklist_remove_menu",
+                       data={"aid": alliance_id, "page": page + 1}, owner=(user_id, chat_id)))
+    nav.append(btn("🔙 رجوع", "alliance_blacklist_view",
+                   data={"aid": alliance_id}, owner=(user_id, chat_id)))
+
+    layout = grid(len(items), 2) + [len(nav)]
+    edit_ui(call, text=f"🗑 اختر دولة لرفع الحظر عنها (صفحة {page+1}/{total_pages}):",
+            buttons=buttons + nav, layout=layout)
+
+
+@register_action("alliance_blacklist_do_remove")
+def blacklist_do_remove(call, data):
+    alliance_id = int(data["aid"])
+    country_id = int(data["cid"])
+
+    removed = unblacklist_country(alliance_id, country_id)
+    msg = "✅ تم رفع الحظر." if removed else "❌ الدولة غير موجودة في القائمة السوداء."
+    bot.answer_callback_query(call.id, msg, show_alert=True)

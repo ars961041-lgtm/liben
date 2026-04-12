@@ -27,11 +27,26 @@ def create_alliance(name, leader_id, country_id):
 def delete_alliance(alliance_id):
     conn = get_db_conn()
     cursor = conn.cursor()
+    # Capture info before deletion for news
+    cursor.execute("SELECT name, created_at FROM alliances WHERE id=?", (alliance_id,))
+    _row = cursor.fetchone()
+    _name = _row[0] if _row else f"تحالف #{alliance_id}"
+    _created_at = _row[1] if _row else 0
+    cursor.execute("SELECT COUNT(*) FROM alliance_members WHERE alliance_id=?", (alliance_id,))
+    _member_count = cursor.fetchone()[0]
+
     cursor.execute("DELETE FROM alliances WHERE id = ?", (alliance_id,))
     cursor.execute("DELETE FROM alliance_members WHERE alliance_id = ?", (alliance_id,))
     cursor.execute("DELETE FROM alliance_invites WHERE alliance_id = ?", (alliance_id,))
     cursor.execute("DELETE FROM alliance_upgrades WHERE alliance_id = ?", (alliance_id,))
     conn.commit()
+
+    # 📰 News: alliance collapsed
+    try:
+        from modules.magazine.news_generator import on_alliance_collapsed
+        on_alliance_collapsed(alliance_id, _name, _member_count, _created_at)
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════
@@ -102,6 +117,15 @@ def get_alliance_member_count(alliance_id):
 def send_alliance_invite(alliance_id, from_user_id, to_user_id):
     conn = get_db_conn()
     cursor = conn.cursor()
+
+    # فحص القائمة السوداء: هل دولة المدعو محظورة؟
+    from database.db_queries.countries_queries import get_country_by_owner as _gcbo
+    _target_country = _gcbo(to_user_id)
+    if _target_country:
+        _target_cid = dict(_target_country)["id"]
+        if is_country_blacklisted(alliance_id, _target_cid):
+            return False, "🚫 هذه الدولة في القائمة السوداء للتحالف ولا يمكن دعوتها."
+
     # كولداون: دعوة واحدة يومياً لنفس الشخص من نفس التحالف
     day_ago = int(time.time()) - 86400
     cursor.execute("""
@@ -157,6 +181,12 @@ def accept_invite(invite_id):
     from database.db_queries.countries_queries import get_country_by_owner
     country = get_country_by_owner(invite["to_user_id"])
     country_id = dict(country)["id"] if country else None
+
+    # فحص القائمة السوداء
+    if country_id and is_country_blacklisted(invite["alliance_id"], country_id):
+        cursor.execute("UPDATE alliance_invites SET status = 'rejected' WHERE id = ?", (invite_id,))
+        conn.commit()
+        return False, "🚫 دولتك في القائمة السوداء لهذا التحالف."
 
     cursor.execute("""
         INSERT OR IGNORE INTO alliance_members (alliance_id, user_id, country_id, role)
@@ -244,6 +274,11 @@ def _recalc_alliance_power(alliance_id):
     """, (alliance_id,))
     for upg in cursor.fetchall():
         total_power *= (1 + upg[0] * upg[1])
+
+    # تطبيق مكافأة زخم الحرب (+2% لكل انتصار متتالي، حد أقصى +10%)
+    momentum_bonus = get_momentum_bonus(alliance_id)
+    if momentum_bonus > 0:
+        total_power *= (1 + momentum_bonus)
 
     cursor.execute("UPDATE alliances SET power = ? WHERE id = ?", (round(total_power, 2), alliance_id))
     conn.commit()
@@ -433,3 +468,128 @@ def get_alliance_effect(alliance_id, effect_type):
     """, (alliance_id, effect_type))
     row = cursor.fetchone()
     return float(row[0]) if row else 0.0
+
+
+# ══════════════════════════════════════════
+# 🔥 زخم الحرب (War Momentum)
+# ══════════════════════════════════════════
+
+MOMENTUM_BONUS_PER_WIN = 0.02   # +2% per consecutive win
+MOMENTUM_MAX_STREAK    = 5      # cap at 5 wins → +10%
+
+
+def get_war_momentum(alliance_id):
+    """Returns the current win streak for an alliance (0 if none)."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT win_streak FROM alliance_war_momentum WHERE alliance_id = ?",
+        (alliance_id,)
+    )
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
+def get_momentum_bonus(alliance_id):
+    """Returns the power multiplier bonus from momentum (0.0 – 0.10)."""
+    streak = get_war_momentum(alliance_id)
+    return min(streak, MOMENTUM_MAX_STREAK) * MOMENTUM_BONUS_PER_WIN
+
+
+def record_war_result(alliance_id, won: bool):
+    """
+    Increments streak on win (capped at MOMENTUM_MAX_STREAK),
+    resets to 0 on loss. Upserts the momentum row.
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT win_streak FROM alliance_war_momentum WHERE alliance_id = ?",
+        (alliance_id,)
+    )
+    row = cursor.fetchone()
+    current = row[0] if row else 0
+
+    new_streak = min(current + 1, MOMENTUM_MAX_STREAK) if won else 0
+
+    cursor.execute("""
+        INSERT INTO alliance_war_momentum (alliance_id, win_streak, last_updated)
+        VALUES (?, ?, strftime('%s','now'))
+        ON CONFLICT(alliance_id) DO UPDATE SET
+            win_streak   = excluded.win_streak,
+            last_updated = excluded.last_updated
+    """, (alliance_id, new_streak))
+    conn.commit()
+
+    # 📰 News: alliance victory streak
+    if won and new_streak >= 2:
+        try:
+            from modules.magazine.news_generator import on_alliance_victory_streak
+            conn2 = get_db_conn()
+            cur2  = conn2.cursor()
+            cur2.execute("SELECT name FROM alliances WHERE id=?", (alliance_id,))
+            row = cur2.fetchone()
+            alliance_name = row[0] if row else f"تحالف #{alliance_id}"
+            bonus_pct = min(new_streak, MOMENTUM_MAX_STREAK) * int(MOMENTUM_BONUS_PER_WIN * 100)
+            on_alliance_victory_streak(alliance_id, alliance_name, new_streak, bonus_pct)
+        except Exception:
+            pass
+
+    return new_streak
+
+
+# ══════════════════════════════════════════
+# 🚫 القائمة السوداء للتحالف (Alliance Blacklist)
+# ══════════════════════════════════════════
+
+def blacklist_country(alliance_id, country_id, banned_by, reason=""):
+    """Add a country to the alliance blacklist. Returns (ok, message)."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO alliance_blacklist (alliance_id, country_id, banned_by, reason)
+            VALUES (?, ?, ?, ?)
+        """, (alliance_id, country_id, banned_by, reason))
+        conn.commit()
+        return True, "✅ تمت إضافة الدولة إلى القائمة السوداء."
+    except Exception:
+        return False, "❌ الدولة موجودة بالفعل في القائمة السوداء."
+
+
+def unblacklist_country(alliance_id, country_id):
+    """Remove a country from the alliance blacklist."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM alliance_blacklist
+        WHERE alliance_id = ? AND country_id = ?
+    """, (alliance_id, country_id))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def is_country_blacklisted(alliance_id, country_id):
+    """Returns True if the country is blacklisted from this alliance."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id FROM alliance_blacklist
+        WHERE alliance_id = ? AND country_id = ?
+    """, (alliance_id, country_id))
+    return cursor.fetchone() is not None
+
+
+def get_alliance_blacklist(alliance_id):
+    """Returns all blacklist entries for an alliance."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ab.id, ab.country_id, c.name AS country_name,
+               ab.reason, ab.banned_by, ab.created_at
+        FROM alliance_blacklist ab
+        JOIN countries c ON ab.country_id = c.id
+        WHERE ab.alliance_id = ?
+        ORDER BY ab.created_at DESC
+    """, (alliance_id,))
+    return [dict(r) for r in cursor.fetchall()]

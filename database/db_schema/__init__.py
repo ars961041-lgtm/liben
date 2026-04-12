@@ -1,4 +1,8 @@
 from database.db_schema.banks import create_banks_tables
+from database.db_schema.political_war import create_political_war_tables
+from database.db_schema.alliance_governance import create_alliance_governance_tables
+from database.db_schema.alliance_diplomacy import create_alliance_diplomacy_tables
+from database.db_schema.alliance_extras import create_alliance_extras_tables
 from database.db_schema.user_timezone import create_user_timezone_table
 from database.db_schema.daily_tasks import create_daily_tasks_pool_table
 from .users import create_users_table
@@ -14,6 +18,7 @@ from .war_economy import create_war_economy_tables
 from .war_balance import create_war_balance_tables
 from .war_extensions import create_war_extension_tables
 from .progression import create_progression_tables
+from .city_progression import create_city_progression_tables
 
 def create_all_tables():
     # users أولاً — جميع الجداول الأخرى تعتمد على users(user_id) كـ FK
@@ -36,6 +41,7 @@ def create_all_tables():
     create_war_balance_tables()
     create_war_extension_tables()
     create_progression_tables()
+    create_city_progression_tables()
     # daily_tasks آخراً لأنه يعتمد على cities(id) كـ FK
     create_daily_tasks_pool_table()
 
@@ -44,6 +50,11 @@ def create_all_tables():
 
     from modules.magazine.magazine_db import create_magazine_tables
     create_magazine_tables()
+
+    from modules.magazine.news_db import create_news_tables
+    create_news_tables()
+
+    import modules.magazine.news_handler  # noqa: F401 — registers @register_action
 
     from database.db_schema.azkar import create_azkar_tables
     create_azkar_tables()
@@ -54,13 +65,21 @@ def create_all_tables():
     from modules.rules.rules_db import create_rules_table
     create_rules_table()
 
+    from database.db_schema.polls import create_polls_tables
+    create_polls_tables()
+
+    import modules.polls.poll_handler  # noqa: F401 — registers @register_action
+
     from modules.quran.quran_db import create_tables as create_quran_tables
     create_quran_tables()
 
     from database.db_schema.whispers import create_whispers_table
     create_whispers_table()
 
-    # تسجيل معالجات أزرار الهمسات
     import modules.whispers.whisper_handler  # noqa: F401 — registers @register_action
+
+    create_political_war_tables()
+    create_alliance_governance_tables()
+    create_alliance_diplomacy_tables()
 
     print("✅ تم إنشاء جميع جداول قاعدة البيانات بنجاح.")

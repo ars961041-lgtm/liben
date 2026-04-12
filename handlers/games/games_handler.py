@@ -11,6 +11,7 @@ from utils.helpers import get_lines
 B  = "p"
 BK = "d"
 R  = "d"
+GR = "su"
 
 
 # ══════════════════════════════════════════
@@ -62,6 +63,25 @@ def _send_games_menu(message):
 # عرض تفاصيل اللعبة
 # ══════════════════════════════════════════
 
+def _page_buttons(action: str, extra: dict, total: int, current: int, owner: tuple) -> tuple:
+    """
+    Builds numbered page buttons (1-based display, 0-based index).
+    Returns (buttons_list, layout_list). 4 per row.
+    Current page uses 'success' style; all others use default 'primary'.
+    """
+    page_btns = []
+    for i in range(total):
+        color = GR if i == current else B
+        page_btns.append(btn(str(i + 1), action, {**extra, "p": i}, color=color, owner=owner))
+
+    rows = []
+    for i in range(0, len(page_btns), 4):
+        rows.append(page_btns[i:i + 4])
+
+    layout = [len(r) for r in rows]
+    return [b for r in rows for b in r], layout
+
+
 @register_action("game_detail")
 def _on_game_detail(call, data):
     gid   = data.get("gid")
@@ -89,20 +109,13 @@ def _on_game_detail(call, data):
     if total > 1:
         text += f"\n\n📄 صفحة {page + 1} / {total}"
 
-    buttons = []
-    nav = []
-    if page < total - 1:
-        nav.append(btn("التالي ◀️", "game_detail", {"gid": gid, "p": page + 1}, color=B, owner=owner))
-    if page > 0:
-        nav.append(btn("▶️ السابق", "game_detail", {"gid": gid, "p": page - 1}, color=B, owner=owner))
+    pg_btns, pg_layout = _page_buttons("game_detail", {"gid": gid}, total, page, owner)
 
-    if nav:
-        buttons.extend(nav)
-
-    buttons.append(btn("🔙 قائمة الألعاب", "game_back_menu", color=BK, owner=owner))
-    buttons.append(btn("❌ إخفاء",          "game_hide",       color=R,  owner=owner))
-
-    layout = ([len(nav)] if nav else []) + [2]
+    buttons = pg_btns + [
+        btn("🔙 قائمة الألعاب", "game_back_menu", color=BK, owner=owner),
+        btn("❌ إخفاء",          "game_hide",       color=R,  owner=owner),
+    ]
+    layout = pg_layout + [2]
     edit_ui(call, text=text, buttons=buttons, layout=layout)
 
 

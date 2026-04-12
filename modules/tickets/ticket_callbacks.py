@@ -7,15 +7,17 @@ from modules.tickets.ticket_db import (
     get_ticket, get_tickets_paginated, count_tickets,
     get_ticket_messages, get_stats,
     get_user_tickets, count_user_tickets,
+    get_banned_users_paginated, count_banned_users,
 )
 from modules.tickets.ticket_handler import (
     CATEGORIES, DEVELOPERS, _get_dev_group_id,
     is_developer, close_ticket_action,
     handle_category_selection, set_awaiting_dev_reply,
+    confirm_and_send_ticket, cancel_pending_ticket,
     _escape,
 )
 import time as _time
-from utils.helpers import get_lines
+from utils.helpers import get_lines, send_bot_profile
 
 
 # ══════════════════════════════════════════
@@ -25,6 +27,103 @@ from utils.helpers import get_lines
 @register_action("ticket_cat")
 def on_ticket_category(call, data):
     handle_category_selection(call, data)
+
+
+# ══════════════════════════════════════════
+# ✅ تأكيد / إلغاء إرسال التذكرة
+# ══════════════════════════════════════════
+
+@register_action("ticket_confirm_send")
+def on_ticket_confirm(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    bot.answer_callback_query(call.id)
+
+    ok, ticket_id = confirm_and_send_ticket(user_id, chat_id)
+    if not ok:
+        try:
+            bot.edit_message_text(
+                "⚠️ انتهت صلاحية التذكرة. أرسل تذكرة جديدة.",
+                chat_id, call.message.message_id
+            )
+        except Exception:
+            pass
+        return
+
+    from utils.helpers import send_bot_profile
+    from core.personality import success_msg
+
+    caption = (
+        f"{success_msg()}\n\n"
+        f"🎫 رقم التذكرة: <b>#{ticket_id}</b>\n\n"
+        f"📨 سيتم إرسال الرد إليك في <b>خاص البوت</b>.\n"
+        f"⚠️ إذا لم تكن قد راسلت البوت من قبل، اضغط الزر بالأسفل واضغط على بدء."
+    )
+    try:
+        bot.edit_message_text(
+            f"✅ <b>تم إرسال التذكرة #{ticket_id} بنجاح</b>",
+            chat_id, call.message.message_id, parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+    send_bot_profile(
+        chat_id=chat_id,
+        caption=caption,
+        open_pm_button=True,
+    )
+
+
+@register_action("ticket_cancel_send")
+def on_ticket_cancel(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    cancel_pending_ticket(user_id)
+    bot.answer_callback_query(call.id, "❌ تم إلغاء التذكرة", show_alert=False)
+
+    try:
+        bot.edit_message_text(
+            "❌ <b>تم إلغاء التذكرة</b>\n\nيمكنك إرسال تذكرة جديدة في أي وقت.",
+            chat_id, call.message.message_id, parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════
+# 🚫 حظر مستخدم من التذاكر
+# ══════════════════════════════════════════
+
+@register_action("ticket_ban_user")
+def on_ticket_ban_user(call, data):
+    dev_id  = call.from_user.id
+    user_id = int(data["uid"])
+
+    if not is_developer(dev_id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+
+    from modules.tickets.ticket_db import ban_ticket_user, is_ticket_banned
+    if is_ticket_banned(user_id):
+        bot.answer_callback_query(call.id, "⚠️ المستخدم محظور بالفعل", show_alert=True)
+        return
+
+    ban_ticket_user(user_id)
+    bot.answer_callback_query(call.id, f"🚫 تم حظر المستخدم {user_id} من التذاكر", show_alert=True)
+
+    # إشعار المستخدم
+    try:
+        bot.send_message(
+            user_id,
+            "🚫 <b>تم تقييد وصولك لنظام التذاكر</b>\n\n"
+            "لا يمكنك إرسال تقارير في الوقت الحالي.\n"
+            "إذا كنت تعتقد أن هذا خطأ، تواصل مع المشرف.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════
@@ -456,6 +555,22 @@ def handle_ticket_commands(message):
         open_admin_panel(message)
         return True
 
+    # ─── قائمة المحظورين (مطور فقط) ───
+    if normalized == "تذكرة محظورين":
+        if not is_developer(user_id):
+            bot.reply_to(message, "❌ هذا الأمر للمطورين فقط.")
+            return True
+        _show_banned_list(chat_id, user_id, page=0, reply_to=message.message_id)
+        return True
+
+    # ─── رفع حظر مستخدم: تذكرة رفع <user_id> (مطور فقط) ───
+    if normalized.startswith("تذكرة رفع "):
+        if not is_developer(user_id):
+            bot.reply_to(message, "❌ هذا الأمر للمطورين فقط.")
+            return True
+        _handle_unban_command(message, text)
+        return True
+
     # ─── رد المطور في المجموعة ───
     if chat_id == _get_dev_group_id() and is_developer(user_id):
         from modules.tickets.ticket_handler import handle_dev_reply
@@ -463,6 +578,163 @@ def handle_ticket_commands(message):
             return True
 
     return False
+
+
+# ══════════════════════════════════════════
+# 🚫 قائمة المحظورين
+# ══════════════════════════════════════════
+
+_BANS_PER_PAGE = 20
+
+
+def _get_user_display_name(entry: dict) -> str:
+    """يرجع اسم المستخدم أو 'Unknown' مع ضمان LTR."""
+    name = (entry.get("name") or "").strip()
+    return name if name else "Unknown"
+
+
+def _build_banned_list_text(entries: list, page: int, total: int) -> str:
+    total_pages = max(1, (total + _BANS_PER_PAGE - 1) // _BANS_PER_PAGE)
+    lines = [
+        f"\u200f🚫 <b>المحظورون من التذاكر</b>",
+        f"\u200f{get_lines()}",
+        f"\u200fالصفحة {page + 1}/{total_pages} — الإجمالي: {total}",
+        "",
+    ]
+    for i, entry in enumerate(entries, start=page * _BANS_PER_PAGE + 1):
+        name    = _get_user_display_name(entry)
+        uid     = entry["user_id"]
+        # LTR formatting: number | ID | Name
+        lines.append(f"\u200e{i}. ID: <code>{uid}</code> | Name: {name}")
+    return "\n".join(lines)
+
+
+def _show_banned_list(chat_id, owner_id, page: int, reply_to=None):
+    total   = count_banned_users()
+    entries = get_banned_users_paginated(page, _BANS_PER_PAGE)
+    total_pages = max(1, (total + _BANS_PER_PAGE - 1) // _BANS_PER_PAGE)
+
+    if total == 0:
+        bot.send_message(chat_id, "✅ لا يوجد مستخدمون محظورون حالياً.",
+                         reply_to_message_id=reply_to)
+        return
+
+    text    = _build_banned_list_text(entries, page, total)
+    owner   = (owner_id, chat_id)
+    buttons = []
+
+    if page > 0:
+        buttons.append(btn("➡️ السابق", "ticket_bans_page",
+                           data={"page": page - 1}, owner=owner))
+    if page < total_pages - 1:
+        buttons.append(btn("⬅️ التالي", "ticket_bans_page",
+                           data={"page": page + 1}, owner=owner))
+    buttons.append(btn("❌ إغلاق", "ticket_bans_close", data={}, owner=owner, color="d"))
+
+    nav_count = len(buttons)
+    layout    = [nav_count] if nav_count else [1]
+
+    send_ui(chat_id, text=text, buttons=buttons, layout=layout,
+            owner_id=owner_id, reply_to=reply_to)
+
+
+@register_action("ticket_bans_page")
+def on_bans_page(call, data):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if not is_developer(user_id):
+        bot.answer_callback_query(call.id, "❌ للمطورين فقط", show_alert=True)
+        return
+
+    page    = int(data.get("page", 0))
+    total   = count_banned_users()
+    entries = get_banned_users_paginated(page, _BANS_PER_PAGE)
+    total_pages = max(1, (total + _BANS_PER_PAGE - 1) // _BANS_PER_PAGE)
+
+    text    = _build_banned_list_text(entries, page, total)
+    owner   = (user_id, chat_id)
+    buttons = []
+
+    if page > 0:
+        buttons.append(btn("➡️ السابق", "ticket_bans_page",
+                           data={"page": page - 1}, owner=owner))
+    if page < total_pages - 1:
+        buttons.append(btn("⬅️ التالي", "ticket_bans_page",
+                           data={"page": page + 1}, owner=owner))
+    buttons.append(btn("❌ إغلاق", "ticket_bans_close", data={}, owner=owner, color="d"))
+
+    nav_count = len(buttons)
+    layout    = [nav_count] if nav_count else [1]
+
+    bot.answer_callback_query(call.id)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
+
+
+@register_action("ticket_bans_close")
+def on_bans_close(call, data):
+    bot.answer_callback_query(call.id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════
+# 🔓 رفع الحظر
+# ══════════════════════════════════════════
+
+def _handle_unban_command(message, text: str):
+    """يعالج أمر 'تذكرة رفع <user_id>'."""
+    from modules.tickets.ticket_db import unban_ticket_user, is_ticket_banned
+
+    parts = text.strip().split()
+    # parts: ["تذكرة", "رفع", "<user_id>"]
+    if len(parts) < 3 or not parts[2].isdigit():
+        bot.reply_to(message,
+                     "⚠️ <b>صيغة خاطئة</b>\n\n"
+                     "الاستخدام الصحيح:\n"
+                     "<code>تذكرة رفع &lt;user_id&gt;</code>",
+                     parse_mode="HTML")
+        return
+
+    target_id = int(parts[2])
+
+    if not is_ticket_banned(target_id):
+        bot.reply_to(message,
+                     f"⚠️ المستخدم <code>{target_id}</code> غير محظور.",
+                     parse_mode="HTML")
+        return
+
+    # جلب الاسم من DB
+    try:
+        from database.db_queries.users_queries import get_user_id_by_username as _dummy
+        from database.connection import get_db_conn
+        conn   = get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM users WHERE user_id = ?", (target_id,))
+        row    = cursor.fetchone()
+        name   = (row[0] or "Unknown").strip() if row else "Unknown"
+    except Exception:
+        name = "Unknown"
+
+    unban_ticket_user(target_id)
+
+    bot.reply_to(message,
+                 f"✅ <b>تم رفع الحظر</b>\n\n"
+                 f"\u200eID: <code>{target_id}</code> | Name: {name}",
+                 parse_mode="HTML")
+
+    # إشعار المستخدم
+    try:
+        bot.send_message(
+            target_id,
+            "✅ <b>تم رفع تقييد التذاكر عنك</b>\n\n"
+            "يمكنك الآن إرسال تقارير للمطور مجدداً.",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 
 def handle_ticket_media(message):

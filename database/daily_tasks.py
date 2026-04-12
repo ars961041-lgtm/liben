@@ -143,6 +143,40 @@ def _do_daily_event():
 
 
 @register_daily
+def run_city_progression():
+    """Daily population growth, satisfaction drift, and XP awards for all cities."""
+    if not _table_exists("cities"):
+        return
+    _safe(_do_city_progression)
+
+def _do_city_progression():
+    from modules.city.city_stats import run_city_progression_tick
+    run_city_progression_tick()
+
+
+@register_daily
+def run_city_simulation():
+    """Daily rebellion, smart migration, population upkeep, internal economy."""
+    if not _table_exists("cities"):
+        return
+    _safe(_do_city_simulation)
+
+def _do_city_simulation():
+    from modules.city.city_simulation import run_simulation_tick
+    run_simulation_tick()
+
+
+@register_daily
+def expire_government_decisions():
+    """Expire old government decisions."""
+    _safe(_do_expire_decisions)
+
+def _do_expire_decisions():
+    from modules.city.government_decisions import expire_old_decisions
+    expire_old_decisions()
+
+
+@register_daily
 def publish_magazine_rankings():
     """Publishes weekly rankings on Monday and monthly rankings on the 1st."""
     _safe(_do_weekly_rankings)
@@ -157,6 +191,26 @@ def _do_monthly_rankings():
     maybe_publish_monthly()
 
 
+@register_daily
+def check_richest_player_change():
+    """Publishes a news post if the richest player has changed since yesterday."""
+    _safe(_do_richest_check)
+
+_last_richest_id: int = 0
+
+def _do_richest_check():
+    global _last_richest_id
+    from database.db_queries.tops_queries import get_top_richest
+    from modules.magazine.news_generator import on_richest_player_changed
+    top = get_top_richest(1)
+    if not top:
+        return
+    player = top[0]
+    if player["id"] != _last_richest_id:
+        _last_richest_id = player["id"]
+        on_richest_player_changed(player["name"], float(player["value"]))
+
+
 # ══════════════════════════════════════════════════════════════════
 # ── INTERVAL JOBS (every 5 minutes) ──────────────────────────────
 # ══════════════════════════════════════════════════════════════════
@@ -169,6 +223,16 @@ def send_quotes():
 def _do_send_quotes():
     from modules.content_hub.quotes_sender import send_periodic_quotes
     send_periodic_quotes()
+
+
+@register_interval
+def send_azkar():
+    """Sends periodic azkar to groups where azkar_enabled=1."""
+    _safe(_do_send_azkar)
+
+def _do_send_azkar():
+    from modules.content_hub.azkar_sender import send_periodic_azkar
+    send_periodic_azkar()
 
 
 @register_interval
@@ -325,3 +389,269 @@ def run_daily_tasks():
     _safe(check_season)
     _safe(delete_old_invites)
     _safe(cleanup_old_whispers)
+
+
+# ══════════════════════════════════════════════════════════════════
+# ── POLITICAL WAR — INTERVAL JOB ─────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+
+@register_interval
+def close_expired_polls():
+    """يُغلق التصويتات التي انتهى وقتها كل 5 دقائق — بديل موثوق عن threading.Timer."""
+    if not _table_exists("polls"):
+        return
+    _safe(_do_close_expired_polls)
+
+def _do_close_expired_polls():
+    from database.db_queries.polls_queries import get_expired_polls, close_poll
+    from modules.polls.poll_closer import close_expired_poll
+    for poll in get_expired_polls():
+        try:
+            close_expired_poll(poll)
+        except Exception as e:
+            print(f"[polls] خطأ في إغلاق تصويت #{poll['id']}: {e}")
+
+
+@register_interval
+def resolve_expired_political_war_votes():
+    """يُعالج حروب التصويت التي انتهت مدتها كل 5 دقائق."""
+    if not _table_exists("political_wars"):
+        return
+    _safe(_do_resolve_political_wars)
+
+def _do_resolve_political_wars():
+    from database.db_queries.political_war_queries import (
+        get_voting_wars_expired, get_preparation_wars_ready,
+    )
+    from modules.war.services.political_war_service import resolve_voting, resolve_preparation
+
+    # معالجة التصويت المنتهي
+    for war in get_voting_wars_expired():
+        try:
+            success, msg = resolve_voting(war["id"])
+            print(f"[political_war] تصويت حرب #{war['id']}: {msg}")
+        except Exception as e:
+            print(f"[political_war] خطأ في حرب #{war['id']}: {e}")
+
+    # معالجة التحضير المنتهي → بدء الحرب
+    for war in get_preparation_wars_ready():
+        try:
+            success, msg = resolve_preparation(war["id"])
+            print(f"[political_war] تحضير حرب #{war['id']}: {msg}")
+        except Exception as e:
+            print(f"[political_war] خطأ في تحضير حرب #{war['id']}: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# ── ALLIANCE GOVERNANCE — DAILY + WEEKLY JOBS ────────────────────
+# ══════════════════════════════════════════════════════════════════
+
+@register_daily
+def collect_alliance_taxes_job():
+    """يجمع ضرائب التحالفات يومياً."""
+    if not _table_exists("alliance_tax_config"):
+        return
+    _safe(_do_collect_taxes)
+
+def _do_collect_taxes():
+    from database.db_queries.alliance_governance_queries import collect_alliance_taxes
+    collect_alliance_taxes()
+    print("[alliance_governance] تم جمع ضرائب التحالفات.")
+
+
+@register_daily
+def refresh_alliance_titles_job():
+    """يُعيد حساب الألقاب الأسبوعية (يُشغَّل يومياً، يتحقق داخلياً من اليوم)."""
+    if not _table_exists("alliance_titles"):
+        return
+    _safe(_do_refresh_titles)
+
+def _do_refresh_titles():
+    from database.db_queries.alliance_governance_queries import refresh_all_titles
+    refresh_all_titles()
+    print("[alliance_governance] تم تحديث ألقاب التحالفات.")
+
+
+@register_daily
+def alliance_reputation_decay_job():
+    """يُطبّق خصم السمعة الأسبوعي على التحالفات الخاملة."""
+    if not _table_exists("alliance_reputation"):
+        return
+    _safe(_do_reputation_decay)
+
+def _do_reputation_decay():
+    from database.connection import get_db_conn
+    from database.db_queries.alliance_governance_queries import update_alliance_reputation
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    # التحالفات التي لم تشارك في أي حرب خلال 7 أيام
+    week_ago = int(__import__("time").time()) - 7 * 86400
+    cursor.execute("""
+        SELECT DISTINCT a.id FROM alliances a
+        LEFT JOIN political_war_members pwm ON pwm.country_id IN (
+            SELECT country_id FROM alliance_members WHERE alliance_id = a.id
+        ) AND pwm.joined_at > ?
+        WHERE pwm.war_id IS NULL
+    """, (week_ago,))
+    inactive = cursor.fetchall()
+    for (aid,) in inactive:
+        update_alliance_reputation(aid, "weekly_decay", "خمول أسبوعي")
+
+
+# ══════════════════════════════════════════════════════════════════
+# ── ALLIANCE DIPLOMACY — DAILY JOBS ──────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+
+@register_daily
+def expire_treaties_job():
+    """يُنهي المعاهدات المنتهية الصلاحية يومياً."""
+    if not _table_exists("alliance_treaties"):
+        return
+    _safe(_do_expire_treaties)
+
+def _do_expire_treaties():
+    from database.db_queries.alliance_diplomacy_queries import expire_old_treaties
+    expire_old_treaties()
+
+
+@register_daily
+def decay_influence_job():
+    """يُطبّق تناقص النفوذ اليومي."""
+    if not _table_exists("alliance_influence"):
+        return
+    _safe(_do_decay_influence)
+
+def _do_decay_influence():
+    from database.db_queries.alliance_diplomacy_queries import decay_influence
+    decay_influence()
+
+
+@register_daily
+def apply_balance_rules_job():
+    """يُطبّق قواعد التوازن على جميع التحالفات يومياً."""
+    if not _table_exists("alliance_balance_log"):
+        return
+    _safe(_do_balance_rules)
+
+def _do_balance_rules():
+    from database.connection import get_db_conn
+    from database.db_queries.alliance_diplomacy_queries import apply_balance_rules
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM alliances")
+    for (aid,) in cursor.fetchall():
+        try:
+            apply_balance_rules(aid)
+        except Exception:
+            pass
+
+
+@register_interval
+def compute_intelligence_job():
+    """يُحدّث بيانات الاستخبارات لجميع التحالفات كل 5 دقائق."""
+    if not _table_exists("alliance_intelligence"):
+        return
+    _safe(_do_compute_intel)
+
+def _do_compute_intel():
+    from database.connection import get_db_conn
+    from database.db_queries.alliance_diplomacy_queries import compute_intelligence
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM alliances")
+    for (aid,) in cursor.fetchall():
+        try:
+            compute_intelligence(aid)
+        except Exception:
+            pass
+
+
+@register_daily
+def loyalty_decay_job():
+    """
+    يُطبّق تناقص الولاء اليومي على جميع أعضاء التحالفات.
+
+    القواعد:
+      - -1 يومياً لكل عضو (خمول عام)
+      - -2 إضافية إذا تجاهل العضو حرباً في آخر 24 ساعة
+      - لا تنخفض عن 0
+    """
+    if not _table_exists("alliance_loyalty"):
+        return
+    _safe(_do_loyalty_decay)
+
+def _do_loyalty_decay():
+    from database.connection import get_db_conn
+    from database.db_queries.political_war_queries import update_loyalty
+
+    conn   = get_db_conn()
+    cursor = conn.cursor()
+
+    # جلب جميع سجلات الولاء
+    cursor.execute("""
+        SELECT al.alliance_id, al.country_id, al.user_id, al.loyalty_score
+        FROM alliance_loyalty al
+    """)
+    members = cursor.fetchall()
+
+    # الدول التي تجاهلت حرباً في آخر 24 ساعة
+    # (سُجّل لها حدث 'voted_neutral' أو لم تصوّت في حرب انتهت خلال 24 ساعة)
+    day_ago = int(__import__("time").time()) - 86400
+    cursor.execute("""
+        SELECT DISTINCT pl.country_id
+        FROM political_war_log pl
+        JOIN political_wars pw ON pl.war_id = pw.id
+        WHERE pl.event_type IN ('voted_neutral')
+          AND pl.created_at >= ?
+        UNION
+        SELECT DISTINCT am.country_id
+        FROM alliance_members am
+        JOIN political_wars pw ON (
+            pw.attacker_alliance_id = am.alliance_id
+            OR pw.defender_alliance_id = am.alliance_id
+        )
+        WHERE pw.status IN ('ended','cancelled')
+          AND pw.ended_at >= ?
+          AND am.country_id NOT IN (
+              SELECT country_id FROM political_war_members
+              WHERE war_id = pw.id
+          )
+    """, (day_ago, day_ago))
+    ignored_countries = {row[0] for row in cursor.fetchall()}
+
+    for m in members:
+        aid        = m["alliance_id"]
+        cid        = m["country_id"]
+        uid        = m["user_id"]
+        score      = float(m["loyalty_score"])
+
+        if score <= 0:
+            continue   # لا داعي لتحديث من هو عند الصفر
+
+        # -1 يومياً للجميع
+        delta = -1.0
+        # -2 إضافية لمن تجاهل حرباً
+        if cid in ignored_countries:
+            delta -= 2.0
+
+        update_loyalty(aid, cid, uid, delta)
+
+
+@register_daily
+def recalc_influence_job():
+    """يُعيد حساب النفوذ بناءً على فارق القوة يومياً."""
+    if not _table_exists("alliance_influence"):
+        return
+    _safe(_do_recalc_influence)
+
+def _do_recalc_influence():
+    from database.connection import get_db_conn
+    from modules.alliances.diplomacy_service import recalc_influence_from_power
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM alliances")
+    for (aid,) in cursor.fetchall():
+        try:
+            recalc_influence_from_power(aid)
+        except Exception:
+            pass

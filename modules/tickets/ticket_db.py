@@ -33,6 +33,8 @@ def create_ticket_tables():
         message_id INTEGER,
         message_type TEXT DEFAULT 'text',
         content TEXT,
+        file_id TEXT,
+        file_unique_id TEXT,
         created_at INTEGER DEFAULT (strftime('%s','now')),
         FOREIGN KEY (ticket_id) REFERENCES tickets(id)
     )
@@ -45,6 +47,14 @@ def create_ticket_tables():
         count INTEGER DEFAULT 0,
         last_used INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, date)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ticket_bans (
+        user_id INTEGER PRIMARY KEY,
+        banned_at INTEGER DEFAULT (strftime('%s','now')),
+        reason TEXT
     )
     """)
 
@@ -174,14 +184,15 @@ def get_ticket_by_group_msg(msg_id):
 # ══════════════════════════════════════════
 
 def add_ticket_message(ticket_id, sender, message_id=None,
-                       message_type="text", content=None):
+                       message_type="text", content=None,
+                       file_id=None, file_unique_id=None):
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO ticket_messages
-        (ticket_id, sender, message_id, message_type, content)
-        VALUES (?, ?, ?, ?, ?)
-    """, (ticket_id, sender, message_id, message_type, content))
+        (ticket_id, sender, message_id, message_type, content, file_id, file_unique_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (ticket_id, sender, message_id, message_type, content, file_id, file_unique_id))
     conn.commit()
     return cursor.lastrowid
 
@@ -276,3 +287,52 @@ def get_stats():
         "closed": closed_count,
         "total":  total_count,
     }
+
+
+# ══════════════════════════════════════════
+# 🚫 حظر المستخدمين من التذاكر
+# ══════════════════════════════════════════
+
+def ban_ticket_user(user_id, reason=None):
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO ticket_bans (user_id, banned_at, reason)
+        VALUES (?, strftime('%s','now'), ?)
+    """, (user_id, reason))
+    conn.commit()
+
+
+def unban_ticket_user(user_id):
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ticket_bans WHERE user_id = ?", (user_id,))
+    conn.commit()
+
+
+def is_ticket_banned(user_id) -> bool:
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM ticket_bans WHERE user_id = ?", (user_id,))
+    return cursor.fetchone() is not None
+
+
+def get_banned_users_paginated(page=0, per_page=20):
+    """يرجع قائمة المحظورين مع أسمائهم من جدول users."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT b.user_id, b.banned_at, COALESCE(u.name, '') AS name
+        FROM ticket_bans b
+        LEFT JOIN users u ON u.user_id = b.user_id
+        ORDER BY b.banned_at DESC
+        LIMIT ? OFFSET ?
+    """, (per_page, page * per_page))
+    return [dict(zip(("user_id", "banned_at", "name"), row)) for row in cursor.fetchall()]
+
+
+def count_banned_users() -> int:
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM ticket_bans")
+    return cursor.fetchone()[0]

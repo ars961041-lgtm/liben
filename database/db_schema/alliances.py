@@ -208,9 +208,59 @@ def create_alliance_tables():
     )
     """)
 
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: alliance_war_momentum
+    # PURPOSE: Tracks consecutive war victories for each alliance.
+    #          Each win increments the streak; a loss resets it to 0.
+    #          The streak grants a temporary power bonus (+2% per win,
+    #          capped at +10%) applied dynamically in power calculations.
+    #
+    # COLUMNS:
+    #   alliance_id    — References alliances.id. UNIQUE — one row per alliance.
+    #   win_streak     — Current consecutive win count (0–5).
+    #   last_updated   — Unix timestamp of the last streak change.
+    # ─────────────────────────────────────────────────────────────
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alliance_war_momentum (
+        alliance_id  INTEGER PRIMARY KEY,
+        win_streak   INTEGER DEFAULT 0,
+        last_updated INTEGER DEFAULT (strftime('%s','now')),
+        FOREIGN KEY (alliance_id) REFERENCES alliances(id)
+    )
+    """)
+
+    # ─────────────────────────────────────────────────────────────
+    # TABLE: alliance_blacklist
+    # PURPOSE: Countries blocked from joining a specific alliance.
+    #          Enforced on both join requests and invitations.
+    #
+    # COLUMNS:
+    #   id           — Internal autoincrement PK.
+    #   alliance_id  — The alliance that issued the ban.
+    #   country_id   — The blocked country.
+    #   reason       — Optional reason text.
+    #   banned_by    — user_id of the leader who added the entry.
+    #   created_at   — When the ban was issued.
+    # ─────────────────────────────────────────────────────────────
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alliance_blacklist (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        alliance_id INTEGER NOT NULL,
+        country_id  INTEGER NOT NULL,
+        reason      TEXT    DEFAULT '',
+        banned_by   INTEGER NOT NULL,
+        created_at  INTEGER DEFAULT (strftime('%s','now')),
+        UNIQUE(alliance_id, country_id),
+        FOREIGN KEY (alliance_id) REFERENCES alliances(id),
+        FOREIGN KEY (country_id)  REFERENCES countries(id),
+        FOREIGN KEY (banned_by)   REFERENCES users(user_id)
+    )
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alliance_members_user ON alliance_members(user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alliance_members_alliance ON alliance_members(alliance_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alliance_invites_to ON alliance_invites(to_user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_alliance_blacklist ON alliance_blacklist(alliance_id, country_id)")
 
     conn.commit()
     _seed_upgrade_types(conn)

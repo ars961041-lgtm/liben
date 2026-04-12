@@ -24,11 +24,8 @@ FEATURES = {
     "quotes_enabled":       0,   # 💬 Periodic quotes/wisdom sent to the group
     "enable_whispers":      1,   # 💌 Whisper system (private messages between members)
     "enable_leave_notify":  1,   # 🚪 Leave/kick/ban notifications
-
-    # ── Future features (add here) ────────────────────────────
-    # "enable_azkar":   1,
-    # "enable_quran":   1,
-    # "enable_economy": 1,
+    "enable_news":          1,   # 📰 Broadcast important news to the group
+    "azkar_enabled":        0,   # 📿 Periodic azkar sent to the group
 }
 
 
@@ -74,10 +71,11 @@ def create_groups_tables():
         enable_lock_media     INTEGER NOT NULL DEFAULT 0,
         quotes_enabled        INTEGER NOT NULL DEFAULT 0,
         enable_whispers       INTEGER NOT NULL DEFAULT 1,
-        enable_leave_notify   INTEGER NOT NULL DEFAULT 1
+        enable_leave_notify   INTEGER NOT NULL DEFAULT 1,
+        enable_news           INTEGER NOT NULL DEFAULT 1,
+        azkar_enabled         INTEGER NOT NULL DEFAULT 0
 
-        -- Add new feature columns here, e.g.:
-        -- enable_azkar  INTEGER NOT NULL DEFAULT 1,
+        -- Add new feature columns here
     );
     """)
 

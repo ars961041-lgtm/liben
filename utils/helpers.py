@@ -407,6 +407,7 @@ def send_result(chat_id: int, text: str, buttons=None, reply_to_id: int = None):
     إرسال رسالة بالمعيار العالمي:
     - parse_mode="HTML" دائماً
     - disable_web_page_preview=True دائماً
+    - fallback تلقائي إذا كانت الرسالة المُرَدّ عليها محذوفة
     """
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = None
@@ -414,17 +415,7 @@ def send_result(chat_id: int, text: str, buttons=None, reply_to_id: int = None):
         markup = InlineKeyboardMarkup()
         for row in buttons:
             markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
-    kwargs = {
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-        "reply_markup": markup,
-    }
-    if reply_to_id:
-        kwargs["reply_to_message_id"] = reply_to_id
-    try:
-        bot.send_message(chat_id, text, **kwargs)
-    except Exception as e:
-        print(f"[send_result] error: {e}")
+    safe_send_message(chat_id, text, reply_to_id=reply_to_id, markup=markup)
 
 
 def edit_result(chat_id: int, message_id: int, text: str, buttons=None):
@@ -451,3 +442,49 @@ def edit_result(chat_id: int, message_id: int, text: str, buttons=None):
     except Exception as e:
         print(f"[edit_result] error: {e}")
 
+def safe_html(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+    )
+
+
+# ══════════════════════════════════════════
+# 📤 safe_send_message — إرسال آمن مع fallback
+# ══════════════════════════════════════════
+
+def safe_send_message(chat_id: int, text: str,
+                      reply_to_id: int = None,
+                      markup=None,
+                      parse_mode: str = "HTML") -> object:
+    """
+    إرسال رسالة مع fallback تلقائي:
+    1. يحاول الإرسال مع reply_to_message_id
+    2. إذا فشل بسبب 'message to be replied not found' → يُعيد بدون reply
+    3. إذا فشل كلياً → يُسجّل الخطأ ويرجع None
+
+    يرجع كائن الرسالة عند النجاح، أو None عند الفشل.
+    """
+    kwargs = {
+        "parse_mode": parse_mode,
+        "disable_web_page_preview": True,
+        "reply_markup": markup,
+    }
+    if reply_to_id:
+        kwargs["reply_to_message_id"] = reply_to_id
+
+    try:
+        return bot.send_message(chat_id, text, **kwargs)
+    except Exception as e:
+        err = str(e).lower()
+        # الرسالة المُرَدّ عليها محذوفة — أعد المحاولة بدون reply
+        if reply_to_id and "message to be replied not found" in err:
+            kwargs.pop("reply_to_message_id", None)
+            try:
+                return bot.send_message(chat_id, text, **kwargs)
+            except Exception as e2:
+                print(f"[safe_send_message] retry failed cid={chat_id}: {e2}")
+                return None
+        print(f"[safe_send_message] failed cid={chat_id}: {e}")
+        return None

@@ -39,6 +39,12 @@ def handle_magazine_command(message) -> bool:
 
     uid   = message.from_user.id
     cid   = message.chat.id
+
+    # Route news commands to the new news handler
+    if text == "الأخبار":
+        from modules.magazine.news_handler import handle_news_command
+        return handle_news_command(message)
+
     posts = db.get_today_posts()
 
     if not posts:

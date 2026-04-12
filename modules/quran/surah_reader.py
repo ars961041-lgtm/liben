@@ -35,7 +35,7 @@ def handle_surah_read_command(message) -> bool:
 # Surah list
 # ══════════════════════════════════════════
 
-def _show_sura_list(cid, uid, page, reply_to=None, call=None):
+def _show_sura_list(cid, uid, page, reply_to=None, call=None, back_action=None):
     suras = db.get_suras_with_ayat()
     if not suras:
         msg = "📚 لا توجد سور في قاعدة البيانات بعد."
@@ -65,12 +65,17 @@ def _show_sura_list(cid, uid, page, reply_to=None, call=None):
     if row_buf:
         buttons.extend(reversed(row_buf))
 
+    # back_action controls where the close/back button goes
+    close_action = back_action or "sr_close"
+    close_label  = "🔙 رجوع" if back_action else "❌ إغلاق"
+    close_data   = {}
+
     nav = []
     if page < total_pages - 1:
-        nav.append(btn("التالي ◀️", "sr_sura_page", {"p": page + 1}, owner=owner, color=_G))
-    nav.append(btn("❌ إغلاق", "sr_close", {}, owner=owner, color=_R))
+        nav.append(btn("التالي ◀️", "sr_sura_page", {"p": page + 1, "ba": back_action or ""}, owner=owner, color=_G))
+    nav.append(btn(close_label, close_action, close_data, owner=owner, color=_R))
     if page > 0:
-        nav.append(btn("▶️ السابق", "sr_sura_page", {"p": page - 1}, owner=owner, color=_G))
+        nav.append(btn("▶️ السابق", "sr_sura_page", {"p": page - 1, "ba": back_action or ""}, owner=owner, color=_G))
     buttons.extend(nav)
 
     count  = len(items)
@@ -91,8 +96,9 @@ def on_sura_page(call, data):
     uid  = call.from_user.id
     cid  = call.message.chat.id
     page = int(data.get("p", 0))
+    ba   = data.get("ba") or None
     bot.answer_callback_query(call.id)
-    _show_sura_list(cid, uid, page, call=call)
+    _show_sura_list(cid, uid, page, call=call, back_action=ba)
 
 
 @register_action("sr_pick_sura")
@@ -366,3 +372,179 @@ def on_close(call, data):
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
+
+
+# ══════════════════════════════════════════
+# ختمتي — قراءة متواصلة عبر القرآن كاملاً
+# ══════════════════════════════════════════
+
+def _show_khatmah_ayah(uid, cid, ayah, call=None, reply_to=None, returned=False):
+    """
+    عرض آية في وضع الختمة المتواصلة.
+    - التنقل يعبر حدود السور تلقائياً (get_next/prev_ayah بدون قيد sura_id)
+    - يحفظ موضع الختمة عند كل آية
+    """
+    db.save_surah_read_progress(uid, ayah["sura_id"], ayah["ayah_number"])
+    db.update_khatma(uid, ayah["sura_id"], ayah["ayah_number"])
+
+    sura      = db.get_sura(ayah["sura_id"])
+    sura_name = sura["name"] if sura else f"سورة {ayah['sura_id']}"
+    sura_total = sura.get("ayah_count") or len(db.get_ayat_by_sura(ayah["sura_id"]))
+
+    is_fav   = db.is_favorite(uid, ayah["id"])
+    has_prev = db.get_prev_ayah(ayah["id"]) is not None
+    has_next = db.get_next_ayah(ayah["id"]) is not None
+
+    owner = (uid, cid)
+    aid   = ayah["id"]
+
+    returned_line = "\n📍 <i>عدت لآخر موضع قراءتك</i>" if returned else ""
+
+    text = (
+        f"🕌 <b>ختمتي</b> — <b>{sura_name}</b>  آية {ayah['ayah_number']} / {sura_total}\n"
+        f"‏━━━━━━━━━━━━━━━\n\n"
+        f"{ayah['text_with_tashkeel']}\n\n"
+        f"‏━━━━━━━━━━"
+        + returned_line
+    )
+
+    nav = []
+    if has_next:
+        nav.append(btn("⬅️ التالية", "kh_next", {"aid": aid}, color=_B, owner=owner))
+    if has_prev:
+        nav.append(btn("➡️ السابقة", "kh_prev", {"aid": aid}, color=_B, owner=owner))
+
+    fav_label = "💛 إزالة" if is_fav else "⭐️ مفضلة"
+    action_row = [
+        btn("📖 تفسير",    "kh_tafseer",  {"aid": aid}, color=_B, owner=owner),
+        btn(fav_label,     "kh_fav",      {"aid": aid}, color=_G, owner=owner),
+        btn("🔙 ختمتي",   "kh_back_main", {},           color=_R, owner=owner),
+    ]
+
+    buttons = nav + action_row
+    layout  = ([len(nav)] if nav else []) + [3]
+
+    if call:
+        edit_ui(call, text=text, buttons=buttons, layout=layout)
+    else:
+        send_ui(cid, text=text, buttons=buttons, layout=layout,
+                owner_id=uid, reply_to=reply_to)
+
+
+@register_action("kh_next")
+def on_kh_next(call, data):
+    """التالية في وضع الختمة — يعبر السور تلقائياً."""
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    bot.answer_callback_query(call.id)
+
+    ayah = db.get_next_ayah(aid)
+    if not ayah:
+        bot.answer_callback_query(call.id, "🎉 أكملت القرآن الكريم!", show_alert=True)
+        return
+    _show_khatmah_ayah(uid, cid, ayah, call=call)
+
+
+@register_action("kh_prev")
+def on_kh_prev(call, data):
+    """السابقة في وضع الختمة — يعبر السور تلقائياً."""
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    bot.answer_callback_query(call.id)
+
+    ayah = db.get_prev_ayah(aid)
+    if not ayah:
+        bot.answer_callback_query(call.id, "⬅️ هذه أول آية في القرآن.", show_alert=True)
+        return
+    _show_khatmah_ayah(uid, cid, ayah, call=call)
+
+
+@register_action("kh_fav")
+def on_kh_fav(call, data):
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    _, msg = svc.toggle_favorite(uid, aid)
+    bot.answer_callback_query(call.id, msg)
+    ayah = db.get_ayah(aid)
+    if ayah:
+        _show_khatmah_ayah(uid, cid, ayah, call=call)
+
+
+@register_action("kh_tafseer")
+def on_kh_tafseer(call, data):
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    ayah = db.get_ayah(aid)
+
+    if not ayah:
+        bot.answer_callback_query(call.id, "❌ الآية غير موجودة.", show_alert=True)
+        return
+    available = svc.get_available_tafseer(ayah)
+    if not available:
+        bot.answer_callback_query(call.id, "لم يتم إضافة تفسير بعد.", show_alert=True)
+        return
+
+    owner = (uid, cid)
+    bot.answer_callback_query(call.id)
+    tafseer_btns = [
+        btn(name_ar, "kh_show_tafseer",
+            {"aid": aid, "col": col},
+            color=_B, owner=owner)
+        for name_ar, col in available
+    ]
+    tafseer_btns.append(btn("🔙 رجوع", "kh_back_ayah", {"aid": aid}, color=_R, owner=owner))
+    n = len(available)
+    layout = ([3] if n >= 3 else [n]) + [1]
+    edit_ui(call,
+            text=(
+                f"📖 <b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
+                f"{get_lines()}\n\n{ayah['text_with_tashkeel']}\n\n"
+                f"{get_lines()}\nاختر التفسير:"
+            ),
+            buttons=tafseer_btns, layout=layout)
+
+
+@register_action("kh_show_tafseer")
+def on_kh_show_tafseer(call, data):
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    col  = data["col"]
+    ayah = db.get_ayah(aid)
+
+    if not ayah or not col:
+        bot.answer_callback_query(call.id, "❌ خطأ.", show_alert=True)
+        return
+    content = ayah.get(col) or ""
+    if not content:
+        bot.answer_callback_query(call.id, "لم يتم إضافة هذا التفسير بعد.", show_alert=True)
+        return
+
+    name_ar = next((k for k, v in db.TAFSEER_TYPES.items() if v == col), col)
+    owner   = (uid, cid)
+    bot.answer_callback_query(call.id)
+    edit_ui(call,
+            text=(
+                f"📖 <b>تفسير {name_ar}</b>\n"
+                f"<b>{ayah['sura_name']}</b> — آية {ayah['ayah_number']}\n"
+                f"{get_lines()}\n\n{ayah['text_with_tashkeel']}\n\n"
+                f"{get_lines()}\n📝 <b>التفسير:</b>\n{content}"
+            ),
+            buttons=[btn("🔙 رجوع للتفاسير", "kh_tafseer",
+                         {"aid": aid}, color=_R, owner=owner)],
+            layout=[1])
+
+
+@register_action("kh_back_ayah")
+def on_kh_back_ayah(call, data):
+    uid  = call.from_user.id
+    cid  = call.message.chat.id
+    aid  = data["aid"]
+    ayah = db.get_ayah(aid)
+    bot.answer_callback_query(call.id)
+    if ayah:
+        _show_khatmah_ayah(uid, cid, ayah, call=call)

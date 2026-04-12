@@ -10,6 +10,7 @@ from modules.tickets.ticket_db import (
     create_ticket, get_ticket, get_open_ticket_for_user,
     add_ticket_message, close_ticket, set_ticket_group_msg,
     get_ticket_by_group_msg, check_limits, record_ticket_usage,
+    is_ticket_banned,
 )
 from core.admin import get_const_int
 
@@ -33,6 +34,9 @@ CATEGORIES = {
 _AWAITING_CATEGORY: dict[int, dict] = {}
 # ─── حالة انتظار رد المطور ───
 _AWAITING_DEV_REPLY: dict[int, int] = {}  # user_id → ticket_id
+# ─── رسائل معلقة بانتظار تأكيد الإرسال ───
+# user_id → {"message": msg_obj, "cat": str, "chat_id": int}
+_PENDING_CONFIRM: dict[int, dict] = {}
 
 
 def is_developer(user_id):
@@ -51,6 +55,15 @@ def start_ticket_flow(message):
     # رفض الملصقات
     if message.sticker:
         bot.reply_to(message, "❌ لا يمكن إرسال ملصقات كتذكرة.")
+        return
+
+    # فحص الحظر
+    if is_ticket_banned(user_id):
+        bot.reply_to(message,
+                     "🚫 <b>تم تقييد وصولك لنظام التذاكر</b>\n\n"
+                     "لا يمكنك إرسال تقارير في الوقت الحالي.\n"
+                     "إذا كنت تعتقد أن هذا خطأ، تواصل مع المشرف.",
+                     parse_mode="HTML")
         return
 
     # التحقق من الحدود
@@ -97,7 +110,7 @@ def handle_category_selection(call, data):
     try:
         bot.edit_message_text(
             f"🎫 <b>تذكرة جديدة — {CATEGORIES[cat]}</b>\n\n"
-            f"✏️ أرسل رسالتك الآن (<b>نص فقط</b>):",
+            f"✏️ أرسل رسالتك الآن (نص، صورة، أو فيديو):",
             chat_id, call.message.message_id, parse_mode="HTML"
         )
     except Exception:
@@ -113,6 +126,7 @@ def handle_category_selection(call, data):
 def handle_ticket_message_input(message):
     """
     يُستدعى عندما يكون المستخدم في حالة 'awaiting_ticket_msg'.
+    يقبل نصاً أو صورة أو فيديو — يعرض تأكيداً قبل الإرسال.
     يرجع True إذا تم التعامل مع الرسالة.
     """
     from utils.pagination.router import get_state, clear_state
@@ -124,52 +138,98 @@ def handle_ticket_message_input(message):
     if state.get("state") != "awaiting_ticket_msg":
         return False
 
-    # التحقق أن الرسالة نص فقط
-    if not message.text:
+    # رفض الأنواع غير المدعومة
+    if _is_unsupported_media(message):
         bot.reply_to(message,
-                     "❌ <b>الرجاء إرسال نص فقط لفتح التذكرة</b>\n\n"
-                     "لا يمكن إرسال صور أو ملصقات أو ملفات.",
+                     "❌ <b>نوع الرسالة غير مدعوم</b>\n\n"
+                     "يمكنك إرسال: نص، صورة، أو فيديو فقط.",
                      parse_mode="HTML")
         return True
+
+    # التحقق من طول التعليق للوسائط (حد Telegram: 1024 حرف)
+    if (message.photo or message.video) and message.caption:
+        if len(message.caption) > 1024:
+            bot.reply_to(message,
+                         "❌ <b>التعليق طويل جداً</b>\n\n"
+                         f"الحد الأقصى هو <b>1024 حرف</b>، وتعليقك يحتوي على <b>{len(message.caption)}</b> حرف.\n\n"
+                         "✏️ أرسل الصورة/الفيديو مجدداً مع تعليق أقصر.",
+                         parse_mode="HTML")
+            return True
 
     cat = state["data"].get("cat", "bug")
     clear_state(user_id, chat_id)
 
-    # إنشاء التذكرة
+    # حفظ الرسالة معلقة وعرض التأكيد
+    _PENDING_CONFIRM[user_id] = {
+        "message": message,
+        "cat":     cat,
+        "chat_id": chat_id,
+    }
+    _show_confirm_ui(user_id, chat_id, message, cat)
+    return True
+
+
+def _show_confirm_ui(user_id, chat_id, message, cat):
+    """يعرض رسالة التأكيد مع زر الإرسال والإلغاء."""
+    from utils.pagination import btn, send_ui
+
+    # ملخص المحتوى
+    if message.photo:
+        content_preview = f"🖼 صورة" + (f" — {message.caption[:60]}..." if message.caption and len(message.caption) > 60
+                                         else f" — {message.caption}" if message.caption else "")
+    elif message.video:
+        content_preview = f"🎥 فيديو" + (f" — {message.caption[:60]}..." if message.caption and len(message.caption) > 60
+                                          else f" — {message.caption}" if message.caption else "")
+    else:
+        text_preview = (message.text[:80] + "...") if len(message.text) > 80 else message.text
+        content_preview = f"💬 {text_preview}"
+
+    text = (
+        f"📋 <b>مراجعة التذكرة قبل الإرسال</b>\n\n"
+        f"📂 النوع: {CATEGORIES[cat]}\n"
+        f"📩 المحتوى: {_escape(content_preview)}\n\n"
+        f"هل تريد إرسال هذه التذكرة للمطور؟"
+    )
+    buttons = [
+        btn("✅ إرسال", "ticket_confirm_send", data={}, owner=(user_id, chat_id), color="su"),
+        btn("❌ إلغاء",  "ticket_cancel_send",  data={}, owner=(user_id, chat_id), color="d"),
+    ]
+    send_ui(chat_id, text=text, buttons=buttons, layout=[2], owner_id=user_id)
+
+
+def confirm_and_send_ticket(user_id, chat_id):
+    """
+    يُستدعى عند ضغط زر 'تأكيد الإرسال'.
+    يُنشئ التذكرة ويرسلها للمجموعة ويُشعر المستخدم.
+    يرجع (True, ticket_id) أو (False, None).
+    """
+    pending = _PENDING_CONFIRM.pop(user_id, None)
+    if not pending:
+        return False, None
+
+    message = pending["message"]
+    cat     = pending["cat"]
+
     ticket_id = create_ticket(user_id, chat_id, cat)
     record_ticket_usage(user_id)
 
-    msg_type = "text"
-    content = message.text[:500]
+    msg_type, content, file_id, file_unique_id = _extract_message_info(message)
+    add_ticket_message(ticket_id, "user", message.message_id,
+                       msg_type, content, file_id, file_unique_id)
 
-    add_ticket_message(ticket_id, "user", message.message_id, msg_type, content)
-
-    # إرسال للمجموعة
     group_msg_id = send_to_devs(ticket_id, message, cat)
     if group_msg_id:
         set_ticket_group_msg(ticket_id, group_msg_id)
 
-    # تأكيد للمستخدم
-    from core.personality import success_msg
     from core import memory as _mem
-    from utils.helpers import send_bot_profile
     _mem.increment_daily_reports(user_id)
 
-    caption = (
-        f"{success_msg()}\n\n"
-        f"🎫 رقم التذكرة: <b>#{ticket_id}</b>\n"
-        f"📂 النوع: {CATEGORIES[cat]}\n\n"
-        f"📨 سيتم إرسال الرد إليك في <b>خاص البوت</b>.\n"
-        f"⚠️ إذا لم تكن قد راسلت البوت من قبل، اضغط الزر بالأسفل واضغط على بدء."
-    )
-    send_bot_profile(
-        chat_id=chat_id,
-        caption=caption,
-        reply_to=message.message_id,
-        open_pm_button=True,
-    )
+    return True, ticket_id
 
-    return True
+
+def cancel_pending_ticket(user_id):
+    """يُلغي التذكرة المعلقة دون احتسابها."""
+    _PENDING_CONFIRM.pop(user_id, None)
 
 
 # ══════════════════════════════════════════
@@ -201,11 +261,41 @@ def send_to_devs(ticket_id, message, cat):
     from utils.pagination.buttons import build_keyboard
 
     buttons = [
-        btn("💬 رد", "ticket_dev_reply", data={"tid": ticket_id}, owner=None, color="su"),
-        btn("🔒 إغلاق التذكرة", "ticket_close", data={"tid": ticket_id}, owner=None, color="d"),
+        btn("💬 رد",            "ticket_dev_reply", data={"tid": ticket_id},            owner=None, color="su"),
+        btn("🔒 إغلاق التذكرة", "ticket_close",     data={"tid": ticket_id},            owner=None, color="d"),
+        btn("🚫 حظر المستخدم",  "ticket_ban_user",  data={"uid": message.from_user.id}, owner=None, color="d"),
     ]
-    markup = build_keyboard(buttons, [2], None)
+    markup = build_keyboard(buttons, [2, 1], None)
 
+    dev_group_id = _get_dev_group_id()
+
+    # صورة
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{line}"
+        try:
+            sent = bot.send_photo(dev_group_id, file_id,
+                                  caption=caption_text, parse_mode="HTML",
+                                  reply_markup=markup)
+            return sent.message_id
+        except Exception as e:
+            print(f"[Tickets] خطأ إرسال صورة للمجموعة: {e}")
+            return None
+
+    # فيديو
+    if message.video:
+        file_id = message.video.file_id
+        caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{line}"
+        try:
+            sent = bot.send_video(dev_group_id, file_id,
+                                  caption=caption_text, parse_mode="HTML",
+                                  reply_markup=markup)
+            return sent.message_id
+        except Exception as e:
+            print(f"[Tickets] خطأ إرسال فيديو للمجموعة: {e}")
+            return None
+
+    # نص
     return send_to_dev_group(
         header + _escape(message.text) + f"\n{line}",
         reply_markup=markup,
@@ -255,12 +345,13 @@ def handle_dev_reply(message):
         bot.reply_to(message, "❌ هذه التذكرة مغلقة.")
         return True
 
-    # رفض الملصقات
-    if message.sticker:
+    # رفض الأنواع غير المدعومة
+    if _is_unsupported_media(message):
         return False
 
-    msg_type, content = _extract_message_info(message)
-    add_ticket_message(ticket_id, "developer", message.message_id, msg_type, content)
+    msg_type, content, file_id, file_unique_id = _extract_message_info(message)
+    add_ticket_message(ticket_id, "developer", message.message_id,
+                       msg_type, content, file_id, file_unique_id)
 
     # إرسال الرد للمستخدم
     _send_dev_reply_to_user(ticket, message, ticket_id)
@@ -280,13 +371,20 @@ def _send_dev_reply_to_user(ticket, message, ticket_id):
     )
 
     try:
-        if message.text:
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{get_lines()}"
+            bot.send_photo(user_id, file_id, caption=caption_text, parse_mode="HTML")
+        elif message.video:
+            file_id = message.video.file_id
+            caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{get_lines()}"
+            bot.send_video(user_id, file_id, caption=caption_text, parse_mode="HTML")
+        elif message.text:
             bot.send_message(
                 user_id,
                 header + _escape(message.text) + f"\n{get_lines()}",
                 parse_mode="HTML"
             )
-
     except Exception as e:
         print(f"[Tickets] خطأ في إرسال الرد للمستخدم: {e}")
 
@@ -310,13 +408,14 @@ def handle_user_followup(message):
     if not ticket:
         return False
 
-    # رفض الملصقات
-    if message.sticker:
+    # رفض الأنواع غير المدعومة
+    if _is_unsupported_media(message):
         return False
 
     ticket_id = ticket["id"]
-    msg_type, content = _extract_message_info(message)
-    add_ticket_message(ticket_id, "user", message.message_id, msg_type, content)
+    msg_type, content, file_id, file_unique_id = _extract_message_info(message)
+    add_ticket_message(ticket_id, "user", message.message_id,
+                       msg_type, content, file_id, file_unique_id)
 
     # إعادة توجيه للمجموعة
     _forward_user_reply_to_devs(ticket, message, ticket_id)
@@ -345,12 +444,31 @@ def _forward_user_reply_to_devs(ticket, message, ticket_id):
     from utils.pagination.buttons import build_keyboard
 
     buttons = [
-        btn("💬 رد", "ticket_dev_reply", data={"tid": ticket_id}, owner=None, color="su"),
-        btn("🔒 إغلاق التذكرة", "ticket_close", data={"tid": ticket_id}, owner=None, color="d"),
+        btn("💬 رد",            "ticket_dev_reply", data={"tid": ticket_id},            owner=None, color="su"),
+        btn("🔒 إغلاق التذكرة", "ticket_close",     data={"tid": ticket_id},            owner=None, color="d"),
+        btn("🚫 حظر المستخدم",  "ticket_ban_user",  data={"uid": ticket["user_id"]},    owner=None, color="d"),
     ]
-    markup = build_keyboard(buttons, [2], None)
+    markup = build_keyboard(buttons, [2, 1], None)
 
-    if message.text:
+    dev_group_id = _get_dev_group_id()
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{get_lines()}"
+        try:
+            bot.send_photo(dev_group_id, file_id, caption=caption_text,
+                           parse_mode="HTML", reply_markup=markup)
+        except Exception as e:
+            print(f"[Tickets] خطأ إعادة توجيه صورة: {e}")
+    elif message.video:
+        file_id = message.video.file_id
+        caption_text = header + (_escape(message.caption) if message.caption else "") + f"\n{get_lines()}"
+        try:
+            bot.send_video(dev_group_id, file_id, caption=caption_text,
+                           parse_mode="HTML", reply_markup=markup)
+        except Exception as e:
+            print(f"[Tickets] خطأ إعادة توجيه فيديو: {e}")
+    elif message.text:
         send_to_dev_group(
             header + _escape(message.text) + f"\n{get_lines()}",
             reply_markup=markup,
@@ -398,9 +516,23 @@ def set_awaiting_dev_reply(user_id, ticket_id):
 
 
 def _extract_message_info(message):
+    """يستخرج (msg_type, content, file_id, file_unique_id) من الرسالة."""
+    if message.photo:
+        photo = message.photo[-1]
+        return "photo", message.caption, photo.file_id, photo.file_unique_id
+    if message.video:
+        return "video", message.caption, message.video.file_id, message.video.file_unique_id
     if message.text:
-        return "text", message.text[:500]
-    return None, None
+        return "text", message.text[:500], None, None
+    return "unknown", None, None, None
+
+
+def _is_unsupported_media(message):
+    """يرجع True إذا كانت الرسالة من نوع غير مدعوم (ملصق، صوت، إلخ)."""
+    return bool(
+        message.sticker or message.audio or message.voice or
+        message.video_note or message.document or message.animation
+    )
 
 def _escape(text):
     if not text:

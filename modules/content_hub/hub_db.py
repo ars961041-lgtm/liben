@@ -20,6 +20,7 @@ CONTENT_TYPES = {
     "قصص":    "stories",
     "حكمة":   "wisdom",
     "شعر":    "poetry",
+    "أذكار":  "azkar",
 }
 
 # ── أسماء عربية للعرض ──
@@ -29,7 +30,11 @@ TYPE_LABELS = {
     "stories":   "📖 قصة",
     "wisdom":    "🌟 حكمة",
     "poetry":    "📜 شعر",
+    "azkar":     "📿 ذكر",
 }
+
+# ── أنواع المحتوى المستثناة من النشر التلقائي ──
+AUTO_POST_EXCLUDED = {"azkar"}
 
 
 def _get_conn() -> sqlite3.Connection:

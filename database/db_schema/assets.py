@@ -80,34 +80,6 @@ def create_asset_tables():
     """)
 
     # ─────────────────────────────────────────────────────────────
-    # TABLE: asset_branches
-    # PURPOSE: Optional specialization branches for an asset.
-    #          A player can choose a branch focus when buying
-    #          (e.g. a factory can be 'production' or 'export').
-    #          Each branch adds an income bonus on top of the base.
-    #
-    # COLUMNS:
-    #   id        — Internal autoincrement PK.
-    #   asset_id  — References assets.id. Which asset this branch belongs to.
-    #   name      — English key for the branch (e.g. 'production').
-    #   name_ar   — Arabic display name.
-    #   emoji     — Display emoji.
-    #   bonus_pct — Income bonus multiplier (e.g. 0.10 = +10% income).
-    # ─────────────────────────────────────────────────────────────
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS asset_branches (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        asset_id  INTEGER NOT NULL,
-        name      TEXT NOT NULL,
-        name_ar   TEXT NOT NULL,
-        emoji     TEXT DEFAULT '📦',
-        bonus_pct REAL DEFAULT 0.1,
-        UNIQUE(asset_id, name),
-        FOREIGN KEY (asset_id) REFERENCES assets(id)
-    )
-    """)
-
-    # ─────────────────────────────────────────────────────────────
     # TABLE: city_assets
     # PURPOSE: The assets a city actually owns. Each row represents
     #          a quantity of one asset at one level in one city.
@@ -115,29 +87,24 @@ def create_asset_tables():
     #          at level 1 and 2 hospitals at level 2 = 2 rows).
     #
     # COLUMNS:
-    #   id             — Internal autoincrement PK.
-    #   city_id        — References cities.id.
-    #   asset_id       — References assets.id. Which asset type.
-    #   branch_id      — References asset_branches.id. NULL = no branch.
-    #   level          — Current upgrade level of this batch.
-    #   quantity       — How many units of this asset at this level.
-    #   disabled_until — Unix timestamp until which this asset is
-    #                    disabled (e.g. after an enemy raid).
+    #   id       — Internal autoincrement PK.
+    #   city_id  — References cities.id.
+    #   asset_id — References assets.id. Which asset type.
+    #   level    — Current upgrade level of this batch.
+    #   quantity — How many units of this asset at this level.
     #
-    # UNIQUE: (city_id, asset_id, branch_id, level)
+    # UNIQUE: (city_id, asset_id, level)
     # ─────────────────────────────────────────────────────────────
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS city_assets (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         city_id   INTEGER NOT NULL,
         asset_id  INTEGER NOT NULL,
-        branch_id INTEGER,
         level     INTEGER NOT NULL DEFAULT 1,
         quantity  INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(city_id, asset_id, branch_id, level),
-        FOREIGN KEY (city_id)   REFERENCES cities(id),
-        FOREIGN KEY (asset_id)  REFERENCES assets(id),
-        FOREIGN KEY (branch_id) REFERENCES asset_branches(id)
+        UNIQUE(city_id, asset_id, level),
+        FOREIGN KEY (city_id)  REFERENCES cities(id),
+        FOREIGN KEY (asset_id) REFERENCES assets(id)
     )
     """)
 
@@ -234,31 +201,5 @@ def _seed_default_assets(conn):
          pop_effect, eco_effect, prot_effect)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, assets)
-
-    branch_types = [
-        # (asset_id_name, branch_name, branch_name_ar, emoji, bonus_pct)
-        ("production","production","إنتاج","🏭",0.10),
-        ("export","export","تصدير","📦",0.12),
-        ("technology","technology","تقنية","💻",0.15),
-        ("marketing","marketing","تسويق","📢",0.08),
-        ("automation","automation","أتمتة","🤖",0.14),
-        ("quality","quality","جودة","⭐",0.09),
-        ("research","research","أبحاث","🔬",0.11),
-        ("training","training","تدريب","🎓",0.07),
-        ("logistics","logistics","لوجستيات","🚚",0.10),
-        ("security","security","حماية","🛡",0.06),
-        ]
-
-    # إنشاء الفروع لكل asset
-    cursor.execute("SELECT id,name FROM assets")
-    assets_db = cursor.fetchall()
-
-    for a in assets_db:
-        for b in branch_types:
-            cursor.execute("""
-            INSERT OR IGNORE INTO asset_branches
-            (asset_id,name,name_ar,emoji,bonus_pct)
-            VALUES (?,?,?,?,?)
-            """,(a["id"],b[0],b[2],b[3],b[4]))
 
     conn.commit()

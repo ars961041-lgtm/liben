@@ -1077,8 +1077,11 @@ def handle_quran_commands(message) -> bool:
         from modules.quran.surah_reader import handle_surah_read_command
         return handle_surah_read_command(message)
     if text == "ختمتي":
-        from modules.quran.khatmah import handle_khatmah_command
-        return handle_khatmah_command(message)
+        from modules.quran.khatmah import handle_khatmah_read_command
+        return handle_khatmah_read_command(message)
+    if text in ["إعدادات ختمة", "اعدادات ختمة"]:
+        from modules.quran.khatmah import handle_khatmah_settings_command
+        return handle_khatmah_settings_command(message)
     if text == "تذكير ختمتي":
         from modules.quran.khatmah import handle_khatmah_reminder_command
         return handle_khatmah_reminder_command(message)

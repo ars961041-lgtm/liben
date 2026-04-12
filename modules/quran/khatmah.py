@@ -51,12 +51,37 @@ def _inactive_msg(days: int) -> str:
 # Entry points
 # ══════════════════════════════════════════
 
-def handle_khatmah_command(message) -> bool:
+def handle_khatmah_read_command(message) -> bool:
+    """
+    أمر: ختمتي — يعرض الآية التالية مباشرة بدون قوائم.
+    رسالة قراءة نظيفة بدون أزرار.
+    """
     if (message.text or "").strip() != "ختمتي":
         return False
     uid = message.from_user.id
     cid = message.chat.id
-    _show_khatmah(cid, uid, reply_to=message.message_id)
+
+    k    = db.get_khatma(uid)
+    ayah = db.get_ayah_by_sura_number(k["last_surah"], k["last_ayah"])
+    if not ayah:
+        ayah = db.get_first_ayah()
+    if not ayah:
+        bot.reply_to(message, "📖 لا توجد آيات في قاعدة البيانات بعد.")
+        return True
+
+    from modules.quran.surah_reader import _show_khatmah_ayah
+    _show_khatmah_ayah(uid, cid, ayah, reply_to=message.message_id)
+    _announce_achievements(uid, cid)
+    return True
+
+
+def handle_khatmah_settings_command(message) -> bool:
+    """أمر: إعدادات ختمة — يفتح لوحة الإعدادات والإحصائيات."""
+    if (message.text or "").strip() != "إعدادات ختمة":
+        return False
+    uid = message.from_user.id
+    cid = message.chat.id
+    _show_khatmah_settings(cid, uid, reply_to=message.message_id)
     return True
 
 
@@ -70,10 +95,10 @@ def handle_khatmah_reminder_command(message) -> bool:
 
 
 # ══════════════════════════════════════════
-# Main panel
+# Settings panel
 # ══════════════════════════════════════════
 
-def _show_khatmah(cid, uid, reply_to=None, call=None):
+def _show_khatmah_settings(cid, uid, reply_to=None, call=None):
     k        = db.get_khatma(uid)
     total    = k["total_read"]
     pct      = min(100.0, (total / db.TOTAL_QURAN_AYAT) * 100)
@@ -129,16 +154,16 @@ def _show_khatmah(cid, uid, reply_to=None, call=None):
 
     owner = (uid, cid)
     buttons = [
-        btn("▶️ متابعة",           "kh_continue",     {}, owner=owner, color=_G),
-        btn("🎯 هدف يومي",         "kh_goal_panel",   {}, owner=owner, color=_B),
-        btn("🔔 تذكير ختمتي",      "kh_rem_panel",    {}, owner=owner, color=_B),
-        btn("🕌 ابدأ ختمة جديدة",  "kh_reset_prompt", {}, owner=owner, color=_R),
-        btn("❌ إغلاق",            "kh_close",        {}, owner=owner, color=_R),
+        btn("▶️ متابعة القراءة",    "kh_continue",     {}, owner=owner, color=_G),
+        btn("🎯 هدف يومي",          "kh_goal_panel",   {}, owner=owner, color=_B),
+        btn("🔔 تذكير ختمتي",       "kh_rem_panel",    {}, owner=owner, color=_B),
+        btn("🕌 ابدأ ختمة جديدة",   "kh_reset_prompt", {}, owner=owner, color=_R),
+        btn("❌ إغلاق",             "kh_close",        {}, owner=owner, color=_R),
     ]
     if call:
-        edit_ui(call, text=text, buttons=buttons, layout=[2, 2, 1])
+        edit_ui(call, text=text, buttons=buttons, layout=[1, 2, 2])
     else:
-        send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 1],
+        send_ui(cid, text=text, buttons=buttons, layout=[1, 2, 2],
                 owner_id=uid, reply_to=reply_to)
     _announce_achievements(uid, cid)
 
@@ -167,8 +192,8 @@ def on_continue(call, data):
     if not ayah:
         bot.answer_callback_query(call.id, "❌ لا توجد آيات.", show_alert=True)
         return
-    from modules.quran.surah_reader import _show_ayah
-    _show_ayah(uid, cid, ayah, k["last_surah"], list_page=0, call=call, returned=True)
+    from modules.quran.surah_reader import _show_khatmah_ayah
+    _show_khatmah_ayah(uid, cid, ayah, call=call, returned=True)
 
 
 @register_action("kh_close")
@@ -185,7 +210,8 @@ def on_back_main(call, data):
     uid = call.from_user.id
     cid = call.message.chat.id
     bot.answer_callback_query(call.id)
-    _show_khatmah(cid, uid, call=call)
+    _show_khatmah_settings(cid, uid, call=call)
+
 
 
 # ══════════════════════════════════════════
@@ -255,7 +281,7 @@ def on_reset_confirm(call, data):
     uid, cid = call.from_user.id, call.message.chat.id
     db.reset_khatma(uid)
     bot.answer_callback_query(call.id, "✅ تم بدء ختمة جديدة.", show_alert=True)
-    _show_khatmah(cid, uid, call=call)
+    _show_khatmah_settings(cid, uid, call=call)
 
 
 # ══════════════════════════════════════════

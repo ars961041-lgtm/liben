@@ -189,6 +189,10 @@ def _dispatch(message):
     if handle_media_lock(message):
         return
 
+    # ── معالجات الإدخال (حالات الانتظار) — تعمل قبل فحص النص ──
+    if _handle_input_states(message):
+        return
+
     if not message.text:
         return
 
@@ -196,10 +200,6 @@ def _dispatch(message):
     normalized_text = text.lower()
 
     if not text:
-        return
-
-    # ── معالجات الإدخال (حالات الانتظار) ──
-    if _handle_input_states(message):
         return
 
     memory.set_last_command(uid, text)
@@ -277,7 +277,7 @@ def _handle_input_states(message) -> bool:
     from modules.content_hub.hub_handler import handle_hub_input
     from handlers.group_admin.promote import handle_promote_input
     from modules.country.city_management import handle_rename_input
-    from modules.tickets.ticket_callbacks import handle_ticket_commands
+    from modules.tickets.ticket_callbacks import handle_ticket_commands, handle_ticket_media
     from utils.pagination.router import get_state as _gs
 
     uid = message.from_user.id
@@ -311,12 +311,26 @@ def _handle_input_states(message) -> bool:
     from modules.post_creator import handle_post_creator_input
     if handle_post_creator_input(message): return True
 
-    if handle_ticket_commands(message): return True
+    from modules.polls import handle_poll_input, handle_poll_media, handle_poll_details
+    if handle_poll_media(message):   return True
+    if handle_poll_input(message):   return True
+    if handle_poll_details(message): return True
 
-    if _gs(uid, cid).get("state") == "awaiting_ticket_msg":
-        from modules.tickets.ticket_handler import handle_ticket_message_input
-        handle_ticket_message_input(message)
-        return True
+    if handle_ticket_commands(message): return True
+    if handle_ticket_media(message):    return True
+
+    # ── حوكمة التحالفات ──
+    _state = _gs(uid, cid)
+    if _state.get("state", "").startswith("gov_"):
+        from modules.alliances.governance_handler import handle_governance_state
+        if handle_governance_state(message, _state["state"], _state.get("data", {})):
+            return True
+
+    # ── دبلوماسية التحالفات ──
+    if _state.get("state", "").startswith("dip_"):
+        from modules.alliances.diplomacy_handler import handle_diplomacy_state
+        if handle_diplomacy_state(message, _state["state"], _state.get("data", {})):
+            return True
 
     return False
 

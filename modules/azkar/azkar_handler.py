@@ -148,7 +148,7 @@ def _build_buttons(owner, zikr_type, idx, remaining, total, zikr):
 
     buttons = [
         # زر التسبيح
-        btn(f"({remaining})", "azkar_tasbih",
+        btn(f"سبح ({remaining})", "azkar_tasbih",
             {"t": t, "i": idx, "r": remaining}, owner=owner, color="su"),
     ]
 

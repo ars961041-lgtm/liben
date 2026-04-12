@@ -113,10 +113,28 @@ EVENT_POOL = [
         "description_ar": "تكاليف الصيانة أعلى بـ 50% لمدة 4 ساعات!",
     },
     {
-        "name": "plague", "name_ar": "وباء", "emoji": "🦠",
+        "name": "plague", "name_ar": "وباء 🦠", "emoji": "🦠",
         "event_type": "disaster", "effect_key": "troop_recovery_penalty", "effect_value": 0.40,
         "duration_hours": 6,
-        "description_ar": "سرعة شفاء الجنود أقل بـ 40% لمدة 6 ساعات!",
+        "description_ar": "سرعة شفاء الجنود أقل بـ 40%، ورضا السكان -5 لمدة 6 ساعات!",
+    },
+    {
+        "name": "epidemic", "name_ar": "وباء عالمي", "emoji": "😷",
+        "event_type": "disaster", "effect_key": "satisfaction_penalty", "effect_value": 0.10,
+        "duration_hours": 8,
+        "description_ar": "رضا السكان ينخفض في جميع المدن لمدة 8 ساعات!",
+    },
+    {
+        "name": "global_recession", "name_ar": "ركود اقتصادي عالمي", "emoji": "📉",
+        "event_type": "disaster", "effect_key": "income_penalty", "effect_value": 0.20,
+        "duration_hours": 12,
+        "description_ar": "دخل جميع المدن أقل بـ 20% لمدة 12 ساعة!",
+    },
+    {
+        "name": "war_tensions", "name_ar": "توترات حربية", "emoji": "⚔️",
+        "event_type": "war", "effect_key": "war_tension_bonus", "effect_value": 0.15,
+        "duration_hours": 8,
+        "description_ar": "تكاليف الحرب أقل بـ 15%، والغنائم أعلى بـ 10% لمدة 8 ساعات!",
     },
     # ─── تقدم ───
     {
@@ -124,6 +142,12 @@ EVENT_POOL = [
         "event_type": "progress", "effect_key": "xp_bonus", "effect_value": 0.30,
         "duration_hours": 10,
         "description_ar": "نقاط الخبرة والنفوذ أعلى بـ 30% لمدة 10 ساعات!",
+    },
+    {
+        "name": "tech_breakthrough", "name_ar": "اختراق تقني", "emoji": "⚙️",
+        "event_type": "progress", "effect_key": "production_bonus", "effect_value": 0.25,
+        "duration_hours": 10,
+        "description_ar": "إنتاج جميع المدن أعلى بـ 25% لمدة 10 ساعات!",
     },
     {
         "name": "recruitment_drive", "name_ar": "حملة التجنيد", "emoji": "🪖",

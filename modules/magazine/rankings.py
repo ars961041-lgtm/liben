@@ -236,6 +236,13 @@ def publish_weekly_rankings():
     post_id = db.add_post("🏆 أبطال الأسبوع", body, _SYSTEM_ID)
     print(f"[Rankings] Weekly post #{post_id} published.")
 
+    # 📰 News system integration
+    try:
+        from modules.magazine.news_generator import on_weekly_rankings
+        on_weekly_rankings(body)
+    except Exception:
+        pass
+
 
 # ══════════════════════════════════════════════════════════════════
 # Monthly rankings
@@ -320,6 +327,13 @@ def publish_monthly_rankings():
     body = "\n".join(lines)
     post_id = db.add_post("🌟 أبطال الشهر", body, _SYSTEM_ID)
     print(f"[Rankings] Monthly post #{post_id} published.")
+
+    # 📰 News system integration
+    try:
+        from modules.magazine.news_generator import on_monthly_rankings
+        on_monthly_rankings(body)
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -5,8 +5,7 @@ All button flows live here.
 from core.bot import bot
 from database.db_queries.assets_queries import (
     get_all_sectors, get_assets_by_sector, get_asset_by_id,
-    get_city_assets, get_city_asset, get_asset_branches,
-    get_asset_branch, calculate_asset_income,
+    get_city_assets, get_city_asset,
 )
 from database.db_queries.bank_queries import get_user_balance
 from modules.city.asset_service import buy_asset, upgrade_asset, calc_buy_cost, calc_upgrade_cost
@@ -94,56 +93,7 @@ def handle_store_sector(call, data):
 
 
 # ══════════════════════════════════════════
-# الدوال المساعدة لـ handle_store_item
-# ══════════════════════════════════════════
-def _prepare_branches(asset, branches):
-    result = []
 
-    for b in branches:
-        bonus = b["bonus_pct"] or 0
-        income = calculate_asset_income(asset["income"], bonus, level=1, quantity=1)
-
-        result.append({
-            "id": b["id"],
-            "emoji": b["emoji"],
-            "name": b["name_ar"],
-            "bonus": bonus,
-            "income": income
-        })
-
-    # ترتيب حسب أعلى دخل
-    result.sort(key=lambda x: x["income"], reverse=True)
-    return result
-
-
-def _cell(value, width=4):
-    return f"{str(value):<{width}}"
-
-
-def _build_branches_table(asset, branches):
-
-    table = "<blockquote>\n"
-    table += "─────────────────\n"
-    table += "│   E    │  B   │    P    │   I  │\n"
-    table += "─────────────────\n"
-
-    for b in branches:
-        base  = int(asset["income"])
-        bonus = int(b["bonus"] * 100)
-        final = int(b["income"])
-
-        e = _cell(b["emoji"],5)
-        b_cell = _cell(base,5)
-        p_cell = _cell(f"{bonus}%",5)
-        i_cell = _cell(final,5)
-
-        table += f"│{e}│{b_cell}│{p_cell}│{i_cell}│\n─────────────────\n"
-
-    table += "</blockquote>\n\n"
-    table += "<blockquote><b>شرح رموز الجدول:</b>\n"
-    table += " | E = الرمز   |   B = الدخل الأساسي\n | P = الزيادة |   I = الدخل النهائي</blockquote>\n"
-
-    return table
 
 
 def _profit_block(asset):
@@ -178,10 +128,6 @@ def handle_store_item(call, data):
     owned = get_city_assets(city_id)
     owned_qty = sum(r["quantity"] for r in owned if r["asset_id"] == asset_id)
 
-    branches = get_asset_branches(asset_id)
-
-    branches_sorted = _prepare_branches(asset, branches)
-
     text = (
         f"{asset['emoji']} <b>{asset['name_ar']}</b>\n"
         f"{get_lines()}\n"
@@ -194,32 +140,9 @@ def handle_store_item(call, data):
     )
 
     text += _profit_block(asset)
+    text += "\nاختر الكمية للشراء:"
 
-    buttons = []
-
-    if branches_sorted:
-
-        text += "\n📂 <b>الفروع</b>\n"
-        text += _build_branches_table(asset, branches_sorted)
-
-        for b in branches_sorted:
-            buttons.append(btn(
-                f"{b['emoji']} {b['name']}",
-                "store_item_branch",
-                {"aid": asset_id, "cid": city_id, "bid": b["id"]},
-                color=GREEN,
-                owner=owner
-            ))
-
-    else:
-        text += "\nاختر الكمية للشراء:"
-        buttons = _qty_buttons(
-            "store_buy",
-            {"aid": asset_id, "cid": city_id},
-            asset["base_price"],
-            balance,
-            owner=owner
-        )
+    buttons = _qty_buttons("store_buy", {"aid": asset_id, "cid": city_id}, asset["base_price"], balance, owner=owner)
 
     back = [btn(
         "رجوع",
@@ -237,46 +160,6 @@ def handle_store_item(call, data):
     )
     
 # ══════════════════════════════════════════
-# 🧩 اختيار فرع الأصل
-# ══════════════════════════════════════════
-
-@register_action("store_item_branch")
-def handle_store_item_branch(call, data):
-    asset_id = data.get("aid")
-    city_id = data.get("cid")
-    branch_id = data.get("bid")
-    owner = _owner(call)
-
-    asset = get_asset_by_id(asset_id)
-    branch = get_asset_branch(branch_id)
-    balance = get_user_balance(call.from_user.id)
-
-    if not asset or not branch:
-        bot.answer_callback_query(call.id, "❌ بيانات غير صحيحة", show_alert=True)
-        return
-
-    income_per_unit = calculate_asset_income(asset["income"], branch["bonus_pct"], level=1, quantity=1)
-    text = (
-        f"{asset['emoji']} {asset['name_ar']}\n"
-        f"{get_lines()}\n"
-        f"فرع: {branch['emoji']} {branch['name_ar']}\n"
-        f"📈 الدخل المتوقع: {income_per_unit:.0f} / وحدة\n"
-        f"💰 السعر: {asset['base_price']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
-        f"🔧 الصيانة: {asset['maintenance']:.0f} / وحدة\n"
-        f"💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
-        f"اختر الكمية للشراء:"
-    )
-    qty_btns = _qty_buttons("store_buy",
-                             {"aid": asset_id, "cid": city_id, "bid": branch_id},
-                             asset["base_price"], balance, owner=owner)
-    back = [btn("رجوع", "store_item",
-                {"aid": asset_id, "cid": city_id}, color=RED, owner=owner)]
-
-    edit_ui(call, text=text, buttons=qty_btns + back,
-            layout=grid(len(qty_btns), 3) + [1])
-
-
-# ══════════════════════════════════════════
 # 🟢 تنفيذ الشراء
 # ══════════════════════════════════════════
 
@@ -292,14 +175,7 @@ def handle_store_buy(call, data):
         bot.answer_callback_query(call.id, "❌ عنصر غير موجود", show_alert=True)
         return
 
-    branch_id = data.get("bid")
-    if branch_id is not None:
-        try:
-            branch_id = int(branch_id)
-        except (TypeError, ValueError):
-            branch_id = None
-
-    success, msg = buy_asset(call.from_user.id, city_id, asset["name"], quantity, branch_id=branch_id)
+    success, msg = buy_asset(call.from_user.id, city_id, asset["name"], quantity)
     bot.answer_callback_query(call.id)
 
     back = [btn("رجوع", "store_item",
@@ -328,10 +204,9 @@ def open_upgrade_menu(message, user_id: int, city_id: int):
     for r in owned:
         if r["level"] >= r.get("max_level", 10):
             continue
-        branch_label = f" - {r['branch_emoji']} {r['branch_name_ar']}" if r.get("branch_id") else ""
         buttons.append(btn(
-            f"{r['emoji']} {r['name_ar']}{branch_label} (مستوى {r['level']})",
-            "upgrade_item", {"aid": r["asset_id"], "cid": city_id, "bid": r.get("branch_id") or 0}, owner=owner)
+            f"{r['emoji']} {r['name_ar']} (مستوى {r['level']})",
+            "upgrade_item", {"aid": r["asset_id"], "cid": city_id}, owner=owner)
         )
     if not buttons:
         bot.reply_to(message, "✅ جميع عناصرك في أقصى مستوى!")
@@ -346,22 +221,19 @@ def open_upgrade_menu(message, user_id: int, city_id: int):
 def handle_upgrade_item(call, data):
     asset_id = data.get("aid")
     city_id  = data.get("cid")
-    branch_id = int(data.get("bid") or 0) or None
     owner    = _owner(call)
 
     asset   = get_asset_by_id(asset_id)
     owned   = get_city_assets(city_id)
-    rows    = [r for r in owned if r["asset_id"] == asset_id and r.get("branch_id") == branch_id]
+    rows    = [r for r in owned if r["asset_id"] == asset_id]
     balance = get_user_balance(call.from_user.id)
 
     if not rows:
         bot.answer_callback_query(call.id, "❌ لا تمتلك هذا العنصر", show_alert=True)
         return
 
-    branch_name = rows[0].get("branch_name_ar") if rows[0].get("branch_id") else None
-    branch_label = f" - {rows[0]['branch_emoji']} {branch_name}" if branch_name else ""
     text = (
-        f"🔼 ترقية {asset['emoji']} {asset['name_ar']}{branch_label}\n"
+        f"🔼 ترقية {asset['emoji']} {asset['name_ar']}\n"
         f"{get_lines()}\n💰 رصيدك: {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
     )
     for r in rows:
@@ -371,7 +243,7 @@ def handle_upgrade_item(call, data):
 
     level_btns = [
         btn(f"مستوى {r['level']} ({r['quantity']} وحدة)",
-            "upgrade_level", {"aid": asset_id, "cid": city_id, "fl": r["level"], "bid": branch_id},
+            "upgrade_level", {"aid": asset_id, "cid": city_id, "fl": r["level"]},
             owner=owner)
         for r in rows if r["level"] < asset.get("max_level", 10)
     ]
@@ -385,11 +257,10 @@ def handle_upgrade_level(call, data):
     asset_id   = data.get("aid")
     city_id    = data.get("cid")
     from_level = int(data.get("fl", 1))
-    branch_id  = int(data.get("bid") or 0) or None
     owner      = _owner(call)
 
     asset   = get_asset_by_id(asset_id)
-    row     = get_city_asset(city_id, asset_id, from_level, branch_id=branch_id)
+    row     = get_city_asset(city_id, asset_id, from_level)
     balance = get_user_balance(call.from_user.id)
 
     if not row:
@@ -407,9 +278,9 @@ def handle_upgrade_level(call, data):
         f"اختر الكمية للترقية:"
     )
     qty_btns = _qty_buttons("upgrade_confirm",
-                             {"aid": asset_id, "cid": city_id, "fl": from_level, "bid": branch_id},
+                             {"aid": asset_id, "cid": city_id, "fl": from_level},
                              cost_per, balance, max_qty=max_qty, owner=owner)
-    back = [btn("رجوع", "upgrade_item", {"aid": asset_id, "cid": city_id, "bid": branch_id or 0},
+    back = [btn("رجوع", "upgrade_item", {"aid": asset_id, "cid": city_id},
                 color=RED, owner=owner)]
     edit_ui(call, text=text, buttons=qty_btns + back,
             layout=grid(len(qty_btns), 3) + [1])
@@ -420,17 +291,15 @@ def handle_upgrade_confirm(call, data):
     asset_id   = data.get("aid")
     city_id    = data.get("cid")
     from_level = int(data.get("fl", 1))
-    branch_id  = int(data.get("bid") or 0) or None
     quantity   = int(data.get("q", 1))
     owner      = _owner(call)
 
     asset = get_asset_by_id(asset_id)
-    success, msg = upgrade_asset(call.from_user.id, city_id,
-                                 asset["name"], quantity, from_level, branch_id=branch_id)
+    success, msg = upgrade_asset(call.from_user.id, city_id, asset["name"], quantity, from_level)
     bot.answer_callback_query(call.id)
 
     back = [btn("رجوع", "upgrade_item",
-                {"aid": asset_id, "cid": city_id, "bid": branch_id or 0}, color=RED, owner=owner)]
+                {"aid": asset_id, "cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=msg, buttons=back, layout=[1])
 
 # ══════════════════════════════════════════
@@ -478,10 +347,9 @@ def handle_upgrade_back(call, data):
     for r in owned:
         if r["level"] >= r.get("max_level", 10):
             continue
-        branch_label = f" - {r['branch_emoji']} {r['branch_name_ar']}" if r.get("branch_id") else ""
         buttons.append(btn(
-            f"{r['emoji']} {r['name_ar']}{branch_label} (مستوى {r['level']})",
-            "upgrade_item", {"aid": r["asset_id"], "cid": city_id, "bid": r.get("branch_id") or 0}, owner=owner)
+            f"{r['emoji']} {r['name_ar']} (مستوى {r['level']})",
+            "upgrade_item", {"aid": r["asset_id"], "cid": city_id}, owner=owner)
         )
     buttons.append(btn("رجوع", "city_back", {"cid": city_id}, color=RED, owner=owner))
     edit_ui(call, text=text, buttons=buttons, layout=grid(len(buttons) - 1, 2) + [1])
@@ -492,13 +360,24 @@ def handle_upgrade_back(call, data):
 # ══════════════════════════════════════════
 
 def _stat_lines(asset: dict) -> str:
-    mapping = [
-        ("stat_economy",        "💰 الاقتصاد"),
-        ("stat_health",         "🏥 الصحة"),
-        ("stat_education",      "📚 التعليم"),
-        ("stat_infrastructure", "🛣 البنية"),
+    # Direct stat contributions
+    direct = [
+        ("stat_economy",        "💰 اقتصاد"),
+        ("stat_health",         "🏥 صحة"),
+        ("stat_education",      "📚 تعليم"),
+        ("stat_infrastructure", "🛣 بنية"),
     ]
-    lines = [f"  {lbl}: +{asset[k]}" for k, lbl in mapping if asset.get(k)]
+    lines = [f"  {lbl}: +{asset[k]}" for k, lbl in direct if asset.get(k)]
+
+    # Indirect effects hint
+    name = asset.get("name", "")
+    if asset.get("stat_health", 0) > 0:
+        lines.append("  ↳ يقلل تكلفة صيانة الجيش")
+    if asset.get("stat_education", 0) > 0:
+        lines.append("  ↳ يزيد دخل المدينة ونمو السكان")
+    if asset.get("stat_infrastructure", 0) > 0:
+        lines.append("  ↳ يعزز كفاءة الاقتصاد وقوة الجيش")
+
     return ("\n".join(lines) + "\n") if lines else "  لا تأثيرات مباشرة\n"
 
 

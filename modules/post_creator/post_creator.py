@@ -177,7 +177,17 @@ def on_publish(call, data):
         except Exception:
             pass
     except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ فشل النشر: {e}", show_alert=True)
+        err = str(e).lower()
+        if "chat not found" in err or "invalid" in err:
+            msg = "❌ تعذّر الوصول للوجهة، تأكد من المعرّف أو أن البوت موجود هناك."
+        elif "not enough rights" in err or "have no rights" in err:
+            msg = "❌ البوت لا يملك صلاحية النشر في هذه الوجهة.\nتأكد أن البوت مشرف بصلاحية نشر الرسائل."
+        elif "bot was blocked" in err or "user is deactivated" in err:
+            msg = "❌ تعذّر الإرسال — المستخدم حجب البوت أو الحساب غير نشط."
+        else:
+            msg = "❌ فشل النشر، حاول مجدداً."
+        print(f"[post_creator.on_publish] uid={uid} target={target} error={e}")
+        bot.answer_callback_query(call.id, msg, show_alert=True)
 
 
 @register_action("pc_back")
@@ -645,7 +655,16 @@ def _validate_target(target_id: int) -> tuple[bool, str]:
             return False, "❌ المجموعة/القناة غير موجودة أو المعرّف خاطئ."
         if "bot is not a member" in err or "kicked" in err:
             return False, "❌ البوت ليس عضواً في هذه المجموعة/القناة.\nأضف البوت أولاً ثم حاول مجدداً."
-        return False, f"❌ تعذّر الوصول للوجهة:\n<code>{e}</code>"
+        if "member list is inaccessible" in err or "not enough rights" in err:
+            # القناة لا تسمح بفحص الأعضاء — نفترض أن البوت مشرف إذا وصل للشات
+            try:
+                chat = bot.get_chat(target_id)
+                if chat.type == "channel":
+                    return True, ""   # سيتضح عند النشر الفعلي
+            except Exception:
+                pass
+            return False, "❌ لا يمكن التحقق من الصلاحيات.\nتأكد أن البوت مشرف في القناة."
+        return False, f"❌ تعذّر الوصول للوجهة.\nتأكد من المعرّف أو أن البوت موجود هناك."
 
     status = member.status
     if status == "kicked":

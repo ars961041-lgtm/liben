@@ -43,18 +43,16 @@ def calculate_maintenance_cost(country_id: int) -> float:
 
 
 def _get_hospital_reduction(country_id: int) -> float:
-    """تخفيض من المستشفيات (حتى 20%)"""
+    """تخفيض من إحصائيات الصحة في المدن (حتى 25%)"""
     try:
-        from database.db_queries.assets_queries import get_city_assets
+        from database.db_queries.assets_queries import calculate_city_effects
         cities = get_all_cities_of_country_by_country_id(country_id)
-        total_hospitals = 0
+        total_bonus = 0.0
         for city in cities:
             cid = city["id"] if isinstance(city, dict) else city[0]
-            assets = get_city_assets(cid)
-            for a in assets:
-                if a.get("name", "").lower() in ("hospital", "clinic"):
-                    total_hospitals += a.get("quantity", 0) * a.get("level", 1)
-        return min(0.20, total_hospitals * 0.01)
+            effects = calculate_city_effects(cid)
+            total_bonus += effects.get("health_bonus", 0.0)
+        return min(0.25, total_bonus)
     except Exception:
         return 0.0
 

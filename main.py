@@ -55,6 +55,10 @@ def on_channel_post_edit(message):
 
 @bot.chat_member_handler()
 def on_chat_member_update(update):
+    # تجاهل أحداث الانضمام/المغادرة في القنوات — البوت يعمل فيها بالأوامر فقط
+    if update.chat.type == "channel":
+        return
+
     old = update.old_chat_member.status
     new = update.new_chat_member.status
     if old in ("left", "kicked") and new == "member":

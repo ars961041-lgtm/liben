@@ -95,13 +95,14 @@ def _show_content_hub_panel(call_or_message):
         btn("📖 قصص",      "hub_dev_type", {"type": "stories"},   color=_B, owner=owner),
         btn("🧠 حكم",      "hub_dev_type", {"type": "wisdom"},    color=_B, owner=owner),
         btn("📜 شعر",      "hub_dev_type", {"type": "poetry"},    color=_B, owner=owner),
+        btn("📿 أذكار",    "hub_dev_type", {"type": "azkar"},     color=_B, owner=owner),
         btn("⬅️ رجوع",     "dev_back_main", {},                   color=_R, owner=owner),
     ]
 
     if hasattr(call_or_message, 'message'):
-        edit_ui(call_or_message, text=text, buttons=buttons, layout=[2, 2, 1, 1])
+        edit_ui(call_or_message, text=text, buttons=buttons, layout=[2, 2, 2, 1])
     else:
-        send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 1], owner_id=uid)
+        send_ui(cid, text=text, buttons=buttons, layout=[2, 2, 2, 1], owner_id=uid)
 
 
 @register_action("dev_back_main")

@@ -20,6 +20,7 @@ _TYPE_BUTTONS = [
     ("😂 نوادر",    "anecdotes"),
     ("📝 حكمة",     "wisdom"),
     ("🎤 شعر",      "poetry"),
+    ("📿 أذكار",    "azkar"),
 ]
 
 

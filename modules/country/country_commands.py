@@ -33,6 +33,11 @@ def country_commands(message):
             _send_country_overview(message, user_id, chat_id)
             return True
 
+        # ────────────── دعوات الدول ──────────────
+        if text == "دعوات الدول":
+            _show_country_invites(message, user_id)
+            return True
+
         # ────────────── نقل الدولة ──────────────
         if text.startswith("نقل الدولة"):
             _handle_transfer(message, text, user_id)
@@ -340,6 +345,24 @@ def handle_country_back(call, data):
     stats = _compute_country_stats(country_id)
     edit_ui(call, text=_country_main_text(country, stats),
            buttons=_country_buttons(country_id, call.from_user.id, call.message.chat.id), layout=[3, 2, 1])
+
+
+def _show_country_invites(message, user_id: int):
+    """دعوات الدول — عرض دعوات الانضمام للدول المعلقة."""
+    from database.db_queries.countries_queries import get_pending_country_invites
+    invites = get_pending_country_invites(user_id)
+    if not invites:
+        bot.reply_to(message, "📭 لا توجد دعوات دول معلقة.")
+        return
+
+    lines = ["📩 <b>دعوات الانضمام للدول:</b>\n"]
+    for inv in invites[:10]:
+        lines.append(
+            f"🏳️ <b>{inv.get('country_name', '؟')}</b> — "
+            f"🏙 المدينة: <b>{inv['city_name']}</b>"
+        )
+    lines.append("\nاكتب <code>انضمام</code> بالرد على رسالة صاحب الدولة لقبول الدعوة.")
+    bot.reply_to(message, "\n".join(lines), parse_mode="HTML")
 
 
 @register_action("country_cities")

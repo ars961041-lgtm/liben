@@ -8,41 +8,69 @@ def handle_global_mute_cmd(message):
     """
     كتم عالمي — يدعم:
     1. رد على رسالة: "كتم عالمي [سبب اختياري]"
-    2. نص مباشر:   "كتم عالمي [ID] [سبب اختياري]"
+    2. @username:    "كتم عالمي @user [سبب]"
+    3. نص مباشر:    "كتم عالمي [ID] [سبب اختياري]"
     """
     from core.admin import global_mute
-    uid, reason = _parse_mute_target(message, prefix="كتم عالمي")
-    if not uid:
+    from handlers.group_admin.restrictions import resolve_user
+    from handlers.group_admin.permissions import can_delete_messages
+
+    uid, name, err = resolve_user(message)
+    if uid is None:
         bot.reply_to(message,
-                     "❌ الصيغة:\n"
-                     "• رد على رسالة: <code>كتم عالمي [السبب]</code>\n"
-                     "• أو: <code>كتم عالمي [ID] [السبب]</code>",
+                     err or (
+                         "❌ الصيغة:\n"
+                         "• رد على رسالة: <code>كتم عالمي [السبب]</code>\n"
+                         "• أو: <code>كتم عالمي @username [السبب]</code>\n"
+                         "• أو: <code>كتم عالمي [ID] [السبب]</code>"
+                     ),
                      parse_mode="HTML")
         return
+
+    # استخراج السبب من نهاية النص
+    text   = (message.text or "").strip()
+    parts  = text.split(maxsplit=2)
+    reason = parts[2] if len(parts) >= 3 else ""
+
     global_mute(uid, message.from_user.id, reason)
+
+    # حذف صامت إذا كان للبوت صلاحية
+    if can_delete_messages(message.chat.id):
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception:
+            pass
+
     bot.reply_to(message,
                  f"🔇 تم الكتم العالمي للمستخدم <code>{uid}</code>"
+                 + (f" ({name})" if name and name != str(uid) else "")
                  + (f"\n📝 السبب: {reason}" if reason else ""),
                  parse_mode="HTML")
 
 
 def handle_global_unmute_cmd(message):
     """
-    رفع كتم عالمي — يدعم:
-    1. رد على رسالة: "رفع كتم عالمي [سبب اختياري للتحقق]"
-    2. نص مباشر:   "رفع كتم عالمي [ID] [سبب اختياري للتحقق]"
-    إذا أُعطي سبب، يتحقق من تطابقه مع سبب الكتم المسجل قبل الرفع.
+    رفع كتم عالمي — يدعم رد / @username / ID.
     """
     from core.admin import global_unmute
-    uid, reason = _parse_mute_target(message, prefix="رفع كتم عالمي")
-    if not uid:
+    from handlers.group_admin.restrictions import resolve_user
+
+    uid, name, err = resolve_user(message)
+    if uid is None:
         bot.reply_to(message,
-                     "❌ الصيغة:\n"
-                     "• رد على رسالة: <code>رفع كتم عالمي</code>\n"
-                     "• أو: <code>رفع كتم عالمي [ID]</code>\n"
-                     "• مع تحقق السبب: <code>رفع كتم عالمي [ID] [السبب]</code>",
+                     err or (
+                         "❌ الصيغة:\n"
+                         "• رد على رسالة: <code>رفع كتم عالمي</code>\n"
+                         "• أو: <code>رفع كتم عالمي @username</code>\n"
+                         "• أو: <code>رفع كتم عالمي [ID]</code>"
+                     ),
                      parse_mode="HTML")
         return
+
+    # السبب الاختياري للتحقق
+    text   = (message.text or "").strip()
+    parts  = text.split(maxsplit=2)
+    reason = parts[2] if len(parts) >= 3 else ""
 
     ok, detail = global_unmute(uid, reason)
     if ok:
@@ -63,23 +91,3 @@ def handle_global_unmute_cmd(message):
     else:
         msg = f"❌ حدث خطأ أثناء رفع الكتم عن <code>{uid}</code>"
     bot.reply_to(message, msg, parse_mode="HTML")
-
-
-def _parse_mute_target(message, prefix: str) -> tuple[int | None, str]:
-    """يستخرج (user_id, reason) من رسالة كتم."""
-    if message.reply_to_message and message.reply_to_message.from_user:
-        uid    = message.reply_to_message.from_user.id
-        text   = message.text.strip()
-        reason = text[len(prefix):].strip() if text.lower().startswith(prefix) else ""
-        return uid, reason
-
-    text  = message.text.strip()
-    after = text[len(prefix):].strip() if text.lower().startswith(prefix) else text
-    parts = after.split(maxsplit=1)
-    if not parts:
-        return None, ""
-    uid_str = parts[0]
-    reason  = parts[1] if len(parts) > 1 else ""
-    if not uid_str.isdigit():
-        return None, ""
-    return int(uid_str), reason

@@ -66,7 +66,7 @@ def _check_military(user_id: int) -> list[str]:
         from modules.war.power_calculator import get_country_power
         country = get_country_by_owner(user_id)
         if not country:
-            tips.append("🌍 لا تملك دولة — أنشئها: <code>إنشاء دولة [الاسم]</code>")
+            tips.append("🌍 لا تملك دولة — أنشئها: <code>إنشاء دولة </code>[الاسم]")
             return tips
         country = dict(country)
         power = get_country_power(country["id"])

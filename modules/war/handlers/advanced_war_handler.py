@@ -1149,7 +1149,7 @@ def handle_war_text_commands(message):
         open_force_shop_command(message)
         return True
 
-    if normalized in ["متجر المعدات", "معدات الحرب"]:
+    if normalized in ["متجر المعدات", "معدات الحرب", "متجر العتاد"]:
         open_equipment_shop_command(message)
         return True
 
@@ -1177,13 +1177,12 @@ def handle_war_text_commands(message):
 
 def open_force_shop_command(message):
     """يفتح متجر الجنود مباشرة من أمر نصي."""
+    from modules.war.store_guard import require_country
+    country = require_country(message)
+    if not country:
+        return
     user_id = message.from_user.id
     chat_id = message.chat.id
-    country = get_country_by_owner(user_id)
-    if not country:
-        bot.reply_to(message, "❌ لا تملك دولة! أنشئ دولة أولاً.")
-        return
-    country = dict(country)
     from modules.war.force_shop import get_available_troops
     troops = get_available_troops()
     balance = get_user_balance(user_id)
@@ -1202,13 +1201,12 @@ def open_force_shop_command(message):
 
 def open_equipment_shop_command(message):
     """يفتح متجر المعدات مباشرة من أمر نصي."""
+    from modules.war.store_guard import require_country
+    country = require_country(message)
+    if not country:
+        return
     user_id = message.from_user.id
     chat_id = message.chat.id
-    country = get_country_by_owner(user_id)
-    if not country:
-        bot.reply_to(message, "❌ لا تملك دولة! أنشئ دولة أولاً.")
-        return
-    country = dict(country)
     from modules.war.force_shop import get_available_equipment
     equipment = get_available_equipment()
     balance = get_user_balance(user_id)
@@ -1227,6 +1225,9 @@ def open_equipment_shop_command(message):
 
 def open_cards_shop_command(message):
     """يفتح متجر البطاقات مباشرة من أمر نصي."""
+    from modules.war.store_guard import require_country
+    if not require_country(message):
+        return
     user_id = message.from_user.id
     chat_id = message.chat.id
     all_cards = get_all_cards()
@@ -1249,6 +1250,10 @@ def open_cards_shop_command(message):
 
 def open_alliance_shop_command(message):
     """يفتح متجر التحالف مباشرة من أمر نصي."""
+    from modules.war.store_guard import require_alliance
+    alliance = require_alliance(message)
+    if not alliance:
+        return
     user_id = message.from_user.id
     chat_id = message.chat.id
 
@@ -1258,12 +1263,6 @@ def open_alliance_shop_command(message):
     from database.db_queries.bank_queries import get_user_balance
     from utils.pagination import paginate_list
 
-    alliance = get_alliance_by_user(user_id)
-    if not alliance:
-        bot.reply_to(message, "❌ لست في أي تحالف! انضم لتحالف أولاً.")
-        return
-
-    alliance = dict(alliance)
     alliance_id = alliance["id"]
 
     all_types = get_all_upgrade_types()

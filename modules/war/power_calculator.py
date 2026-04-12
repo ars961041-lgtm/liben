@@ -81,7 +81,16 @@ def calc_raw_power(troops, equipment):
 # ══════════════════════════════════════════
 
 def _get_alliance_multiplier(country_id):
-    """يرجع مضاعف قوة التحالف للدولة (1.0 إذا لم تكن في تحالف)"""
+    """
+    يرجع مضاعف قوة التحالف للدولة.
+
+    الصيغة:
+      base = 1.0 + attack_bonus + defense_bonus×0.5 + hp_bonus×0.3
+      rep_bonus  = get_reputation_bonus(aid)   → 0.90x–1.15x  (soft cap)
+      final = base × rep_bonus
+
+    سقف ناعم: المضاعف النهائي لا يتجاوز 1.50x لمنع الهيمنة.
+    """
     try:
         from database.db_queries.alliances_queries import (
             get_alliance_by_country, get_alliance_effect
@@ -93,9 +102,39 @@ def _get_alliance_multiplier(country_id):
         atk_bonus = get_alliance_effect(aid, "attack_bonus")
         def_bonus = get_alliance_effect(aid, "defense_bonus")
         hp_bonus  = get_alliance_effect(aid, "hp_bonus")
-        return max(1.0, 1.0 + atk_bonus + def_bonus * 0.5 + hp_bonus * 0.3)
+        base = max(1.0, 1.0 + atk_bonus + def_bonus * 0.5 + hp_bonus * 0.3)
+
+        # مضاعف السمعة مع سقف ناعم
+        try:
+            from database.db_queries.alliance_governance_queries import get_reputation_bonus
+            rep_bonus = get_reputation_bonus(aid)
+            base *= rep_bonus
+        except Exception:
+            pass
+
+        # سقف ناعم عالمي: لا يتجاوز 1.50x
+        return min(base, 1.50)
     except Exception:
         return 1.0
+
+
+def _get_size_penalty(country_id) -> float:
+    """
+    تناقص العوائد للدول الكبيرة جداً.
+    إذا كان عدد المدن > 7: -2% قوة لكل مدينة زائدة.
+    الحد الأقصى للعقوبة: -20%.
+    """
+    try:
+        from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
+        cities = get_all_cities_of_country_by_country_id(country_id)
+        n = len(cities) if cities else 0
+        if n <= 7:
+            return 0.0
+        excess  = n - 7
+        penalty = min(0.20, excess * 0.02)
+        return penalty
+    except Exception:
+        return 0.0
 
 
 # ══════════════════════════════════════════
@@ -105,13 +144,34 @@ def _get_alliance_multiplier(country_id):
 def get_country_power(country_id):
     """
     يحسب القوة الكاملة للدولة:
-      total_power = raw_power × alliance_multiplier × (1 - maintenance_penalty)
-    لا تعود أبداً بقيمة سالبة.
+      total_power = raw_power × alliance_multiplier × infra_bonus × (1 - maintenance_penalty)
+
+    infra_bonus: البنية التحتية تقلل تكاليف اللوجستيات وتزيد كفاءة الجيش (حتى +15%)
     """
     troops, equipment = aggregate_country_forces(country_id)
     raw = calc_raw_power(troops, equipment)
     multiplier = _get_alliance_multiplier(country_id)
     power = max(0.0, raw * multiplier)
+
+    # ─── تأثير البنية التحتية على القوة العسكرية (لوجستيات) ───
+    try:
+        from database.db_queries.assets_queries import calculate_city_effects
+        from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
+        cities = get_all_cities_of_country_by_country_id(country_id)
+        total_infra = 0.0
+        total_level_mil = 0.0
+        for city in cities:
+            cid = city["id"] if isinstance(city, dict) else city[0]
+            effects = calculate_city_effects(cid)
+            total_infra     += effects.get("infra_bonus", 0.0)
+            total_level_mil += effects.get("level_military_bonus", 0.0)
+        # cap infra at +15%, level military bonus averaged across cities
+        n = max(1, len(cities))
+        infra_multiplier = 1.0 + min(0.15, total_infra)
+        level_multiplier = 1.0 + min(0.57, total_level_mil / n)  # max level 20 → +57%
+        power = power * infra_multiplier * level_multiplier
+    except Exception:
+        pass
 
     # ─── تطبيق عقوبة الصيانة ───
     try:
@@ -120,6 +180,11 @@ def get_country_power(country_id):
         power = max(0.0, power * (1 - penalty))
     except Exception:
         pass
+
+    # ─── تناقص العوائد للدول الكبيرة ───
+    size_penalty = _get_size_penalty(country_id)
+    if size_penalty > 0:
+        power = max(0.0, power * (1.0 - size_penalty))
 
     return power
 

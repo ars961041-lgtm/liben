@@ -296,6 +296,21 @@ def _finalize_battle(battle_id: int):
     except Exception:
         pass
 
+    # ─── XP awards after battle ───
+    try:
+        from database.db_queries.countries_queries import get_all_cities_of_country_by_country_id
+        from modules.city.city_stats import award_battle_xp
+        atk_loss = atk_report.get("loss_pct", 0)
+        def_loss = def_report.get("loss_pct", 0)
+        for city in get_all_cities_of_country_by_country_id(attacker_cid):
+            cid = city["id"] if isinstance(city, dict) else city[0]
+            award_battle_xp(cid, won=(winner_cid == attacker_cid), loss_pct=atk_loss)
+        for city in get_all_cities_of_country_by_country_id(defender_cid):
+            cid = city["id"] if isinstance(city, dict) else city[0]
+            award_battle_xp(cid, won=(winner_cid == defender_cid), loss_pct=def_loss)
+    except Exception:
+        pass
+
     # ─── التقرير النهائي ───
     from database.db_queries.advanced_war_queries import get_supporters
     supporters = get_supporters(battle_id)

@@ -7,7 +7,7 @@ from core.bot import bot
 from handlers.group_admin.permissions import is_developer
 from database.db_queries.assets_queries import (
     get_all_sectors, get_assets_by_sector,
-    get_asset_by_id, get_asset_branches,
+    get_asset_by_id,
 )
 from database.connection import get_db_conn
 from utils.pagination import send_ui
@@ -29,7 +29,6 @@ _ASSET_TEMPLATE = (
     "stat_military: 0\nstat_infrastructure: 0\n"
     "pop_effect: 0\neco_effect: 0\nprot_effect: 0"
 )
-_BRANCH_TEMPLATE = "name: \nname_ar: \nemoji: 📦\nbonus_pct: 0.1"
 _ALIASES = {
     "stat_eco": "stat_economy", "stat_edu": "stat_education",
     "stat_mil": "stat_military", "stat_infra": "stat_infrastructure",
@@ -249,7 +248,6 @@ def _on_asset(call, data):
         btn("➕ إضافة",  "dev_add_asset",    {"sid": sid},             color=GREEN, owner=owner),
         btn("✏️ تعديل",  "dev_update_asset", {"aid": aid, "sid": sid}, color=BLUE, owner=owner),
         btn("🗑 حذف",    "dev_delete_asset", {"aid": aid, "sid": sid}, color=RED, owner=owner),
-        btn("🌿 الفروع", "dev_branches",     {"aid": aid, "sid": sid}, color=BLUE, owner=owner),
         btn("رجوع",      "dev_assets_list",  {"sid": sid},             color=RED, owner=owner),
     ]
 
@@ -257,7 +255,7 @@ def _on_asset(call, data):
         call,
         text=_asset_block(a),
         buttons=buttons,
-        layout=[2, 2, 1]
+        layout=[2, 1, 1]
     )
     
 @register_action("dev_add_asset")
@@ -296,101 +294,6 @@ def _on_delete_asset(call, data):
 
 
 # ══════════════════════════════════════════
-# Branches
-# ══════════════════════════════════════════
-
-@register_action("dev_branches")
-def _on_branches(call, data):
-    aid      = data.get("aid")
-    sid      = data.get("sid")
-    owner    = (call.from_user.id, call.message.chat.id)
-
-    branches = get_asset_branches(aid)
-
-    text = "🌿 فروع العنصر:"
-
-    buttons = [
-        btn(f"{b['emoji']} {b['name_ar']}", "dev_branch",
-            {"bid": b["id"], "aid": aid, "sid": sid}, color=BLUE, owner=owner)
-        for b in branches
-    ]
-
-    buttons += [
-        btn("➕ إضافة فرع", "dev_add_branch", {"aid": aid, "sid": sid}, color=GREEN, owner=owner),
-        btn("رجوع", "dev_asset", {"aid": aid, "sid": sid}, color=RED, owner=owner),
-    ]
-
-    edit_ui(
-        call,
-        text=text,
-        buttons=buttons,
-        layout=_grid(len(branches), 2) + [1, 1],
-    )
-
-@register_action("dev_branch")
-def _on_branch(call, data):
-    bid   = data.get("bid")
-    aid   = data.get("aid")
-    sid   = data.get("sid")
-    owner = (call.from_user.id, call.message.chat.id)
-    row   = get_db_conn().cursor().execute("SELECT * FROM asset_branches WHERE id=?", (bid,)).fetchone()
-    if not row:
-        bot.answer_callback_query(call.id, "❌ الفرع غير موجود", show_alert=True)
-        return
-    b    = dict(row)
-    text = (f"🌿 الفرع\n{get_lines()}\n"
-            f"<code>name: {b['name']}\nname_ar: {b['name_ar']}\n"
-            f"emoji: {b['emoji']}\nbonus_pct: {b['bonus_pct']}</code>")
-    buttons = [
-        btn("✏️ تعديل", "dev_update_branch", {"bid": bid, "aid": aid, "sid": sid}, color=BLUE,  owner=owner),
-        btn("🗑 حذف",   "dev_delete_branch", {"bid": bid, "aid": aid, "sid": sid}, color=RED,  owner=owner),
-        btn("رجوع",     "dev_branches",      {"aid": aid, "sid": sid},             color=RED, owner=owner),
-    ]
-    edit_ui(call, text=text, buttons=buttons, layout=[2, 1])
-
-@register_action("dev_add_branch")
-def _on_add_branch(call, data):
-    aid   = data.get("aid")
-    sid   = data.get("sid")
-    owner = (call.from_user.id, call.message.chat.id)
-    mid   = call.message.message_id
-    _set_await(call.from_user.id, call.message.chat.id, mid, "dev_branch_add", {"aid": aid, "sid": sid})
-    bot.answer_callback_query(call.id)
-    edit_ui(call,
-            text=f"✏️ أرسل بيانات الفرع:\n\n<code>{_BRANCH_TEMPLATE}</code>",
-            buttons=_back_btn("dev_branches", {"aid": aid, "sid": sid}, owner), layout=[1])
-
-@register_action("dev_update_branch")
-def _on_update_branch(call, data):
-    bid   = data.get("bid")
-    aid   = data.get("aid")
-    sid   = data.get("sid")
-    owner = (call.from_user.id, call.message.chat.id)
-    mid   = call.message.message_id
-    row   = get_db_conn().cursor().execute("SELECT * FROM asset_branches WHERE id=?", (bid,)).fetchone()
-    b     = dict(row) if row else {}
-    current = (f"name: {b.get('name','')}\nname_ar: {b.get('name_ar','')}\n"
-               f"emoji: {b.get('emoji','📦')}\nbonus_pct: {b.get('bonus_pct',0.1)}")
-    _set_await(call.from_user.id, call.message.chat.id, mid, "dev_branch_update",
-               {"bid": bid, "aid": aid, "sid": sid})
-    bot.answer_callback_query(call.id)
-    edit_ui(call,
-            text=f"✏️ عدّل الحقول وأرسلها:\n\n<code>{current}</code>",
-            buttons=_back_btn("dev_branch", {"bid": bid, "aid": aid, "sid": sid}, owner), layout=[1])
-
-@register_action("dev_delete_branch")
-def _on_delete_branch(call, data):
-    bid  = data.get("bid")
-    aid  = data.get("aid")
-    sid  = data.get("sid")
-    conn = get_db_conn()
-    conn.cursor().execute("DELETE FROM asset_branches WHERE id=?", (bid,))
-    conn.commit()
-    bot.answer_callback_query(call.id, "✅ تم حذف الفرع")
-    _on_branches(call, {"aid": aid, "sid": sid})
-
-
-# ══════════════════════════════════════════
 # Text input handler
 # ══════════════════════════════════════════
 
@@ -410,7 +313,6 @@ def handle_dev_input(message) -> bool:
     _HANDLED_STATES = {
         "dev_sector_add", "dev_sector_update",
         "dev_asset_add",  "dev_asset_update",
-        "dev_branch_add", "dev_branch_update",
     }
     if s not in _HANDLED_STATES and not s.startswith("dev_troop_"):
         return False   # اترك الحالة كما هي لمعالجات أخرى
@@ -513,42 +415,6 @@ def handle_dev_input(message) -> bool:
             _done(f"✅ تم تعديل {len(fields)} حقل", "dev_asset", {"aid": aid, "sid": sid})
         except Exception as e:
             _done(f"❌ خطأ: {e}", "dev_asset", {"aid": aid, "sid": sid})
-        return True
-
-    # ── Branch add ────────────────────────────────────────────
-    if s == "dev_branch_add":
-        aid    = sdata.get("aid")
-        sid    = sdata.get("sid")
-        fields = _parse_fields(text)
-        try:
-            cur.execute("""
-                INSERT INTO asset_branches (asset_id,name,name_ar,emoji,bonus_pct)
-                VALUES (?,?,?,?,?)
-            """, (aid, fields.get("name","branch"), fields.get("name_ar","فرع"),
-                  fields.get("emoji","📦"), float(fields.get("bonus_pct",0.1))))
-            conn.commit()
-            _done(f"✅ تم إضافة الفرع: {fields.get('name_ar','')}", "dev_branches", {"aid": aid, "sid": sid})
-        except Exception as e:
-            _done(f"❌ خطأ: {e}", "dev_branches", {"aid": aid, "sid": sid})
-        return True
-
-    # ── Branch update ─────────────────────────────────────────
-    if s == "dev_branch_update":
-        bid    = sdata.get("bid")
-        aid    = sdata.get("aid")
-        sid    = sdata.get("sid")
-        fields = _parse_fields(text)
-        if not fields:
-            _done("❌ لم يتم إرسال أي حقول", "dev_branch", {"bid": bid, "aid": aid, "sid": sid})
-            return True
-        try:
-            sets   = ", ".join(f"{k}=?" for k in fields)
-            values = list(fields.values()) + [bid]
-            cur.execute(f"UPDATE asset_branches SET {sets} WHERE id=?", values)
-            conn.commit()
-            _done("✅ تم تعديل الفرع", "dev_branch", {"bid": bid, "aid": aid, "sid": sid})
-        except Exception as e:
-            _done(f"❌ خطأ: {e}", "dev_branch", {"bid": bid, "aid": aid, "sid": sid})
         return True
 
     # ── Troop states — delegate to troop panel ────────────────
