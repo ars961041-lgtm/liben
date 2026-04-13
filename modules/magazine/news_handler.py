@@ -42,6 +42,7 @@ _COMMANDS = {
     "أخبار الترتيب",
 }
 
+RTL = "\u200F"
 
 def handle_news_command(message) -> bool:
     text = (message.text or "").strip()
@@ -79,48 +80,64 @@ def handle_news_command(message) -> bool:
     return True
 
 
-def _send_news_page(cid, uid, posts, page=0, header="📰 <b>الأخبار</b>",
-                    reply_to=None, call=None):
+
+def _send_news_page( cid, uid, posts, page=0, header="📰 <b>الأخبار</b>", reply_to=None, call=None ):
     items, total_pages = paginate_list(posts, page, per_page=3)
     owner = (uid, cid)
 
-    text = f"{header}  ({page+1}/{total_pages})\n{get_lines()}\n\n"
+    # Header (RTL fixed)
+    text = (
+        f"{RTL}{header}  ({page+1}/{total_pages})\n"
+        f"{RTL}{get_lines()}\n\n"
+    )
+
     for p in items:
-        ts    = time.strftime("%H:%M %d/%m", time.localtime(p["created_at"]))
-        imp   = _IMPORTANCE_EMOJI.get(p.get("importance", "MEDIUM"), "🟡")
-        cat   = _CATEGORY_LABELS.get(p.get("category", "general"), "📋")
+        ts = time.strftime("%H:%M %d/%m", time.localtime(p["created_at"]))
+        imp = _IMPORTANCE_EMOJI.get(p.get("importance", "MEDIUM"), "🟡")
+        cat = _CATEGORY_LABELS.get(p.get("category", "general"), "📋")
+
+        title = p.get("title", "")
+        body = p.get("body", "")
+
         text += (
-            f"{imp} <b>{p['title']}</b>\n"
-            f"   {cat} | {ts}\n"
-            f"{p['body']}\n\n"
+            f"{RTL}{imp} <b>{title}</b>\n"
+            f"{RTL}{cat} │ {ts}\n"
+            f"{RTL}{body}\n\n"
         )
 
+    # Navigation buttons
     nav = []
     if page > 0:
-        nav.append(btn("◀️", "news_page",
-                       {"p": page - 1, "h": header}, owner=owner))
+        nav.append(
+            btn("◀️", "news_page",
+                {"p": page - 1, "h": header}, owner=owner)
+        )
     if page < total_pages - 1:
-        nav.append(btn("▶️", "news_page",
-                       {"p": page + 1, "h": header}, owner=owner))
+        nav.append(
+            btn("▶️", "news_page",
+                {"p": page + 1, "h": header}, owner=owner)
+        )
 
-    # Category filter buttons
+    # Category buttons
     cat_buttons = [
-        btn("⚔️ حرب",      "news_cat", {"cat": "war",      "p": 0}, owner=owner),
-        btn("💰 اقتصاد",   "news_cat", {"cat": "economy",  "p": 0}, owner=owner),
-        btn("🏰 تحالفات",  "news_cat", {"cat": "alliance", "p": 0}, owner=owner),
-        btn("🏆 ترتيب",    "news_cat", {"cat": "rankings", "p": 0}, owner=owner),
-        btn("🔥 الأهم",    "news_top", {"p": 0},                    owner=owner, color="su"),
-        btn("❌ إغلاق",    "news_close", {},                         owner=owner, color="d"),
+        btn("⚔️ حرب", "news_cat", {"cat": "war", "p": 0}, owner=owner),
+        btn("💰 اقتصاد", "news_cat", {"cat": "economy", "p": 0}, owner=owner),
+        btn("🏰 تحالفات", "news_cat", {"cat": "alliance", "p": 0}, owner=owner),
+        btn("🏆 ترتيب", "news_cat", {"cat": "rankings", "p": 0}, owner=owner),
+        btn("🔥 الأهم", "news_top", {"p": 0}, owner=owner, color="su"),
+        btn("❌ إغلاق", "news_close", {}, owner=owner, color="d"),
     ]
 
     all_buttons = nav + cat_buttons
+
+    # Layout safe for RTL UI
     layout = ([len(nav)] if nav else []) + [2, 2, 2]
 
     if call:
         edit_ui(call, text=text, buttons=all_buttons, layout=layout)
     else:
-        send_ui(cid, text=text, buttons=all_buttons, layout=layout,
-                owner_id=uid, reply_to=reply_to)
+        send_ui( cid, text=text, buttons=all_buttons, layout=layout, owner_id=uid, reply_to=reply_to)
+
 
 
 @register_action("news_page")

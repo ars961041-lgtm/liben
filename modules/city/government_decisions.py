@@ -118,8 +118,8 @@ def can_make_decision(country_id: int) -> tuple:
         active = get_active_decision(country_id)
         if active:
             remaining = max(0, active["expires_at"] - int(time.time()))
-            hours = remaining // 3600
-            return False, f"⏳ القرار الحالي ينتهي خلال {hours} ساعة"
+            from utils.helpers import format_remaining_time
+            return False, f"⏳ القرار الحالي ينتهي خلال {format_remaining_time(remaining)}"
 
         conn = get_db_conn()
         cursor = conn.cursor()
@@ -132,8 +132,8 @@ def can_make_decision(country_id: int) -> tuple:
         row = cursor.fetchone()
         if row and row[0] > cooldown_cutoff:
             remaining = max(0, row[0] + DECISION_COOLDOWN_DAYS * 86400 - int(time.time()))
-            hours = remaining // 3600
-            return False, f"⏳ كولداون: {hours} ساعة متبقية"
+            from utils.helpers import format_remaining_time
+            return False, f"⏳ كولداون: {format_remaining_time(remaining)} متبقية"
 
         return True, "✅ يمكنك اتخاذ قرار جديد"
     except Exception:

@@ -103,6 +103,14 @@ def buy_equipment(user_id: int, country_id: int, eq_type_id: int,
     eq = dict(eq)
 
     total_cost = eq["base_cost"] * quantity
+    # ─── تطبيق حدث خصم تكلفة المعدات ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        discount = get_event_effect("equipment_cost_discount")
+        if discount > 0:
+            total_cost = round(total_cost * (1 - discount))
+    except Exception:
+        pass
     balance = get_user_balance(user_id)
     if balance < total_cost:
         return False, f"❌ رصيدك غير كافٍ! تحتاج {total_cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"

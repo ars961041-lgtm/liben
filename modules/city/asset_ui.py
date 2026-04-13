@@ -214,7 +214,7 @@ def open_upgrade_menu(message, user_id: int, city_id: int):
 
     buttons.append(btn("رجوع", "city_back", {"cid": city_id}, color=RED, owner=owner))
     send_ui(message.chat.id, text=text, buttons=buttons,
-            layout=grid(len(buttons) - 1, 2) + [1], owner_id=user_id)
+            layout=grid(len(buttons) - 1, 2) + [1], owner_id=user_id, reply_to=message.message_id)
 
 
 @register_action("upgrade_item")

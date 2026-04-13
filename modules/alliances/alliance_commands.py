@@ -92,7 +92,7 @@ def _create_alliance(message, text):
 
     deduct_user_balance(user_id, COST)
     alliance_id = create_alliance(name, user_id, country["id"])
-    bot.reply_to(message, f"🏰 تم إنشاء تحالف <b>{name}</b> بنجاح!\nاستخدم: تحالفي", parse_mode="HTML")
+    bot.reply_to(message, f"🏰 تم إنشاء تحالف <b>{name}</b> بنجاح!\nاستخدم: <code>تحالفي</code>", parse_mode="HTML")
 
 
 def _show_invites(message):

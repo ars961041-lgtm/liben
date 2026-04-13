@@ -102,7 +102,7 @@ def build_top(title: str, rows: list, note: str = "") -> str:
 
     # ── رأس الرسالة ──
     lines.append(f"{LTR_MARK}🏆 {title}")
-    lines.append(f"{LTR_MARK}{get_lines()}")
+    lines.append("━━━━━━━━━━━━━━━")
     if note:
         lines.append(f"{LTR_MARK}💡 {note}")
         lines.append(f"{LTR_MARK}")
@@ -120,6 +120,6 @@ def build_top(title: str, rows: list, note: str = "") -> str:
             f"{LTR_MARK}{rank_label:<3} {medal}  {padded_val}  |  {name}"
         )
 
-    lines.append(f"{LTR_MARK}{get_lines()}")
+    lines.append("━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)

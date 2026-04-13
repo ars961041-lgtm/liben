@@ -3,7 +3,7 @@
 متاحة في المجموعات والخاص.
 """
 from core.bot import bot
-from utils.helpers import get_lines
+from utils.helpers import get_lines, format_remaining_time
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 
@@ -68,8 +68,8 @@ def show_influence(message):
 
 def show_global_event(message):
     try:
-        from modules.progression.global_events import get_events_page
-        bot.reply_to(message, get_events_page(), parse_mode="HTML")
+        from modules.progression.events_ui import open_events_main
+        open_events_main(message)
     except Exception as e:
         bot.reply_to(message, f"❌ خطأ: {e}")
 
@@ -85,7 +85,7 @@ def show_season(message):
         text = (
             f"🏆 <b>الموسم الحالي: {status['name']}</b>\n"
             f"{get_lines()}\n"
-            f"⏱️ ينتهي خلال: {status['days_left']} يوم {status['hours_left']} ساعة\n\n"
+            f"⏱️ ينتهي خلال: {format_remaining_time(status['remaining'])}\n\n"
         )
         lb = get_season_leaderboard(season["id"], "battles")
         if lb:
@@ -115,9 +115,9 @@ def collect_city_income(message):
         can, remaining = can_collect_income(country_id)
         if not can:
             summary = get_income_summary(country_id)
-            h, m = remaining // 3600, (remaining % 3600) // 60
+            from utils.helpers import format_remaining_time
             bot.reply_to(message,
-                f"⏳ يمكنك جمع الدخل بعد <b>{h}س {m}د</b>\n\n"
+                f"⏳ يمكنك جمع الدخل بعد <b>{format_remaining_time(remaining)}</b>\n\n"
                 f"💰 الدخل المتوقع: {summary['income']:.0f} {CURRENCY_ARABIC_NAME}\n"
                 f"🔧 الصيانة: {summary['maintenance']:.0f} {CURRENCY_ARABIC_NAME}\n"
                 f"📊 الصافي: {summary['net']:+.0f} {CURRENCY_ARABIC_NAME}",

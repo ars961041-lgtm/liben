@@ -8,7 +8,8 @@ import time
 from core.bot import bot
 from core.state_manager import StateManager
 from utils.logger import log_event
-from handlers.group_admin.restrictions import get_target_user
+from utils.helpers import safe_reply
+from handlers.group_admin.restrictions import resolve_user, get_target_user
 
 from .promote_checks import run_promote_checks
 from .promote_state import (
@@ -20,22 +21,29 @@ from .promote_ui import send_promote_ui, edit_promote_ui
 # Import callbacks so their @register_action decorators fire at load time
 from . import promote_callbacks  # noqa: F401
 
+_NO_TARGET_MSG = (
+    "❌ حدد المستخدم بإحدى الطرق:\n"
+    "• الرد على رسالته\n"
+    "• <code>@username</code>\n"
+    "• رقم المعرف مثل: <code>123456789</code>"
+)
+
 
 # ── /promote ──────────────────────────────────────────────────────────────────
 
 def handle_promote_command(message):
-    """Trigger: admin replies to a user with /promote or 'ترقية'."""
+    """Trigger: /promote or 'رفع مشرف' — always opens the permissions UI."""
     uid = message.from_user.id
     cid = message.chat.id
 
-    target_uid, target_name = get_target_user(message)
+    target_uid, target_name, res_err = resolve_user(message)
     if not target_uid:
-        bot.reply_to(message, "❌ حدد المستخدم بالرد على رسالته أو بالـ ID أو اليوزر.")
+        safe_reply(message, res_err or _NO_TARGET_MSG)
         return
 
     ok, err, _ = run_promote_checks(message, target_uid)
     if not ok:
-        bot.reply_to(message, err, parse_mode="HTML")
+        safe_reply(message, err)
         return
 
     init_promote_state(uid, cid, target_uid, target_name, mode="promote")
@@ -49,27 +57,28 @@ def handle_promote_command(message):
 # ── /edit_admin ───────────────────────────────────────────────────────────────
 
 def handle_edit_command(message):
-    """Trigger: admin replies to an existing admin with /edit_admin or 'تعديل مشرف'."""
+    """Trigger: /edit_admin or 'تعديل مشرف' — opens the permissions UI for any member."""
     uid = message.from_user.id
     cid = message.chat.id
 
-    target_uid, target_name = get_target_user(message)
+    target_uid, target_name, res_err = resolve_user(message)
     if not target_uid:
-        bot.reply_to(message, "❌ حدد المشرف بالرد على رسالته أو بالـ ID أو اليوزر.")
+        safe_reply(message, res_err or _NO_TARGET_MSG)
         return
 
     ok, err, _ = run_promote_checks(message, target_uid)
     if not ok:
-        bot.reply_to(message, err, parse_mode="HTML")
+        safe_reply(message, err)
         return
 
-    # Load current permissions from Telegram
+    # Load current permissions — works for both admins and regular members
     try:
         member = bot.get_chat_member(cid, target_uid)
         current_perms = {k: bool(getattr(member, k, False)) for k, _ in PERMISSIONS}
         current_title = getattr(member, "custom_title", "") or ""
     except Exception as e:
-        bot.reply_to(message, f"❌ تعذّر جلب صلاحيات المشرف: {e}")
+        print(f"[handle_edit_command] error: {e}")
+        safe_reply(message, "❌ تعذّر جلب بيانات المستخدم.")
         return
 
     init_promote_state(uid, cid, target_uid, target_name,
@@ -80,6 +89,84 @@ def handle_edit_command(message):
     msg = send_promote_ui(cid, uid, cid, page=0, reply_to=message.message_id)
     if msg:
         set_promote_extra(uid, cid, mid=msg.message_id)
+
+
+# ── /demote ───────────────────────────────────────────────────────────────────
+
+def handle_demote_command(message):
+    """Trigger: 'تنزيل مشرف' — removes admin rights from a user."""
+    uid = message.from_user.id
+    cid = message.chat.id
+
+    # sender must be admin
+    try:
+        sender = bot.get_chat_member(cid, uid)
+        if sender.status not in ("administrator", "creator"):
+            safe_reply(message, "❌ أنت لست مشرفاً في هذه المجموعة.")
+            return
+    except Exception:
+        safe_reply(message, "❌ تعذّر التحقق من صلاحياتك.")
+        return
+
+    target_uid, target_name, res_err = resolve_user(message)
+    if not target_uid:
+        safe_reply(message, res_err or _NO_TARGET_MSG)
+        return
+
+    # target must currently be an admin
+    try:
+        target = bot.get_chat_member(cid, target_uid)
+        if target.status == "creator":
+            safe_reply(message, "❌ لا يمكن تنزيل مؤسس المجموعة.")
+            return
+        if target.status != "administrator":
+            safe_reply(message, "❌ المستخدم ليس مشرفاً أصلاً.")
+            return
+    except Exception:
+        safe_reply(message, "❌ تعذّر التحقق من المستخدم.")
+        return
+
+    # bot must have can_promote_members
+    try:
+        bot_member = bot.get_chat_member(cid, bot.get_me().id)
+        if not bot_member.can_promote_members:
+            safe_reply(message, "❌ البوت لا يملك صلاحية تنزيل المشرفين.")
+            return
+    except Exception:
+        safe_reply(message, "❌ تعذّر التحقق من صلاحيات البوت.")
+        return
+
+    try:
+        bot.promote_chat_member(
+            cid, target_uid,
+            can_change_info=False,
+            can_delete_messages=False,
+            can_invite_users=False,
+            can_restrict_members=False,
+            can_pin_messages=False,
+            can_promote_members=False,
+            can_manage_chat=False,
+            can_manage_video_chats=False,
+            can_manage_tags=False,
+        )
+        executor_link = f"<a href='tg://user?id={uid}'>{message.from_user.first_name}</a>"
+        user_link     = f"<a href='tg://user?id={target_uid}'>{target_name}</a>"
+        safe_reply(
+            message,
+            f"⬇️ تم تنزيل {user_link} من الإشراف\n👮 بواسطة: {executor_link}",
+        )
+        log_event("demote_assigned", executor=uid, target=target_uid, chat=cid)
+    except Exception as e:
+        err = str(e).lower()
+        print(f"[handle_demote_command] error: {e}")
+        if "chat_admin_required" in err or "not enough rights" in err:
+            safe_reply(
+                message,
+                "❌ لا يمكن تنزيل هذا المشرف.\n"
+                "قد يكون تم تعيينه من قبل مالك المجموعة أو صلاحيات البوت غير كافية."
+            )
+        else:
+            safe_reply(message, "❌ فشلت عملية التنزيل.")
 
 
 # ── Text input handler (title) ────────────────────────────────────────────────
@@ -108,16 +195,14 @@ def handle_promote_input(message) -> bool:
     set_promote_extra(uid, cid, title=title)
     set_step(uid, cid, "select")
 
-    # Confirm to user
     label = f"<b>{title}</b>" if title else "— (بدون لقب)"
-    bot.reply_to(message, f"✅ تم حفظ اللقب: {label}", parse_mode="HTML")
+    safe_reply(message, f"✅ تم حفظ اللقب: {label}")
 
     # Refresh the UI message
     mid  = extra.get("mid")
     page = extra.get("page", 0)
     if mid:
         try:
-            # Build a fake call-like object to reuse edit_promote_ui
             class _FakeCall:
                 class message:
                     pass

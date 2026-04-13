@@ -13,7 +13,7 @@ from database.db_queries.tops_queries import (
     get_top_active_users, get_top_active_in_group,
     get_top_spending_cities, get_top_spending_countries,
     get_top_alliances, get_top_groups, get_top_betrayals,
-    get_top_richest,
+    get_top_richest, get_top_wars, get_top_war_winners, get_top_war_loot,
 )
 
 from modules.bank.utils.constants import CURRENCY_ENGLISH_NAME
@@ -26,35 +26,44 @@ def _fetch_active(chat_id, **_):
     return get_top_active_in_group(chat_id) or get_top_active_users()
 
 TOP_CATEGORIES = {
-    "active":    {"label": "🔥 المتفاعلون",   "fetch": lambda chat_id, **_: get_top_active_in_group(chat_id)},
-    "cities":    {"label": "🏙 المدن",         "fetch": lambda **_: get_top_spending_cities()},
-    "countries": {"label": "🌍 الدول",         "fetch": lambda **_: get_top_spending_countries()},
-    "alliances": {"label": "🏰 التحالفات",     "fetch": lambda **_: get_top_alliances()},
-    "groups":    {"label": "👥 المجموعات",     "fetch": lambda **_: get_top_groups()},
-    "betrayals": {"label": "🗡 الخيانات",      "fetch": lambda **_: get_top_betrayals()},
-    "richest":   {"label": "💰 الأغنى",        "fetch": lambda **_: get_top_richest()},
+    "active":      {"label": "🔥 المتفاعلون",   "fetch": lambda chat_id, **_: get_top_active_in_group(chat_id)},
+    "cities":      {"label": "🏙 المدن",         "fetch": lambda **_: get_top_spending_cities()},
+    "countries":   {"label": "🌍 الدول",         "fetch": lambda **_: get_top_spending_countries()},
+    "alliances":   {"label": "🏰 التحالفات",     "fetch": lambda **_: get_top_alliances()},
+    "groups":      {"label": "👥 المجموعات",     "fetch": lambda **_: get_top_groups()},
+    "betrayals":   {"label": "🗡 الخيانات",      "fetch": lambda **_: get_top_betrayals()},
+    "richest":     {"label": "💰 الأغنى",        "fetch": lambda **_: get_top_richest()},
+    "wars":        {"label": "⚔️ الحروب",        "fetch": lambda **_: get_top_wars()},
+    "war_winners": {"label": "🏆 الانتصارات",    "fetch": lambda **_: get_top_war_winners()},
+    "war_loot":    {"label": "💎 الغنائم",       "fetch": lambda **_: get_top_war_loot()},
 }
 
 # عناوين العرض
 TOP_TITLES = {
-    "active":    "🔥 توب المتفاعلين",
-    "cities":    "🏙 توب المدن بالإنفاق",
-    "countries": "🌍 توب الدول بالإنفاق",
-    "alliances": "🏰 توب التحالفات",
-    "groups":    "👥 توب المجموعات",
-    "betrayals": "🗡 توب الخيانات",
-    "richest":   "💰 توب الأغنى",
+    "active":      "🔥 توب المتفاعلين",
+    "cities":      "🏙 توب المدن بالإنفاق",
+    "countries":   "🌍 توب الدول بالإنفاق",
+    "alliances":   "🏰 توب التحالفات",
+    "groups":      "👥 توب المجموعات",
+    "betrayals":   "🗡 توب الخيانات",
+    "richest":     "💰 توب الأغنى",
+    "wars":        "⚔️ توب الدول بعدد الحروب",
+    "war_winners": "🏆 توب الدول بالانتصارات",
+    "war_loot":    "💎 توب الدول بالغنائم",
 }
 
 # وحدات القيم
 TOP_UNITS = {
-    "active":    "رسالة",
-    "cities":    f"{CURRENCY_ENGLISH_NAME}",
-    "countries": f"{CURRENCY_ENGLISH_NAME}",
-    "alliances": "نقطة",
-    "groups":    "رسالة",
-    "betrayals": "مرة",
-    "richest":   f"{CURRENCY_ENGLISH_NAME}",
+    "active":      "رسالة",
+    "cities":      f"{CURRENCY_ENGLISH_NAME}",
+    "countries":   f"{CURRENCY_ENGLISH_NAME}",
+    "alliances":   "نقطة",
+    "groups":      "رسالة",
+    "betrayals":   "مرة",
+    "richest":     f"{CURRENCY_ENGLISH_NAME}",
+    "wars":        "معركة",
+    "war_winners": "انتصار",
+    "war_loot":    f"{CURRENCY_ENGLISH_NAME}",
 }
 
 
@@ -131,8 +140,10 @@ def top_commands(message) -> bool:
         "توب التحالفات":      "alliances",
         "توب المجموعات":      "groups",
         "توب الخيانات":       "betrayals",
+        "توب الحروب":         "wars",
+        "توب الانتصارات":     "war_winners",
+        "توب الغنائم":        "war_loot",
         # backward compat
-        "توب الحروب":         "countries",
         "توب الدول بالمستوى": "countries",
     }
 
@@ -150,7 +161,7 @@ def top_commands(message) -> bool:
         unit    = TOP_UNITS.get("richest", "")
         caption = build_top("💰 توب الأغنى", rows, note=unit) if rows else "❌ لا توجد بيانات."
         send_ui(cid, text=caption, buttons=_main_buttons(owner),
-                layout=[3, 2, 2], owner_id=uid)
+                layout=[3, 2, 2, 3], owner_id=uid)
     else:
         _send_top(cat, cid, uid, owner)
 
@@ -175,7 +186,7 @@ def handle_top_main_menu(call, data):
     rows    = get_top_richest(10)
     unit    = TOP_UNITS.get("richest", "")
     caption = build_top("💰 توب الأغنى", rows, note=unit) if rows else "❌ لا توجد بيانات."
-    edit_ui(call, text=caption, buttons=_main_buttons(o), layout=[3, 2, 2])
+    edit_ui(call, text=caption, buttons=_main_buttons(o), layout=[3, 2, 2, 3])
 
 
 # ── backward-compat aliases (old button actions still work) ──

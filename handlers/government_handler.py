@@ -37,11 +37,11 @@ def _send_decisions_menu(cid, uid, country_id, reply_to=None, call=None):
         defn = active.get("definition", {})
         import time
         remaining = max(0, active["expires_at"] - int(time.time()))
-        hours = remaining // 3600
+        from utils.helpers import format_remaining_time
         status_text = (
             f"🟢 <b>القرار النشط:</b> {defn.get('emoji','')} {defn.get('name_ar','')}\n"
             f"📝 {defn.get('description_ar','')}\n"
-            f"⏱️ ينتهي خلال: {hours} ساعة\n\n"
+            f"⏱️ ينتهي خلال: {format_remaining_time(remaining)}\n\n"
         )
     else:
         status_text = f"⚪ لا يوجد قرار نشط\n{reason}\n\n"

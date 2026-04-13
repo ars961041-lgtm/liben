@@ -103,6 +103,21 @@ def recruit_agent(country_id: int, user_id: int, agent_type: str) -> tuple:
     info = AGENT_TYPES[agent_type]
     cost = _c(info["cost_key"], info["default_cost"])
 
+    # ─── apply active event discount ───
+    try:
+        from modules.progression.global_events import get_event_effect
+        import logging
+        _log = logging.getLogger(__name__)
+        discount = get_event_effect("troop_cost_discount")
+        if discount > 0:
+            cost = round(cost * (1 - discount))
+            _log.info("[EVENT_APPLIED] type=troop_cost_discount (spy recruit), discount=%.0f%%, final_price=%s",
+                      discount * 100, cost)
+        else:
+            _log.debug("[EVENT_SKIP] troop_cost_discount — no active event for spy recruit")
+    except Exception:
+        pass
+
     balance = get_user_balance(user_id)
     if balance < cost:
         return False, f"❌ رصيدك غير كافٍ! تحتاج {cost} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
@@ -175,11 +190,11 @@ def execute_spy_mission(attacker_user_id: int, target_country_id: int,
     # ─── فحص الكولداون ───
     can_spy, remaining, cached = get_spy_cooldown(attacker_cid, target_country_id)
     if not can_spy and cached:
-        mins, secs = remaining // 60, remaining % 60
+        from utils.helpers import format_remaining_time
         icon = {"success": "🎯", "partial": "⚠️", "failed": "❌",
                 "fake": "💀", "detected": "🚨"}.get(cached["result"], "❓")
         return cached["result"], (
-            f"⏳ <b>كولداون التجسس</b> — متبقي: {mins}د {secs}ث\n\n"
+            f"⏳ <b>كولداون التجسس</b> — متبقي: {format_remaining_time(remaining)}\n\n"
             f"{icon} <b>آخر نتيجة:</b>\n{cached['info']}"
         ), {}
 

@@ -343,16 +343,18 @@ def limit_text(text, max_length=20, suffix='...'):
   return text[:max_length].rstrip() + suffix
 
 def format_remaining_time(seconds):
+    """
+    يُنسّق الوقت المتبقي بدقة الثواني — صيغة عربية واضحة.
+    أمثلة: "2 ساعات و 5 دقائق و 30 ثانية" | "45 ثانية" | "0 ثانية"
+    """
+    seconds = max(0, int(seconds))
     minutes, sec = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
 
     parts = []
     if days > 0:
-        if days == 1:
-            parts.append("1 يوم")
-        else:
-            parts.append(f"{days} أيام")
+        parts.append("1 يوم" if days == 1 else f"{days} أيام")
     if hours > 0:
         if hours == 1:
             parts.append("1 ساعة")
@@ -371,13 +373,28 @@ def format_remaining_time(seconds):
             parts.append(f"{minutes} دقائق")
         else:
             parts.append(f"{minutes} دقيقة")
-    if sec > 0 and not parts:  # فقط إذا لم يكن هناك دقائق أو ساعات أو أيام
-        if sec == 1:
-            parts.append("1 ثانية")
-        else:
-            parts.append(f"{sec} ثواني")
+    # الثواني تُعرض دائماً إذا كانت > 0، أو إذا كان الوقت صفراً
+    if sec > 0:
+        parts.append("1 ثانية" if sec == 1 else f"{sec} ثانية")
+    elif not parts:
+        parts.append("0 ثانية")
 
     return " و ".join(parts)
+
+
+def format_time_compact(seconds: int) -> str:
+    """
+    يُنسّق الوقت بصيغة مضغوطة HH:MM:SS أو MM:SS.
+    مثالي للعدادات والمؤقتات في الواجهة.
+    أمثلة: 3661 → "01:01:01" | 90 → "01:30" | 45 → "00:45" | 0 → "00:00"
+    """
+    seconds = max(0, int(seconds))
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{sec:02d}"
+    return f"{minutes:02d}:{sec:02d}"
 
 def convert_to_arabic_numbers(number):
     return str(number).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
@@ -488,3 +505,29 @@ def safe_send_message(chat_id: int, text: str,
                 return None
         print(f"[safe_send_message] failed cid={chat_id}: {e}")
         return None
+
+
+def safe_reply(message, text: str, parse_mode: str = "HTML", markup=None) -> object:
+    """
+    بديل آمن لـ bot.reply_to — يتعامل مع حالة حذف الرسالة الأصلية:
+    1. يحاول الرد على الرسالة الأصلية
+    2. إذا فشل (message to be replied not found) → يُرسل رسالة عادية
+    3. لا يُظهر أي خطأ تقني للمستخدم
+    """
+    return safe_send_message(
+        chat_id=message.chat.id,
+        text=text,
+        reply_to_id=message.message_id,
+        markup=markup,
+        parse_mode=parse_mode,
+    )
+
+
+def get_target_user_id(message, text: str = None) -> int | None:
+    """
+    يستخرج user_id من مصادر متعددة بالأولوية.
+    Delegates to utils.user_resolver.get_target_user_id — single source of truth.
+    يرجع user_id (int) أو None — لا يُرسل أي رسالة.
+    """
+    from utils.user_resolver import get_target_user_id as _resolve
+    return _resolve(message, text)

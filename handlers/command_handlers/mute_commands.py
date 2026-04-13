@@ -51,6 +51,7 @@ def handle_global_mute_cmd(message):
 def handle_global_unmute_cmd(message):
     """
     رفع كتم عالمي — يدعم رد / @username / ID.
+    السبب غير مطلوب ولا يُتحقق منه.
     """
     from core.admin import global_unmute
     from handlers.group_admin.restrictions import resolve_user
@@ -67,27 +68,15 @@ def handle_global_unmute_cmd(message):
                      parse_mode="HTML")
         return
 
-    # السبب الاختياري للتحقق
-    text   = (message.text or "").strip()
-    parts  = text.split(maxsplit=2)
-    reason = parts[2] if len(parts) >= 3 else ""
-
-    ok, detail = global_unmute(uid, reason)
+    ok, detail = global_unmute(uid)
     if ok:
         msg = f"✅ تم رفع الكتم العالمي عن <code>{uid}</code>"
-        if detail:
-            msg += f"\n📝 السبب المسجل كان: {detail}"
+        if name and name != str(uid):
+            msg += f" ({name})"
         msg += "\nℹ️ الكتم في المجموعات الأخرى (إن وجد) لم يتأثر."
     elif detail == "not_found":
         msg = f"❌ المستخدم <code>{uid}</code> غير مكتوم عالمياً"
-    elif detail.startswith("reason_mismatch:"):
-        stored = detail.split(":", 1)[1]
-        msg = (
-            f"❌ السبب غير متطابق!\n"
-            f"السبب المسجل: <b>{stored or 'بدون سبب'}</b>\n"
-            f"السبب المُدخل: <b>{reason}</b>\n\n"
-            f"لرفع الكتم بدون تحقق السبب: <code>رفع كتم عالمي {uid}</code>"
-        )
     else:
         msg = f"❌ حدث خطأ أثناء رفع الكتم عن <code>{uid}</code>"
+
     bot.reply_to(message, msg, parse_mode="HTML")

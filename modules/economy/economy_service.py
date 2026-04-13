@@ -137,8 +137,7 @@ def get_income_summary(country_id: int) -> dict:
     net         = round(income - maintenance, 2)
 
     can_collect, remaining = can_collect_income(country_id)
-    hours   = remaining // 3600
-    minutes = (remaining % 3600) // 60
+    from utils.helpers import format_remaining_time
 
     return {
         "income":      income,
@@ -146,5 +145,5 @@ def get_income_summary(country_id: int) -> dict:
         "net":         net,
         "can_collect": can_collect,
         "cooldown_remaining": remaining,
-        "cooldown_display": f"{hours}س {minutes}د" if remaining > 0 else "جاهز",
+        "cooldown_display": format_remaining_time(remaining) if remaining > 0 else "جاهز",
     }

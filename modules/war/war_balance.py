@@ -124,9 +124,9 @@ def get_fatigue_display(country_id: int) -> str:
 
 def damage_defender_assets(defender_country_id: int, damage_count: int = None):
     """
-    يُتلف عشوائياً 1–3 مباني في مدن المدافع.
-    يُقلّل المستوى بمقدار 1 أو يُعطّل المبنى مؤقتاً.
-    يرجع قائمة المباني المتضررة.
+    يُتلف عشوائياً 1–3 أصول في مدن المدافع باستخدام جدول city_assets الفعلي.
+    يُقلّل الكمية بمقدار 1 أو يُعطّل الأصل مؤقتاً (30 دقيقة).
+    يرجع قائمة الأصول المتضررة.
     """
     cities = get_all_cities_of_country_by_country_id(defender_country_id)
     if not cities:
@@ -138,41 +138,50 @@ def damage_defender_assets(defender_country_id: int, damage_count: int = None):
 
     count = damage_count or random.randint(1, 3)
 
-    for _ in range(count):
-        if not cities:
-            break
-        city = random.choice(cities)
-        city_id = city["id"] if isinstance(city, dict) else city[0]
+    try:
+        for _ in range(count):
+            if not cities:
+                break
+            city = random.choice(cities)
+            city_id = city["id"] if isinstance(city, dict) else city[0]
 
-        # جلب مبانٍ قابلة للتضرر
-        cursor.execute("""
-            SELECT id, building_type, level FROM buildings
-            WHERE city_id = ? AND level > 1
-            ORDER BY RANDOM() LIMIT 1
-        """, (city_id,))
-        building = cursor.fetchone()
+            # جلب أصول قابلة للتضرر من city_assets
+            cursor.execute("""
+                SELECT ca.id, a.name, a.name_ar, ca.quantity, ca.level
+                FROM city_assets ca
+                JOIN assets a ON ca.asset_id = a.id
+                WHERE ca.city_id = ? AND ca.quantity > 0
+                ORDER BY RANDOM() LIMIT 1
+            """, (city_id,))
+            asset_row = cursor.fetchone()
 
-        if building:
-            bid, btype, blevel = building[0], building[1], building[2]
-            if random.random() < 0.5:
-                # تقليل المستوى
-                new_level = max(1, blevel - 1)
-                cursor.execute("UPDATE buildings SET level = ? WHERE id = ?", (new_level, bid))
-                damaged.append({"type": "level_down", "building": btype, "city_id": city_id})
-            else:
-                # تعطيل مؤقت (30 دقيقة)
-                disabled_until = int(time.time()) + 1800
-                try:
-                    cursor.execute("""
-                        UPDATE city_assets SET disabled_until = ?
-                        WHERE city_id = ? AND asset_type = ?
-                    """, (disabled_until, city_id, btype))
-                except Exception:
-                    pass
-                damaged.append({"type": "disabled", "building": btype, "city_id": city_id,
-                                 "until": disabled_until})
+            if asset_row:
+                ca_id, aname, aname_ar, qty, lvl = (
+                    asset_row[0], asset_row[1], asset_row[2], asset_row[3], asset_row[4]
+                )
+                if random.random() < 0.5:
+                    # تقليل الكمية بمقدار 1
+                    new_qty = max(0, qty - 1)
+                    cursor.execute(
+                        "UPDATE city_assets SET quantity = ? WHERE id = ?",
+                        (new_qty, ca_id)
+                    )
+                    damaged.append({"type": "quantity_down", "building": aname_ar,
+                                    "city_id": city_id})
+                else:
+                    # تعطيل مؤقت (30 دقيقة)
+                    disabled_until = int(time.time()) + 1800
+                    cursor.execute(
+                        "UPDATE city_assets SET disabled_until = ? WHERE id = ?",
+                        (disabled_until, ca_id)
+                    )
+                    damaged.append({"type": "disabled", "building": aname_ar,
+                                    "city_id": city_id, "until": disabled_until})
 
-    conn.commit()
+        conn.commit()
+    except Exception as e:
+        print(f"[BATTLE_ASSET_DAMAGE] error={e} — skipping asset damage safely")
+
     return damaged
 
 

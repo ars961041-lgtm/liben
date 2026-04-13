@@ -244,8 +244,11 @@ def show_global_mutes(call, data):
     text = f"🔇 <b>الكتم العالمي</b> ({len(mutes)} مكتوم)\n{get_lines()}\n\n"
     buttons = []
     for m in items:
-        reason_label = m.get('reason', '') or 'بدون سبب'
-        text += f"🔇 <code>{m['user_id']}</code> — {reason_label}\n"
+        reason_label = (m.get('reason') or '').strip()
+        text += f"🔇 <code>{m['user_id']}</code>"
+        if reason_label:
+            text += f" — {reason_label}"
+        text += "\n"
         buttons.append(btn(f"🔊 {m['user_id']}", "adm_global_unmute",
                            data={"uid": m["user_id"], "page": page},
                            owner=owner, color=_GRN))
@@ -317,7 +320,11 @@ def show_group_mutes(call, data):
     text = f"🔕 <b>كتم المجموعة</b> ({len(mutes)} مكتوم)\n{get_lines()}\n\n"
     buttons = []
     for m in items:
-        text += f"🔕 ID: <code>{m['user_id']}</code> | {m.get('reason','') or 'بدون سبب'}\n"
+        reason_label = (m.get('reason') or '').strip()
+        text += f"🔕 ID: <code>{m['user_id']}</code>"
+        if reason_label:
+            text += f" | {reason_label}"
+        text += "\n"
         buttons.append(btn(f"🔊 رفع {m['user_id']}", "adm_group_unmute",
                            data={"uid": m["user_id"], "gid": chat_id, "page": page},
                            owner=owner, color=_GRN))

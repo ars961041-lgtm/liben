@@ -5,6 +5,7 @@
 import os
 import sqlite3
 import threading
+import time
 from core.config import DB_NAME
 
 _local = threading.local()
@@ -13,13 +14,15 @@ _local = threading.local()
 _CONNECTIONS_LOCK = threading.Lock()
 ACTIVE_CONNECTIONS: set = set()
 
+# قفل عالمي للكتابات المتزامنة (يمنع database is locked)
+_WRITE_LOCK = threading.Lock()
+
 
 def _ensure_db_exists(path: str):
     """يُنشئ ملف DB وأي مجلدات مطلوبة إذا لم تكن موجودة."""
     directory = os.path.dirname(path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    # sqlite3.connect ينشئ الملف تلقائياً — لا حاجة لإجراء إضافي
 
 
 def get_db_conn() -> sqlite3.Connection:
@@ -40,6 +43,27 @@ def get_db_conn() -> sqlite3.Connection:
     return _local.conn
 
 
+def db_write(func, *args, max_retries: int = 3, retry_delay: float = 0.15, **kwargs):
+    """
+    ينفّذ دالة كتابة مع إعادة المحاولة عند 'database is locked'.
+    يستخدم قفلاً عالمياً لتسلسل الكتابات المتزامنة.
+
+    الاستخدام:
+        db_write(lambda: conn.execute("UPDATE ..."))
+    """
+    with _WRITE_LOCK:
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e).lower():
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    print(f"[db_write] database is locked after {max_retries} attempts")
+                raise
+
+
 def close_db_conn():
     """يغلق الاتصال الحالي للـ thread."""
     conn = getattr(_local, "conn", None)
@@ -58,9 +82,7 @@ def close_all_connections():
     يُغلق جميع الاتصالات النشطة عبر كل الـ threads.
     استدعِه قبل حذف ملف DB.
     """
-    # أغلق اتصال الـ thread الحالي أولاً
     close_db_conn()
-    # ثم أغلق كل الاتصالات المسجّلة
     with _CONNECTIONS_LOCK:
         conns = list(ACTIVE_CONNECTIONS)
         ACTIVE_CONNECTIONS.clear()

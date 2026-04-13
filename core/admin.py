@@ -230,11 +230,11 @@ def global_mute(user_id: int, muted_by: int, reason: str = "") -> bool:
         return False
 
 
-def global_unmute(user_id: int, reason: str = "") -> tuple[bool, str]:
+def global_unmute(user_id: int) -> tuple[bool, str]:
     """
     رفع الكتم العالمي فقط — لا يمس group_mutes.
-    إذا أُعطي reason، يتحقق من تطابقه قبل الحذف.
-    يرجع (True, reason_was) عند النجاح، أو (False, سبب_الفشل).
+    لا يتحقق من السبب — يرفع الكتم فوراً.
+    يرجع (True, "") عند النجاح، أو (False, سبب_الفشل).
     """
     try:
         conn = get_db_conn()
@@ -246,15 +246,9 @@ def global_unmute(user_id: int, reason: str = "") -> tuple[bool, str]:
         if not row:
             return False, "not_found"
 
-        stored_reason = (row[0] or "").strip()
-
-        # إذا أُعطي سبب، تحقق من التطابق
-        if reason and stored_reason.lower() != reason.strip().lower():
-            return False, f"reason_mismatch:{stored_reason}"
-
         cursor.execute("DELETE FROM global_mutes WHERE user_id = ?", (user_id,))
         conn.commit()
-        return True, stored_reason
+        return True, ""
     except Exception:
         return False, "error"
 

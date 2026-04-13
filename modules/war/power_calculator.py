@@ -186,6 +186,12 @@ def get_country_power(country_id):
     if size_penalty > 0:
         power = max(0.0, power * (1.0 - size_penalty))
 
+    # ─── سقف القوة العسكري — يمنع القيم المتطرفة ───
+    MAX_POWER = 1_000_000_000  # مليار
+    if power > MAX_POWER:
+        print(f"[WAR_SAFE_GUARD] country={country_id} power capped from {power:.0f} to {MAX_POWER}")
+        power = float(MAX_POWER)
+
     return power
 
 

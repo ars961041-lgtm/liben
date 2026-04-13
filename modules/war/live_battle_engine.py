@@ -29,6 +29,15 @@ SHIFT_THRESHOLD = 0.20  # نسبة تغيير القوة لإرسال تنبيه
 _active_battles: dict[int, threading.Thread] = {}
 _lock = threading.Lock()
 
+# ─── قفل الإنهاء — يمنع تشغيل finalize مرتين لنفس المعركة ───
+_finalized_battles: set[int] = set()
+_finalize_lock = threading.Lock()
+
+# ─── كولداون تنبيه تغيير الكفة — مرة واحدة كل 60 ثانية لكل اتجاه ───
+# key: battle_id → {"attacker": last_sent_ts, "defender": last_sent_ts}
+_shift_notify_times: dict[int, dict] = {}
+_SHIFT_NOTIFY_COOLDOWN = 60  # ثانية
+
 
 # ══════════════════════════════════════════
 # 🚀 بدء محرك المعركة
@@ -47,6 +56,67 @@ def start_live_battle(battle_id: int):
 def stop_live_battle(battle_id: int):
     with _lock:
         _active_battles.pop(battle_id, None)
+    # تنظيف كولداون التنبيهات
+    _shift_notify_times.pop(battle_id, None)
+
+
+def check_and_update_battle_state(battle_id: int):
+    """
+    يُفحص حالة المعركة بعد أي تسريع.
+    إذا انتهى الوقت فوراً → يُطلق الإنهاء أو الانتقال.
+    """
+    battle = get_battle_by_id(battle_id)
+    if not battle:
+        return
+    now = int(time.time())
+    if battle["status"] == "traveling":
+        if (battle.get("travel_end_time") or 0) <= now:
+            print(f"[BATTLE_TRANSITION] id={battle_id} traveling → combat (accel trigger)")
+            from modules.war.services.advanced_war_service import _transition_to_battle
+            threading.Thread(target=_transition_to_battle, args=(battle_id,), daemon=True).start()
+    elif battle["status"] == "in_battle":
+        if (battle.get("battle_end_time") or 0) <= now:
+            print(f"[BATTLE_TRANSITION] id={battle_id} combat → finished (accel trigger)")
+            threading.Thread(target=_finalize_battle, args=(battle_id,), daemon=True).start()
+
+
+# ══════════════════════════════════════════
+# 🔁 تنظيف تلقائي — lazy finalization
+# ══════════════════════════════════════════
+
+def auto_resolve_expired_battle(battle_id: int):
+    """
+    Called lazily (e.g. when opening active battles list) to finalize
+    any battle whose end_time has passed. Handles both traveling and in_battle states.
+    Safe to call even if the battle is already finished.
+    """
+    battle = get_battle_by_id(battle_id)
+    if not battle:
+        return
+    if battle["status"] == "finished":
+        return
+
+    now = int(time.time())
+
+    # ─── انتقال من traveling إلى in_battle ───
+    if battle["status"] == "traveling":
+        travel_end = battle.get("travel_end_time") or 0
+        if travel_end <= now:
+            print(f"[BATTLE_TRANSITION] id={battle_id} traveling → combat (lazy)")
+            import threading as _threading
+            from modules.war.services.advanced_war_service import _transition_to_battle
+            _threading.Thread(target=_transition_to_battle, args=(battle_id,), daemon=True).start()
+        return
+
+    # ─── إنهاء معركة منتهية الوقت ───
+    if battle["status"] != "in_battle":
+        return
+    end_time = battle.get("battle_end_time") or 0
+    if end_time > now:
+        return  # Not expired yet
+    print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=lazy_cleanup (expired {now - end_time}s ago)")
+    import threading as _threading
+    _threading.Thread(target=_finalize_battle, args=(battle_id,), daemon=True).start()
 
 
 # ══════════════════════════════════════════
@@ -111,12 +181,14 @@ def _battle_loop(battle_id: int):
         while True:
             time.sleep(TICK_INTERVAL)
 
-            # إعادة جلب حالة المعركة
+            # إعادة جلب حالة المعركة (يلتقط أي تحديث لـ end_time من التسريع)
             battle = get_battle_by_id(battle_id)
             if not battle or battle["status"] != "in_battle":
                 break
 
             now = int(time.time())
+            # إعادة قراءة end_time من DB في كل دورة لاحترام التسريع
+            end_time = battle.get("battle_end_time") or end_time
             if now >= end_time:
                 break
 
@@ -160,6 +232,7 @@ def _battle_loop(battle_id: int):
                 break
 
         # ─── حل نهائي ───
+        print(f"[BATTLE_TRANSITION] id={battle_id} combat → finished")
         _finalize_battle(battle_id)
 
     except Exception as e:
@@ -173,9 +246,30 @@ def _battle_loop(battle_id: int):
 # ══════════════════════════════════════════
 
 def _finalize_battle(battle_id: int):
+    """
+    Finalizes a battle exactly once. Protected by an in-memory lock to prevent
+    duplicate finalization from concurrent threads (battle loop + lazy cleanup).
+    """
+    # ─── قفل الإنهاء — يمنع التشغيل المزدوج ───
+    with _finalize_lock:
+        if battle_id in _finalized_battles:
+            print(f"[BATTLE_SKIP_DUPLICATE] id={battle_id} — already finalized in memory")
+            return
+        _finalized_battles.add(battle_id)
+
     battle = get_battle_by_id(battle_id)
-    if not battle or battle["status"] != "in_battle":
+    if not battle:
+        print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=not_found — skipped")
         return
+    if battle["status"] == "finished":
+        print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=already_finished — skipped")
+        stop_live_battle(battle_id)
+        return
+    if battle["status"] != "in_battle":
+        print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=wrong_status({battle['status']}) — skipped")
+        return
+
+    print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=timeout — resolving")
 
     state = _get_battle_state(battle_id)
     atk_final = max(0, state["atk_power"] if state else 0)
@@ -194,7 +288,8 @@ def _finalize_battle(battle_id: int):
     # ─── الخسائر الحقيقية مع حماية الحد الأقصى ───
     from modules.war.war_economy import (
         apply_proportional_losses, calculate_advanced_loot,
-        set_country_recovery, build_loss_report_text, RECOVERY_MINUTES
+        set_country_recovery, build_loss_report_text, _get_recovery_minutes,
+        apply_war_state_impact,
     )
     from modules.war.war_balance import (
         clamp_loss_pct, add_fatigue, damage_defender_assets,
@@ -219,6 +314,12 @@ def _finalize_battle(battle_id: int):
 
     # ─── تضرر مباني المدافع ───
     damaged_assets = damage_defender_assets(defender_cid)
+
+    # ─── تأثير الحرب على اقتصاد وبنية تحتية المدن ───
+    atk_loss_ratio = clamped_atk  # 0.0–0.60
+    def_loss_ratio = clamped_def
+    apply_war_state_impact(attacker_cid, atk_loss_ratio, is_loser=(winner_cid != attacker_cid))
+    apply_war_state_impact(defender_cid, def_loss_ratio, is_loser=(winner_cid != defender_cid))
 
     # ─── إضافة تعب الجيش لكلا الطرفين ───
     add_fatigue(attacker_cid)
@@ -257,15 +358,23 @@ def _finalize_battle(battle_id: int):
         if cap:
             update_city_resources(cap, loot)
 
-    finish_battle(battle_id, winner_cid, loot, atk_final, def_final)
+    committed = finish_battle(battle_id, winner_cid, loot, atk_final, def_final)
+    if not committed:
+        # Another caller (retreat / concurrent finalize) already finished this battle
+        print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=already_committed_by_other — skipping post-processing")
+        stop_live_battle(battle_id)
+        return
 
+    print(f"[BATTLE_FINALIZED] id={battle_id} winner={winner_cid} loot={loot:.0f}")
+    print(f"[BATTLE_CLEANUP] id={battle_id} removed_from_active")
     _log_event(battle_id, "end",
                f"انتهت | فائز: {winner_cid} | غنائم: {loot:.0f}",
                atk_final, def_final)
 
     # ─── فترة التعافي لكلا الطرفين ───
-    set_country_recovery(attacker_cid, RECOVERY_MINUTES)
-    set_country_recovery(defender_cid, RECOVERY_MINUTES)
+    recovery_mins = _get_recovery_minutes()
+    set_country_recovery(attacker_cid, recovery_mins)
+    set_country_recovery(defender_cid, recovery_mins)
 
     # ─── تسجيل في سجل الحروب ───
     duration = int(time.time()) - (battle.get("battle_end_time", int(time.time())) - BATTLE_DURATION)
@@ -490,7 +599,10 @@ def get_battle_events(battle_id, limit=20):
 # ══════════════════════════════════════════
 
 def _check_power_shift(battle, atk_power, def_power, prev_atk, prev_def):
-    """يرسل تنبيهاً إذا تغيرت الكفة بشكل ملحوظ"""
+    """
+    يرسل تنبيهاً إذا تغيرت الكفة بشكل ملحوظ.
+    محمي بكولداون 60 ثانية لكل اتجاه لمنع التكرار.
+    """
     if prev_atk <= 0 or prev_def <= 0:
         return
 
@@ -500,15 +612,26 @@ def _check_power_shift(battle, atk_power, def_power, prev_atk, prev_def):
     if atk_change < SHIFT_THRESHOLD and def_change < SHIFT_THRESHOLD:
         return
 
-    from core.bot import bot
-
+    # تحديد الاتجاه
     if atk_power > def_power * 1.3:
+        direction = "attacker"
         msg = "⚠️ كفة المعركة تميل لصالح <b>المهاجم</b>!"
     elif def_power > atk_power * 1.3:
+        direction = "defender"
         msg = "⚠️ كفة المعركة تميل لصالح <b>المدافع</b>!"
     else:
         return
 
+    # كولداون — لا ترسل نفس الاتجاه أكثر من مرة كل 60 ثانية
+    battle_id = battle["id"]
+    now = int(time.time())
+    times = _shift_notify_times.setdefault(battle_id, {})
+    last_sent = times.get(direction, 0)
+    if now - last_sent < _SHIFT_NOTIFY_COOLDOWN:
+        return
+    times[direction] = now
+
+    from core.bot import bot
     _safe_send(bot, battle["attacker_user_id"], msg)
     _safe_send(bot, battle["defender_user_id"], msg)
 
@@ -545,7 +668,8 @@ def _send_final_report(battle, winner_cid, loot, atk_power, def_power,
         r = cursor.fetchone()
         return r[0] if r else str(cid)
 
-    attacker_won = winner_cid == battle["attacker_country_id"]
+    attacker_cid = battle["attacker_country_id"]
+    attacker_won = winner_cid == attacker_cid
 
     # شريط القوة النهائي
     total = max(1, atk_power + def_power)
@@ -564,35 +688,55 @@ def _send_final_report(battle, winner_cid, loot, atk_power, def_power,
             if ev["event_type"] not in ("start", "end"):
                 events_text += f"  • {ev['description']}\n"
 
-    header = (
+    # ─── رسالة المهاجم ───
+    if attacker_won:
+        atk_outcome = "🏆 انتصرت! هجومك نجح."
+    else:
+        atk_outcome = "💀 خسرت المعركة. صمد المدافع."
+
+    atk_extra = ""
+    if atk_report["injured"] > 0:
+        atk_extra += f"\n🏥 {atk_report['injured']} جندي في المستشفى"
+    if atk_report["eq_damaged"] > 0:
+        atk_extra += f"\n🔧 {atk_report['eq_damaged']} معدة تحتاج إصلاح"
+
+    atk_report_msg = (
         f"⚔️ <b>تقرير المعركة #{battle_id}</b>\n"
         f"{get_lines()}\n"
-        f"{'🏆 المهاجم انتصر!' if attacker_won else ('🛡 المدافع صمد!' if winner_cid else '🤝 تعادل!')}\n"
+        f"{atk_outcome}\n"
         f"🏳️ الفائز: <b>{_cname(winner_cid)}</b>\n\n"
         f"📊 <b>القوى النهائية:</b>\n"
         f"  ⚔️ {atk_power:.0f} {bar} {def_power:.0f} 🛡"
+        f"{loss_detail}{events_text}{atk_extra}"
     )
 
-    report = header + loss_detail + events_text
+    # ─── رسالة المدافع ───
+    if not attacker_won:
+        def_outcome = "🛡 صمدت! دافعت عن دولتك بنجاح."
+    else:
+        def_outcome = "💀 سقطت دولتك. المهاجم انتصر."
 
-    # رسائل مخصصة لكل طرف
-    atk_extra = ""
     def_extra = ""
-    if atk_report["injured"] > 0:
-        atk_extra = f"\n\n🏥 تم نقل {atk_report['injured']} جندي إلى المستشفى"
-    if atk_report["eq_damaged"] > 0:
-        atk_extra += f"\n🔧 لديك {atk_report['eq_damaged']} معدة تحتاج إصلاح"
     if def_report["injured"] > 0:
-        def_extra = f"\n\n🏥 تم نقل {def_report['injured']} جندي إلى المستشفى"
+        def_extra += f"\n🏥 {def_report['injured']} جندي في المستشفى"
     if def_report["eq_damaged"] > 0:
-        def_extra += f"\n🔧 لديك {def_report['eq_damaged']} معدة تحتاج إصلاح"
-
-    # إشعار تضرر المباني للمدافع
+        def_extra += f"\n🔧 {def_report['eq_damaged']} معدة تحتاج إصلاح"
     if damaged_assets:
         def_extra += f"\n🏚️ تضررت {len(damaged_assets)} مبانٍ في مدنك!"
 
-    _safe_send(bot, battle["attacker_user_id"], report + atk_extra)
-    _safe_send(bot, battle["defender_user_id"], report + def_extra)
+    def_report_msg = (
+        f"🛡 <b>تقرير المعركة #{battle_id}</b>\n"
+        f"{get_lines()}\n"
+        f"{def_outcome}\n"
+        f"🏳️ الفائز: <b>{_cname(winner_cid)}</b>\n\n"
+        f"📊 <b>القوى النهائية:</b>\n"
+        f"  ⚔️ {atk_power:.0f} {bar} {def_power:.0f} 🛡"
+        f"{loss_detail}{events_text}{def_extra}"
+    )
+
+    # إرسال مرة واحدة لكل طرف
+    _safe_send(bot, battle["attacker_user_id"], atk_report_msg)
+    _safe_send(bot, battle["defender_user_id"], def_report_msg)
 
 
 def _safe_send(bot, user_id, text):
@@ -631,12 +775,11 @@ def _get_capital_city_id(country_id):
 
 
 def _update_reputations(battle, winner_cid, battle_id):
-    attacker_cid = battle["attacker_country_id"]
-    winner_uid = battle["attacker_user_id"] if winner_cid == attacker_cid else battle["defender_user_id"]
-    loser_uid  = battle["defender_user_id"] if winner_cid == attacker_cid else battle["attacker_user_id"]
-    update_reputation(winner_uid, helped=1)
-    update_reputation(loser_uid)
-
+    """
+    تحديث السمعة بعد المعركة.
+    الفوز/الخسارة لا يمنح نقاط سمعة تلقائياً — السمعة تُبنى من دعم الحلفاء.
+    فقط المتجاهلون لطلبات الدعم يخسرون نقاطاً.
+    """
     pending = get_pending_support_requests(battle_id)
     for req in pending:
         update_reputation(req["target_user_id"], ignored=1)

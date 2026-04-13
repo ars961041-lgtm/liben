@@ -11,7 +11,7 @@ from database.db_queries.political_war_queries import (
     get_total_side_power, is_country_in_war, get_war_log,
     check_war_cooldown, set_war_cooldown,
     update_loyalty, get_loyalty_score, get_alliance_loyalty_board,
-    recalc_preparation_power,
+    recalc_preparation_power, _log_event,
     LOYALTY_SUPPORT_BONUS, LOYALTY_IGNORE_PENALTY, LOYALTY_WIN_BONUS,
     DEFENSIVE_IGNORE_PENALTY, VOTE_THRESHOLD,
 )
@@ -52,8 +52,8 @@ def declare_war(user_id, war_type, declaration_type,
     if attacker_alliance_id:
         can, remaining = check_war_cooldown(attacker_alliance_id)
         if not can:
-            h, m = divmod(remaining // 60, 60)
-            return False, f"❌ تحالفك في فترة هدنة. انتظر {h}س {m}د.", None
+            from utils.helpers import format_remaining_time
+            return False, f"❌ تحالفك في فترة هدنة. انتظر {format_remaining_time(remaining)}.", None
 
     # فحص تكرار الحرب: لا يمكن إعلان حرب على نفس الهدف إذا كانت هناك حرب نشطة بينهما
     if target_country_id or target_alliance_id:
@@ -654,23 +654,207 @@ def withdraw_country_from_war(user_id, war_id):
     if not ok:
         return False, msg
 
-    # 📰 News: betrayal if war is active
     war = get_political_war(war_id)
-    if war and war["status"] == "active":
+    country_name = country.get("name", f"#{country_id}")
+
+    # ─── تحديد اسم الخصم ───
+    opponent_name = _get_opponent_name(war, country_id)
+
+    # ─── بث الانسحاب لجميع المجموعات ───
+    _broadcast_withdrawal(war_id, country_name, opponent_name, war)
+
+    # ─── إشعار المشاركين في الحرب ───
+    _notify_war_participants_withdrawal(war_id, country_name)
+
+    if not war:
+        return True, msg
+
+    # ─── هل المنسحب هو الطرف الرئيسي؟ ───
+    is_main_party = (
+        war.get("attacker_country_id") == country_id or
+        war.get("defender_country_id") == country_id
+    )
+
+    if war["status"] == "active":
+        if is_main_party:
+            _terminate_war_on_withdrawal(war_id, war, country_id, country_name)
+        else:
+            try:
+                recalc_preparation_power(war_id)
+            except Exception:
+                pass
+
+        # ─── إشعار خيانة في المجلة ───
         try:
             from modules.magazine.news_generator import on_war_betrayal
             from database.db_queries.alliances_queries import get_alliance_by_country as _gabc
-            country_name = country.get("name", f"#{country_id}")
             _alliance = _gabc(country_id)
             alliance_name = _alliance["name"] if _alliance else "تحالف مجهول"
             on_war_betrayal(war_id, country_name, alliance_name)
         except Exception:
             pass
 
-    if war and war["status"] == "preparation":
-        _recalc_and_notify_preparation(war_id, war)
+    elif war["status"] == "preparation":
+        if is_main_party:
+            # الطرف الرئيسي ينسحب في التحضير → إلغاء فوري
+            cancel_political_war(war_id, reason=f"انسحاب الطرف الرئيسي ({country_name}) في مرحلة التحضير")
+            _log_event(war_id, country_id, user_id, "withdrawn",
+                       {"reason": "main_party_withdrawal_preparation", "country": country_name})
+            _notify_war_cancelled_preparation(war_id, country_name)
+        else:
+            _recalc_and_notify_preparation(war_id, war)
+
+    elif war["status"] == "voting":
+        # انسحاب في مرحلة التصويت — إذا كان الطرف الرئيسي → ألغِ الحرب
+        if is_main_party:
+            cancel_political_war(war_id, reason=f"انسحاب الطرف الرئيسي ({country_name}) في مرحلة التصويت")
+            _log_event(war_id, country_id, user_id, "withdrawn",
+                       {"reason": "main_party_withdrawal_voting", "country": country_name})
+            _notify_war_cancelled_preparation(war_id, country_name)
 
     return True, msg
+
+
+def _get_opponent_name(war: dict, country_id: int) -> str:
+    """يرجع اسم الطرف الآخر في الحرب."""
+    if not war:
+        return "طرف مجهول"
+    try:
+        from database.connection import get_db_conn
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        # إذا كان المنسحب هو المهاجم → الخصم هو المدافع والعكس
+        if war.get("attacker_country_id") == country_id:
+            opp_id = war.get("defender_country_id")
+        else:
+            opp_id = war.get("attacker_country_id")
+        if opp_id:
+            cursor.execute("SELECT name FROM countries WHERE id=?", (opp_id,))
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+        # تحالف
+        if war.get("attacker_alliance_id") or war.get("defender_alliance_id"):
+            from database.db_queries.alliances_queries import get_alliance_by_id
+            aid = war.get("defender_alliance_id") or war.get("attacker_alliance_id")
+            a = get_alliance_by_id(aid)
+            if a:
+                return a["name"]
+    except Exception:
+        pass
+    return "الطرف الآخر"
+
+
+def _broadcast_withdrawal(war_id: int, country_name: str, opponent_name: str, war: dict):
+    """
+    يبث إشعار الانسحاب لجميع المجموعات التي تملك enable_news=1.
+    """
+    try:
+        from core.bot import bot
+        from database.connection import get_db_conn
+        import time as _time
+
+        ts = _time.strftime("%H:%M", _time.localtime())
+        war_status_ar = {
+            "active":      "⚔️ نشطة",
+            "preparation": "⏳ تحضير",
+            "voting":      "🗳️ تصويت",
+        }.get(war.get("status", ""), "")
+
+        msg = (
+            f"📢 <b>إشعار حرب سياسية</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🚪 <b>{country_name}</b> انسحبت من الحرب السياسية!\n"
+            f"⚔️ الحرب: <b>#{war_id}</b> {war_status_ar}\n"
+            f"🆚 ضد: <b>{opponent_name}</b>\n"
+            f"🕐 الوقت: {ts}"
+        )
+
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT group_id FROM groups WHERE enable_news=1")
+        groups = cursor.fetchall()
+
+        for (gid,) in groups:
+            try:
+                bot.send_message(gid, msg, parse_mode="HTML")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _notify_war_participants_withdrawal(war_id: int, country_name: str):
+    """يُرسل إشعاراً خاصاً لجميع المشاركين في الحرب."""
+    try:
+        from core.bot import bot
+        from database.connection import get_db_conn
+        conn = get_db_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT user_id FROM political_war_members WHERE war_id=?",
+            (war_id,)
+        )
+        for (uid,) in cursor.fetchall():
+            try:
+                bot.send_message(
+                    uid,
+                    f"🚪 <b>انسحاب من الحرب #{war_id}</b>\n"
+                    f"دولة <b>{country_name}</b> انسحبت من الحرب.",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _terminate_war_on_withdrawal(war_id: int, war: dict, withdrawer_id: int, country_name: str):
+    """
+    ينهي الحرب فوراً عندما ينسحب الطرف الرئيسي (المهاجم أو المدافع).
+    يُسجّل الحالة كـ 'withdrawn' في السجل ويُرسل إشعاراً للجميع.
+    """
+    try:
+        # تحديد الفائز: الطرف الآخر يفوز تلقائياً
+        if war.get("attacker_country_id") == withdrawer_id:
+            winner_side = "defender"
+        else:
+            winner_side = "attacker"
+
+        # إنهاء الحرب بحالة 'ended' مع تسجيل سبب الانسحاب
+        end_political_war(war_id, winner_side)
+
+        # تسجيل حدث الانسحاب في السجل
+        _log_event(war_id, withdrawer_id, None, "withdrawn",
+                   {"reason": "main_party_withdrawal", "country": country_name})
+
+        # إشعار المشاركين بنتيجة الحرب
+        try:
+            from core.bot import bot
+            winner_ar = "⚔️ المهاجمون" if winner_side == "attacker" else "🛡️ المدافعون"
+            from database.connection import get_db_conn
+            conn = get_db_conn()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT user_id FROM political_war_members WHERE war_id=?",
+                (war_id,)
+            )
+            for (uid,) in cursor.fetchall():
+                try:
+                    bot.send_message(
+                        uid,
+                        f"🏁 <b>الحرب #{war_id} انتهت بالانسحاب</b>\n"
+                        f"انسحبت <b>{country_name}</b> — الطرف الرئيسي.\n"
+                        f"🏆 الفائز: {winner_ar}",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    except Exception:
+        pass
 
 
 def _recalc_and_notify_preparation(war_id: int, war: dict):
@@ -687,7 +871,7 @@ def _recalc_and_notify_preparation(war_id: int, war: dict):
         if att["count"] == 0 or dfd["count"] == 0:
             empty = "المهاجمون" if att["count"] == 0 else "المدافعون"
             cancel_political_war(war_id, reason=f"لا أعضاء في جانب {empty} بعد الانسحاب")
-            _notify_war_cancelled_preparation(war_id, empty)
+            _notify_war_cancelled_preparation(war_id, f"جانب {empty} لم يعد يملك أعضاء نشطين")
             return
 
         # إشعار الأعضاء بالأرقام المحدّثة
@@ -713,10 +897,10 @@ def _recalc_and_notify_preparation(war_id: int, war: dict):
         pass
 
 
-def _notify_war_cancelled_preparation(war_id: int, empty_side: str):
+def _notify_war_cancelled_preparation(war_id: int, reason_label: str):
+    """يُرسل إشعار إلغاء الحرب لجميع المشاركين."""
     try:
         from core.bot import bot
-        # جلب جميع المشاركين السابقين (بما فيهم المنسحبون) للإشعار
         from database.connection import get_db_conn
         conn = get_db_conn()
         cursor = conn.cursor()
@@ -729,7 +913,7 @@ def _notify_war_cancelled_preparation(war_id: int, empty_side: str):
                 bot.send_message(
                     uid,
                     f"❌ <b>الحرب #{war_id} أُلغيت</b>\n"
-                    f"جانب {empty_side} لم يعد يملك أعضاء نشطين.",
+                    f"السبب: {reason_label}",
                     parse_mode="HTML"
                 )
             except Exception:
@@ -770,15 +954,15 @@ def get_war_status_text(war_id):
 
     if war["status"] == "voting":
         remaining = max(0, war["voting_ends_at"] - int(time.time()))
-        h, m = divmod(remaining // 60, 60)
-        lines.append(f"⏳ ينتهي التصويت خلال: {h}س {m}د")
+        from utils.helpers import format_remaining_time
+        lines.append(f"⏳ ينتهي التصويت خلال: {format_remaining_time(remaining)}")
         summary = get_vote_summary(war_id)
         lines.append(_full_vote_breakdown(summary))
 
     elif war["status"] == "preparation":
         remaining = max(0, (war.get("preparation_ends_at") or 0) - int(time.time()))
-        m, s = divmod(remaining, 60)
-        lines.append(f"⏳ التحضير ينتهي خلال: {m}د {s}ث")
+        from utils.helpers import format_remaining_time
+        lines.append(f"⏳ التحضير ينتهي خلال: {format_remaining_time(remaining)}")
         lines.append("يمكنك الانسحاب أو إرسال تعزيزات الآن.")
 
     elif war["status"] == "active":

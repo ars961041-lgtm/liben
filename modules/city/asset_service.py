@@ -2,6 +2,8 @@
 Asset purchase & upgrade service.
 All business logic lives here — handlers just call these functions.
 """
+import logging
+
 from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
 from database.db_queries.assets_queries import (
     get_asset_by_name, get_asset_by_id,
@@ -10,7 +12,25 @@ from database.db_queries.assets_queries import (
 )
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
+logger = logging.getLogger(__name__)
+
 MAX_LEVEL = 10  # can be overridden per-asset via assets.max_level
+
+
+def _apply_asset_discount(base_cost: float) -> tuple[float, float]:
+    """Returns (final_cost, discount_pct). discount_pct=0 if no event active."""
+    try:
+        from modules.progression.global_events import get_event_effect
+        discount = get_event_effect("asset_cost_discount")
+        if discount > 0:
+            final = round(base_cost * (1 - discount), 2)
+            logger.info("[EVENT_APPLIED] type=asset_cost_discount, discount=%.0f%%, base=%.0f, final=%.0f",
+                        discount * 100, base_cost, final)
+            return final, discount
+    except Exception:
+        pass
+    logger.debug("[EVENT_SKIP] asset_cost_discount — no active event or category mismatch")
+    return base_cost, 0.0
 
 
 # ══════════════════════════════════════════
@@ -48,28 +68,34 @@ def buy_asset(user_id: int, city_id: int, asset_name: str, quantity: int):
         return False, f"❌ العنصر '{asset_name}' غير موجود"
 
     cost = calc_buy_cost(asset, quantity)
+    # ─── apply event discount (leaderboard uses base cost) ───
+    final_cost, discount = _apply_asset_discount(cost)
     balance = get_user_balance(user_id)
-    if balance < cost:
-        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME}"
+    if balance < final_cost:
+        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {final_cost:.0f} {CURRENCY_ARABIC_NAME}"
 
     try:
         upsert_city_asset(city_id, asset["id"], level=1, quantity_delta=quantity)
     except Exception as e:
         return False, f"❌ خطأ في قاعدة البيانات: {str(e)}"
 
-    if not deduct_user_balance(user_id, cost):
+    if not deduct_user_balance(user_id, final_cost):
         upsert_city_asset(city_id, asset["id"], level=1, quantity_delta=-quantity)
         return False, "❌ فشل خصم الرصيد"
 
+    # log and track BASE cost so leaderboards are unaffected by event discounts
     log_asset_action(city_id, user_id, asset["id"], "buy", quantity, 1, 1, cost)
     _record_spending(city_id, cost)
 
+    event_line = f"🎯 خصم الحدث: -{discount*100:.0f}% ({asset['name_ar']})\n💡 الخصم: -{cost - final_cost:.0f} {CURRENCY_ARABIC_NAME}\n" if discount > 0 else ""
     return True, (
         f"✅ تم الشراء بنجاح\n"
         f"📦 العنصر: {asset['emoji']} {asset['name_ar']}\n"
         f"🔢 الكمية: {quantity}\n"
-        f"💰 السعر الإجمالي: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-        f"💳 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"🪖 السعر الأصلي: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"{event_line}"
+        f"✔ المدفوع الفعلي: {final_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💳 الرصيد المتبقي: {balance - final_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 
@@ -104,23 +130,29 @@ def upgrade_asset(user_id: int, city_id: int, asset_name: str,
         return False, f"❌ لديك {owned} وحدة فقط من المستوى {from_level}"
 
     cost = calc_upgrade_cost(asset, from_level, quantity)
+    # ─── apply event discount (leaderboard uses base cost) ───
+    final_cost, discount = _apply_asset_discount(cost)
     balance = get_user_balance(user_id)
-    if balance < cost:
-        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME}"
+    if balance < final_cost:
+        return False, f"❌ رصيدك {balance:.0f} {CURRENCY_ARABIC_NAME} — تحتاج {final_cost:.0f} {CURRENCY_ARABIC_NAME}"
 
-    if not deduct_user_balance(user_id, cost):
+    if not deduct_user_balance(user_id, final_cost):
         return False, "❌ فشل خصم الرصيد"
 
     upgrade_city_asset(city_id, asset["id"], from_level, quantity)
+    # log and track BASE cost so leaderboards are unaffected by event discounts
     log_asset_action(city_id, user_id, asset["id"], "upgrade",
                      quantity, from_level, from_level + 1, cost)
     _record_spending(city_id, cost)
 
+    event_line = f"🎯 خصم الحدث: -{discount*100:.0f}%\n💡 الخصم: -{cost - final_cost:.0f} {CURRENCY_ARABIC_NAME}\n" if discount > 0 else ""
     return True, (
         f"⬆️ تمت ترقية {quantity} × {asset['emoji']} {asset['name_ar']}\n"
         f"المستوى: {from_level} → {from_level + 1}\n"
-        f"💸 التكلفة: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
-        f"💰 الرصيد المتبقي: {balance - cost:.0f} {CURRENCY_ARABIC_NAME}"
+        f"🪖 السعر الأصلي: {cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"{event_line}"
+        f"✔ المدفوع الفعلي: {final_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"💰 الرصيد المتبقي: {balance - final_cost:.0f} {CURRENCY_ARABIC_NAME}"
     )
 
 

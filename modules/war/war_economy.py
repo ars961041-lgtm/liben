@@ -23,36 +23,29 @@ def _c(name, default):
 ATTACK_COST       = property(lambda self: _c("attack_cost", 500))
 SUPPORT_SEND_COST = property(lambda self: _c("support_send_cost", 100))
 CARD_USE_COST     = property(lambda self: _c("card_use_cost", 50))
-RECOVERY_MINUTES  = property(lambda self: _c("recovery_minutes", 30))
 BASE_HEAL_TIME    = 3600
 BASE_REPAIR_TIME  = 1800
 INJURED_RATIO_MIN = 0.30
 INJURED_RATIO_MAX = 0.50
 DAMAGED_RATIO     = 0.40
-LOOT_MIN_PCT      = property(lambda self: _c("loot_min_pct", 0.05))
-LOOT_MAX_PCT      = property(lambda self: _c("loot_max_pct", 0.15))
 
-# ─── دوال مساعدة للوصول للثوابت ───
-def _get_attack_cost():
-    try:
-        from core.admin import get_const_int
-        return get_const_int("attack_cost", 500)
-    except Exception:
-        return 500
-
-def _get_recovery_minutes():
+# ─── ثوابت ديناميكية — استخدم الدوال المساعدة دائماً ───
+def _get_recovery_minutes() -> int:
     try:
         from core.admin import get_const_int
         return get_const_int("recovery_minutes", 30)
     except Exception:
         return 30
 
-def _get_loot_pct():
+def _get_loot_pct() -> tuple:
     try:
         from core.admin import get_const_float
         return get_const_float("loot_min_pct", 0.05), get_const_float("loot_max_pct", 0.15)
     except Exception:
         return 0.05, 0.15
+
+# ─── قيمة افتراضية للاستخدام في توقيعات الدوال ───
+RECOVERY_MINUTES = 30
 
 
 # ══════════════════════════════════════════
@@ -61,6 +54,8 @@ def _get_loot_pct():
 
 def charge_war_cost(user_id, action, battle_id=None, amount=None):
     from database.db_queries.bank_queries import get_user_balance, deduct_user_balance
+    import logging
+    _log = logging.getLogger(__name__)
     try:
         from core.admin import get_const_int
         costs = {
@@ -71,17 +66,41 @@ def charge_war_cost(user_id, action, battle_id=None, amount=None):
     except Exception:
         costs = {"attack": 500, "support_send": 100, "card_use": 50}
 
-    cost = amount if amount is not None else costs.get(action, 0)
-    if cost <= 0:
+    base_cost = amount if amount is not None else costs.get(action, 0)
+    if base_cost <= 0:
         return True, ""
 
-    balance = get_user_balance(user_id)
-    if balance < cost:
-        return False, f"❌ رصيدك غير كافٍ! تحتاج {cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
+    # ─── apply war_tension_bonus event (war costs -15%) ───
+    final_cost = base_cost
+    war_discount = 0.0
+    try:
+        from modules.progression.global_events import get_event_effect
+        war_discount = get_event_effect("war_tension_bonus")
+        if war_discount > 0:
+            final_cost = round(base_cost * (1 - war_discount))
+            _log.info("[EVENT_APPLIED] type=war_tension_bonus, discount=%.0f%%, base=%.0f, final_price=%.0f",
+                      war_discount * 100, base_cost, final_cost)
+        else:
+            _log.debug("[EVENT_SKIP] war_tension_bonus — no active event or category mismatch")
+    except Exception:
+        pass
 
-    deduct_user_balance(user_id, cost)
-    _log_war_cost(user_id, battle_id, action, cost)
-    return True, f"💸 تم خصم {cost:.0f} {CURRENCY_ARABIC_NAME}"
+    balance = get_user_balance(user_id)
+    if balance < final_cost:
+        return False, f"❌ رصيدك غير كافٍ! تحتاج {final_cost:.0f} {CURRENCY_ARABIC_NAME} (رصيدك: {balance:.0f})"
+
+    deduct_user_balance(user_id, final_cost)
+    # log BASE cost so war-spending leaderboard is unaffected by event discounts
+    _log_war_cost(user_id, battle_id, action, base_cost)
+
+    if war_discount > 0:
+        return True, (
+            f"🪖 السعر الأصلي: {base_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"🎯 خصم الحدث: -{war_discount*100:.0f}% (توترات حربية)\n"
+            f"💡 الخصم: -{base_cost - final_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+            f"✔ المدفوع الفعلي: {final_cost:.0f} {CURRENCY_ARABIC_NAME}"
+        )
+    return True, f"💸 تم خصم {final_cost:.0f} {CURRENCY_ARABIC_NAME}"
 
 
 def _log_war_cost(user_id, battle_id, action, amount):
@@ -445,7 +464,11 @@ def execute_retreat(user_id, battle_id):
     )
 
     battle = get_battle_by_id(battle_id)
-    if not battle or battle["status"] != "in_battle":
+    if not battle:
+        return False, "❌ لا توجد معركة بهذا الرقم."
+    if battle["status"] == "finished":
+        return False, "⚠️ المعركة انتهت بالفعل، لا يمكن الانسحاب."
+    if battle["status"] != "in_battle":
         return False, "❌ لا توجد معركة نشطة للانسحاب منها."
 
     country = _get_country_by_user(user_id)
@@ -493,13 +516,14 @@ def execute_retreat(user_id, battle_id):
 
     finish_battle(battle_id, winner_cid, loot, max(0, final_atk), max(0, final_def))
     stop_live_battle(battle_id)
+    print(f"[BATTLE_CLEANUP] id={battle_id} removed_from_active (retreat)")
     _log_event(battle_id, "retreat", f"انسحاب من {'المهاجم' if is_attacker else 'المدافع'}", final_atk, final_def)
 
     # عقوبة السمعة للمنسحب
     update_reputation(user_id, ignored=1)
 
     # فترة تعافٍ
-    set_country_recovery(retreater_cid, minutes=RECOVERY_MINUTES // 2)
+    set_country_recovery(retreater_cid, minutes=_get_recovery_minutes() // 2)
 
     msg = (
         f"🏃 <b>انسحبت من المعركة!</b>\n\n"
@@ -514,10 +538,12 @@ def execute_retreat(user_id, battle_id):
 # 🔄 فترة التعافي
 # ══════════════════════════════════════════
 
-def set_country_recovery(country_id, minutes=RECOVERY_MINUTES):
+def set_country_recovery(country_id, minutes=None):
+    if minutes is None:
+        minutes = _get_recovery_minutes()
     conn = get_db_conn()
     cursor = conn.cursor()
-    recovery_until = int(time.time()) + minutes * 60
+    recovery_until = int(time.time()) + int(minutes) * 60
     cursor.execute("""
         INSERT INTO country_recovery (country_id, recovery_until)
         VALUES (?, ?)
@@ -545,14 +571,19 @@ def is_country_in_recovery(country_id):
 # 💰 نظام الغنائم المتقدم
 # ══════════════════════════════════════════
 
+# حدود الغنيمة الآمنة
+_LOOT_HARD_MIN = 0.05   # 5% حد أدنى مطلق
+_LOOT_HARD_MAX = 0.25   # 25% حد أقصى مطلق (لا يتجاوز أبداً)
+_LOOT_SAFE_FLOOR = 0.10  # يُبقي 10% على الأقل من ميزانية الخاسر
+
 def calculate_advanced_loot(winner_cid, loser_cid, atk_initial, def_initial,
                              atk_final, def_final, no_retreat=True):
     """
     يحسب الغنائم بناءً على هامش الانتصار وعوامل إضافية.
+    الغنيمة محدودة بـ 5%–25% من ميزانية الخاسر.
+    يُبقي دائماً 10% على الأقل من ميزانية الخاسر.
     يرجع float
     """
-    # جلب موارد الخاسر
-    from database.db_queries.war_queries import update_city_resources
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""
@@ -564,47 +595,143 @@ def calculate_advanced_loot(winner_cid, loser_cid, atk_initial, def_initial,
     row = cursor.fetchone()
     loser_budget = float(row[0]) if row else 0
 
+    if loser_budget <= 0:
+        return 0.0
+
     # نسبة الغنيمة بناءً على هامش الانتصار
     total_init = max(1, atk_initial + def_initial)
     winner_init = atk_initial if winner_cid != loser_cid else def_initial
-    margin = max(0, (winner_init - (total_init - winner_init)) / total_init)
-    loot_pct = LOOT_MIN_PCT + (LOOT_MAX_PCT - LOOT_MIN_PCT) * min(1.0, margin * 2)
+    margin = max(0.0, (winner_init - (total_init - winner_init)) / total_init)
 
-    base_loot = loser_budget * loot_pct
+    loot_min, loot_max = _get_loot_pct()
+    loot_min = max(_LOOT_HARD_MIN, float(loot_min))
+    loot_max = min(_LOOT_HARD_MAX, float(loot_max))
+    # تأكد أن min <= max بعد التقييد
+    loot_min = min(loot_min, loot_max)
 
-    # مكافأة عدم الانسحاب
+    print(f"[LOOT_DEBUG] min={loot_min} max={loot_max} margin={margin:.3f}")
+    loot_pct = loot_min + (loot_max - loot_min) * min(1.0, margin * 2)
+
+    # مكافأة عدم الانسحاب (+10%) — لكن لا تتجاوز الحد الأقصى
     if no_retreat:
-        base_loot *= 1.1
+        loot_pct = min(_LOOT_HARD_MAX, loot_pct * 1.1)
 
-    # مكافأة الخسائر الأقل
+    # مكافأة الخسائر الأقل (+15%) — لكن لا تتجاوز الحد الأقصى
     winner_loss_pct = max(0, (winner_init - (atk_final if winner_cid != loser_cid else def_final)) / max(1, winner_init))
     if winner_loss_pct < 0.2:
-        base_loot *= 1.15
+        loot_pct = min(_LOOT_HARD_MAX, loot_pct * 1.15)
 
     # ─── تطبيق حدث مهرجان الغنائم ───
     try:
         from modules.progression.global_events import get_event_effect
         loot_event = get_event_effect("loot_bonus")
         if loot_event > 0:
-            base_loot *= (1 + loot_event)
+            loot_pct = min(_LOOT_HARD_MAX, loot_pct * (1 + loot_event))
     except Exception:
         pass
 
-    # خصم من ميزانية الخاسر
-    actual_loot = min(base_loot, loser_budget * 0.20)  # لا يتجاوز 20% من الميزانية
-    if actual_loot > 0:
-        cities = get_all_cities_of_country_by_country_id(loser_cid)
-        if cities:
-            per_city = actual_loot / len(cities)
-            for city in cities:
-                cid = city["id"] if isinstance(city, dict) else city[0]
-                cursor.execute("""
-                    UPDATE city_budget SET current_budget = MAX(0, current_budget - ?)
-                    WHERE city_id = ?
-                """, (per_city, cid))
-            conn.commit()
+    # ─── حساب الغنيمة الفعلية مع ضمان الحد الأدنى للخاسر ───
+    max_safe_loot = loser_budget * (1.0 - _LOOT_SAFE_FLOOR)  # لا يأخذ أكثر من 90%
+    raw_loot = loser_budget * loot_pct
+    actual_loot = min(raw_loot, max_safe_loot)
 
-    return max(0, round(actual_loot, 2))
+    if actual_loot != raw_loot:
+        print(f"[WAR_SAFE_GUARD] id=loot capped from {raw_loot:.0f} to {actual_loot:.0f} (floor protection)")
+
+    if actual_loot <= 0:
+        return 0.0
+
+    # خصم من ميزانية الخاسر
+    cities = get_all_cities_of_country_by_country_id(loser_cid)
+    if cities:
+        per_city = actual_loot / len(cities)
+        for city in cities:
+            cid = city["id"] if isinstance(city, dict) else city[0]
+            cursor.execute("""
+                UPDATE city_budget SET current_budget = MAX(current_budget * ?, current_budget - ?)
+                WHERE city_id = ?
+            """, (_LOOT_SAFE_FLOOR, per_city, cid))
+        conn.commit()
+
+    print(f"[WAR_RESULT] winner={winner_cid} loser={loser_cid} loot={actual_loot:.0f} pct={loot_pct*100:.1f}%")
+    return max(0.0, round(actual_loot, 2))
+
+
+# ══════════════════════════════════════════
+# 🏚️ تأثير الحرب على المدن
+# ══════════════════════════════════════════
+
+# معاملات الضرر — قابلة للضبط
+_WAR_ECONOMY_DAMAGE_FACTOR    = 0.05   # 5% خسارة اقتصادية لكل معركة
+_WAR_INFRA_DAMAGE_FACTOR      = 0.04   # 4% خسارة بنية تحتية
+_WAR_DAMAGE_LOSER_MULTIPLIER  = 1.5    # الخاسر يتلقى ضرراً أكبر
+_WAR_DAMAGE_MIN_BUDGET        = 50.0   # حد أدنى للميزانية بعد الضرر
+
+def apply_war_state_impact(country_id: int, loss_pct: float, is_loser: bool = False):
+    """
+    يُطبّق تأثير الحرب على اقتصاد وبنية تحتية مدن الدولة.
+    loss_pct: نسبة الخسارة العسكرية (0.0–1.0)
+    is_loser: الخاسر يتلقى ضرراً إضافياً ×1.5
+    """
+    cities = get_all_cities_of_country_by_country_id(country_id)
+    if not cities:
+        return
+
+    multiplier = _WAR_DAMAGE_LOSER_MULTIPLIER if is_loser else 1.0
+    eco_factor   = _WAR_ECONOMY_DAMAGE_FACTOR   * loss_pct * multiplier
+    infra_factor = _WAR_INFRA_DAMAGE_FACTOR      * loss_pct * multiplier
+
+    # تقييد الضرر: لا يتجاوز 30% لكل عامل
+    eco_factor   = min(0.30, eco_factor)
+    infra_factor = min(0.30, infra_factor)
+
+    conn = get_db_conn()
+    cursor = conn.cursor()
+
+    total_eco_loss   = 0.0
+    total_infra_loss = 0.0
+
+    for city in cities:
+        city_id = city["id"] if isinstance(city, dict) else city[0]
+
+        # ─── ضرر الاقتصاد (city_budget) ───
+        try:
+            cursor.execute(
+                "SELECT current_budget FROM city_budget WHERE city_id = ?", (city_id,)
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                current = float(row[0])
+                damage  = current * eco_factor
+                new_val = max(_WAR_DAMAGE_MIN_BUDGET, current - damage)
+                cursor.execute(
+                    "UPDATE city_budget SET current_budget = ? WHERE city_id = ?",
+                    (new_val, city_id)
+                )
+                total_eco_loss += damage
+        except Exception:
+            pass
+
+        # ─── ضرر البنية التحتية (city_stats) ───
+        try:
+            cursor.execute(
+                "SELECT infrastructure FROM city_stats WHERE city_id = ?", (city_id,)
+            )
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                current = float(row[0])
+                damage  = current * infra_factor
+                new_val = max(0.0, current - damage)
+                cursor.execute(
+                    "UPDATE city_stats SET infrastructure = ? WHERE city_id = ?",
+                    (new_val, city_id)
+                )
+                total_infra_loss += damage
+        except Exception:
+            pass
+
+    conn.commit()
+    print(f"[WAR_DAMAGE] country={country_id} eco_loss={total_eco_loss:.0f} infra_loss={total_infra_loss:.1f} loser={is_loser}")
 
 
 # ══════════════════════════════════════════

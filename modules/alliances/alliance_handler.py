@@ -35,7 +35,7 @@ def open_alliance_menu(message):
         return
 
     alliance = dict(alliance)
-    _show_alliance_main(message.chat.id, user_id, chat_id, alliance)
+    _show_alliance_main(message.chat.id, user_id, chat_id, alliance, reply_to=message.message_id)
 
 
 def _show_no_alliance_menu(message, user_id, chat_id):
@@ -53,7 +53,7 @@ def _show_no_alliance_menu(message, user_id, chat_id):
             reply_to=message.message_id)
 
 
-def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=None):
+def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=None, reply_to=None):
     power = get_alliance_power(alliance["id"])
     member_count = get_alliance_member_count(alliance["id"])
     is_leader = alliance["leader_id"] == user_id
@@ -102,7 +102,7 @@ def _show_alliance_main(chat_id, user_id, owner_chat_id, alliance, edit_call=Non
     if edit_call:
         edit_ui(edit_call, text=text, buttons=buttons, layout=layout)
     else:
-        send_ui(chat_id, text=text, buttons=buttons, layout=layout, owner_id=user_id)
+        send_ui(chat_id, text=text, buttons=buttons, layout=layout, owner_id=user_id, reply_to=reply_to)
 
 
 # ══════════════════════════════════════════
@@ -264,15 +264,18 @@ def send_invite(call, data):
         bot.answer_callback_query(call.id, result, show_alert=True)
         return
 
-    # إشعار المدعو
+    # إشعار المدعو — محاولة إرسال DM، مع تسجيل الفشل بدلاً من إخفائه
     try:
         alliance = get_alliance_by_id(alliance_id)
-        from utils.pagination import send_ui as _send_ui
-        _send_ui(to_uid,
-                 text=f"📩 <b>دعوة تحالف!</b>\nتم دعوتك للانضمام لتحالف <b>{alliance['name']}</b>.\nاستخدم: دعوات التحالف",
-                 buttons=[], layout=[1], owner_id=to_uid)
-    except Exception:
-        pass
+        bot.send_message(
+            to_uid,
+            f"📩 <b>دعوة تحالف!</b>\n"
+            f"تم دعوتك للانضمام لتحالف <b>{alliance['name']}</b>.\n\n"
+            f"اكتب <code>دعوات التحالف</code> في المجموعة لقبول أو رفض الدعوة.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"[alliance_invite] failed to DM user {to_uid}: {e}")
 
     bot.answer_callback_query(call.id, f"✅ تم إرسال الدعوة لـ {cname}", show_alert=True)
 
@@ -324,7 +327,7 @@ def on_accept_invite(call, data):
             alliance = get_alliance_by_user(user_id)
             if alliance:
                 alliance = dict(alliance)
-                _show_alliance_main(call.message.chat.id, user_id, call.message.chat.id, alliance, edit_call=call)
+                _show_alliance_main(call.message.chat.id, user_id, call.message.chat.id, alliance, edit_call=call,reply_to=call.message.message_id)
         except Exception:
             pass
 
@@ -465,7 +468,7 @@ def back_to_main(call, data):
                     btn("📩 دعواتي", "alliance_my_invites", data={}, owner=(user_id, chat_id), color="su"),
                 ], layout=[2])
         return
-    _show_alliance_main(chat_id, user_id, chat_id, dict(alliance), edit_call=call)
+    _show_alliance_main(chat_id, user_id, chat_id, dict(alliance), edit_call=call, reply_to=call.message.message_id)
 
 
 # ══════════════════════════════════════════
@@ -532,8 +535,8 @@ def dissolve_send_votes(call, data):
                             owner=(member_uid, None), color="d"),
                     ], layout=[2], owner_id=member_uid)
             sent += 1
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[alliance_dissolve] failed to DM member {member_uid}: {e}")
 
     bot.answer_callback_query(call.id, f"✅ تم إرسال التصويت لـ {sent} عضو", show_alert=True)
     try:

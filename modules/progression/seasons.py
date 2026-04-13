@@ -307,9 +307,10 @@ def get_season_status() -> dict:
     days      = remaining // 86400
     hours     = (remaining % 86400) // 3600
     return {
-        "active":    True,
-        "name":      season["name"],
-        "days_left": days,
+        "active":     True,
+        "name":       season["name"],
+        "days_left":  days,
         "hours_left": hours,
-        "ends_at":   season["ends_at"],
+        "remaining":  remaining,   # ثواني كاملة للاستخدام مع format_remaining_time
+        "ends_at":    season["ends_at"],
     }

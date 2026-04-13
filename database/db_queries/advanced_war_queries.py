@@ -83,15 +83,39 @@ def set_battle_in_battle(battle_id, battle_duration=300):
 
 def finish_battle(battle_id, winner_country_id, loot,
                   attacker_power, defender_power):
+    """
+    Atomically marks a battle as finished.
+    Only updates if status is still 'in_battle' — prevents double-finalization.
+    Returns True if the row was actually updated (this call won the race), False otherwise.
+    """
     conn = get_db_conn()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE country_battles
         SET status = 'finished', winner_country_id = ?,
             loot = ?, attacker_power = ?, defender_power = ?
-        WHERE id = ?
+        WHERE id = ? AND status = 'in_battle'
     """, (winner_country_id, loot, attacker_power, defender_power, battle_id))
     conn.commit()
+    updated = cursor.rowcount > 0
+    if updated:
+        print(f"[BATTLE_HISTORY_SYNC] battle_id={battle_id} status→finished winner={winner_country_id}")
+    return updated
+
+
+def finish_fake_battle(battle_id):
+    """Finishes a fake/traveling battle — only allowed from 'traveling' status."""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE country_battles
+        SET status = 'finished', winner_country_id = NULL, loot = 0,
+            attacker_power = 0, defender_power = 0
+        WHERE id = ? AND status = 'traveling'
+    """, (battle_id,))
+    conn.commit()
+    if cursor.rowcount > 0:
+        print(f"[BATTLE_HISTORY_SYNC] battle_id={battle_id} status→finished (fake/traveling)")
 
 
 def get_battle_history_for_country(country_id, limit=10):
@@ -285,8 +309,9 @@ def get_reputation(user_id):
 def ensure_reputation(user_id):
     conn = get_db_conn()
     cursor = conn.cursor()
+    # يبدأ بـ loyalty_score=0 — لا سمعة إيجابية قبل بناء سجل حقيقي
     cursor.execute("""
-        INSERT OR IGNORE INTO player_reputation (user_id) VALUES (?)
+        INSERT OR IGNORE INTO player_reputation (user_id, loyalty_score) VALUES (?, 0)
     """, (user_id,))
     conn.commit()
 
@@ -297,10 +322,10 @@ def update_reputation(user_id, helped=0, ignored=0, betrayed=0):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE player_reputation
-        SET battles_helped = battles_helped + ?,
+        SET battles_helped  = battles_helped  + ?,
             battles_ignored = battles_ignored + ?,
-            betrayals = betrayals + ?,
-            loyalty_score = MIN(100, MAX(0,
+            betrayals       = betrayals       + ?,
+            loyalty_score   = MIN(100, MAX(0,
                 loyalty_score + (? * 5) - (? * 3) - (? * 10)
             ))
         WHERE user_id = ?
@@ -312,20 +337,32 @@ def update_reputation(user_id, helped=0, ignored=0, betrayed=0):
 def _recalc_title(user_id):
     conn = get_db_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT loyalty_score, betrayals FROM player_reputation WHERE user_id = ?", (user_id,))
+    cursor.execute("""
+        SELECT loyalty_score, betrayals, battles_helped, battles_ignored
+        FROM player_reputation WHERE user_id = ?
+    """, (user_id,))
     row = cursor.fetchone()
     if not row:
         return
-    score, betrayals = row[0], row[1]
+    score, betrayals, helped, ignored = row[0], row[1], row[2], row[3]
+    total_interactions = helped + ignored
+
     if betrayals >= 3:
         title = "🐍 خائن"
+    elif total_interactions < 3:
+        # لا يكفي السجل لتحديد السمعة — محايد دائماً
+        title = "😶 محايد"
     elif score >= 80:
         title = "🤝 وفي"
     elif score >= 50:
         title = "⚔️ مقاتل"
     else:
         title = "😶 محايد"
-    cursor.execute("UPDATE player_reputation SET reputation_title = ? WHERE user_id = ?", (title, user_id))
+
+    cursor.execute(
+        "UPDATE player_reputation SET reputation_title = ? WHERE user_id = ?",
+        (title, user_id)
+    )
     conn.commit()
 
 

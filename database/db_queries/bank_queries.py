@@ -189,6 +189,8 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
         return False, "❌ المستخدم المستهدف لا يملك حساباً بنكياً"
 
     # ─── تطبيق حدث خصم رسوم التحويل ───
+    base_fee_pct = fee_pct
+    fee_discount = 0.0
     try:
         from modules.progression.global_events import get_event_effect
         fee_discount = get_event_effect("transfer_fee_discount")
@@ -197,8 +199,9 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
     except Exception:
         pass
 
-    fee   = round(amount * fee_pct, 2)
-    total = amount + fee
+    base_fee = round(amount * base_fee_pct, 2)
+    fee      = round(amount * fee_pct, 2)
+    total    = amount + fee
 
     conn   = get_db_conn()
     cursor = conn.cursor()
@@ -224,7 +227,7 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
     )
     conn.commit()
 
-    # track in economy_stats
+    # track in economy_stats — use base_fee so macro stats aren't skewed by events
     try:
         from database.db_queries.economy_queries import get_economy_stat, set_economy_stat
         set_economy_stat("total_transfers",
@@ -232,16 +235,22 @@ def transfer_funds(from_user_id: int, to_user_id: int, amount: float) -> tuple[b
         set_economy_stat("total_transfer_volume",
                          get_economy_stat("total_transfer_volume", 0.0) + amount)
         set_economy_stat("total_transfer_fees",
-                         get_economy_stat("total_transfer_fees", 0.0) + fee)
+                         get_economy_stat("total_transfer_fees", 0.0) + base_fee)
         # fees are a money sink — track them
         from modules.economy.services.economy_service import money_sink
-        money_sink(fee)
+        money_sink(base_fee)
     except Exception:
         pass
 
+    event_line = (
+        f"🎯 خصم الحدث: -{fee_discount*100:.0f}% (مهرجان التجارة)\n"
+        f"💡 الخصم: -{base_fee - fee:.2f} {CURRENCY_ARABIC_NAME}\n"
+    ) if fee_discount > 0 else ""
     return True, (
         f"✅ <b>تم التحويل بنجاح!</b>\n"
         f"💸 المبلغ: {amount:.2f} {CURRENCY_ARABIC_NAME}\n"
-        f"💳 الرسوم: {fee:.2f} {CURRENCY_ARABIC_NAME}\n"
+        f"🪖 الرسوم الأصلية: {base_fee:.2f} {CURRENCY_ARABIC_NAME}\n"
+        f"{event_line}"
+        f"✔ الرسوم المدفوعة: {fee:.2f} {CURRENCY_ARABIC_NAME}\n"
         f"📤 المجموع المخصوم: {total:.2f} {CURRENCY_ARABIC_NAME}"
     )

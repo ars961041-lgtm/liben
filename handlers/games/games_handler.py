@@ -47,16 +47,7 @@ def _send_games_menu(message):
     buttons.append(btn("❌ إخفاء", "game_hide", color=R, owner=owner))
 
     layout = _grid(len(buttons) - 1, 2) + [1]
-    send_ui(chat_id, text=text, buttons=buttons,
-            layout=layout, owner_id=uid,
-            # رد على الرسالة الأصلية
-            )
-    # # حذف رسالة الأمر لتقليل الفوضى في المجموعات
-    # try:
-    #     if message.chat.type != "private":
-    #         bot.delete_message(chat_id, message.message_id)
-    # except Exception:
-    #     pass
+    send_ui(chat_id, text=text, buttons=buttons, layout=layout, owner_id=uid, reply_to=message.message_id)
 
 
 # ══════════════════════════════════════════

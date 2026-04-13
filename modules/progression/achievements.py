@@ -2,8 +2,15 @@
 نظام الإنجازات — يُفعَّل تلقائياً عند أحداث اللعبة
 """
 import time
+import threading
 from database.connection import get_db_conn
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
+
+# ─── حماية من التشغيل المزدوج لنفس الحدث ───
+# key: (user_id, event) → last_triggered_timestamp
+_trigger_times: dict[tuple, float] = {}
+_trigger_lock = threading.Lock()
+_TRIGGER_COOLDOWN = 5  # ثوانٍ — يمنع نفس الحدث مرتين في لحظة واحدة
 
 
 def _c(name, default):
@@ -55,9 +62,9 @@ def check_and_award(user_id: int, condition_type: str, current_value: int):
 
     conn.commit()
 
-    # إرسال إشعارات
-    for ach in awarded:
-        _notify_achievement(user_id, ach)
+    # إرسال إشعار واحد يجمع كل الإنجازات المكتسبة
+    if awarded:
+        _notify_achievements_batch(user_id, awarded)
 
     return awarded
 
@@ -91,24 +98,37 @@ def _give_rewards(user_id: int, ach: dict, cursor):
             pass
 
 
-def _notify_achievement(user_id: int, ach: dict):
-    """يُرسل إشعار الإنجاز للمستخدم"""
+def _notify_achievements_batch(user_id: int, achievements: list):
+    """
+    يُرسل رسالة واحدة تجمع كل الإنجازات المكتسبة حديثاً.
+    يجمع المكافآت المالية والسمعة في سطر ملخص واحد.
+    """
     try:
         from core.bot import bot
-        msg = (
-            f"🏅 <b>إنجاز جديد!</b>\n\n"
-            f"{ach['emoji']} <b>{ach['name_ar']}</b>\n"
-            f"📝 {ach['description_ar']}\n\n"
-            f"🎁 <b>المكافأة:</b>\n"
-        )
+
+        total_coins = sum(a.get("reward_conis", 0) or 0 for a in achievements)
+        total_rep   = sum(a.get("reward_reputation", 0) or 0 for a in achievements)
+        cards       = [a["reward_card_name"] for a in achievements if a.get("reward_card_name")]
+
+        # بناء قائمة الإنجازات
+        lines = []
+        for ach in achievements:
+            lines.append(f"{ach['emoji']} <b>{ach['name_ar']}</b>\n   📝 {ach['description_ar']}")
+
+        msg = "🏅 <b>إنجازات جديدة!</b>\n\n" + "\n\n".join(lines)
+
+        # ملخص المكافآت المجمعة
         rewards = []
-        if ach.get("reward_conis", 0) > 0:
-            rewards.append(f"💰 {ach['reward_conis']:.0f} {CURRENCY_ARABIC_NAME}")
-        if ach.get("reward_card_name"):
-            rewards.append(f"🃏 بطاقة {ach['reward_card_name']}")
-        if ach.get("reward_reputation", 0) > 0:
-            rewards.append(f"⭐ +{ach['reward_reputation']} سمعة")
-        msg += "\n".join(rewards) if rewards else "لا توجد مكافأة مادية"
+        if total_coins > 0:
+            rewards.append(f"💰 {total_coins:.0f} {CURRENCY_ARABIC_NAME}")
+        if cards:
+            rewards.append("🃏 " + "، ".join(cards))
+        if total_rep > 0:
+            rewards.append(f"⭐ +{total_rep} سمعة")
+
+        if rewards:
+            msg += "\n\n🎁 <b>المكافآت:</b>\n" + "\n".join(rewards)
+
         bot.send_message(user_id, msg, parse_mode="HTML")
     except Exception:
         pass
@@ -303,8 +323,17 @@ def get_user_stat(user_id: int, stat_type: str) -> int:
 def trigger_achievement_check(user_id: int, event: str, **kwargs):
     """
     نقطة الدخول الموحدة — يُستدعى بعد كل حدث.
+    محمي بكولداون 5 ثوانٍ لمنع التشغيل المزدوج لنفس الحدث.
     event: 'battle_won', 'spy_success', 'support_given', 'balance_updated', إلخ
     """
+    # ─── حماية من التكرار السريع ───
+    key = (user_id, event)
+    now = time.time()
+    with _trigger_lock:
+        if now - _trigger_times.get(key, 0) < _TRIGGER_COOLDOWN:
+            return []
+        _trigger_times[key] = now
+
     event_to_stat = {
         "battle_won":      "battles_won",
         "battle_defended": "battles_defended",

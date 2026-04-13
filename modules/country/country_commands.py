@@ -105,14 +105,14 @@ def _send_country_overview(message, user_id, chat_id):
         if transfer:
             transfer = dict(transfer)
             remaining = transfer["expires_at"] - int(_t.time())
-            h, m = remaining // 3600, (remaining % 3600) // 60
+            from utils.helpers import format_remaining_time
             buttons = [btn("↩️ تراجع عن النقل", "country_rollback_transfer",
                            data={}, owner=(user_id, chat_id), color="d")]
             send_ui(chat_id,
                     text=(f"🌍 <b>دولتك تم نقلها</b>\n\n"
-                          f"⏳ يمكنك التراجع خلال: {h}س {m}د\n"
+                          f"⏳ يمكنك التراجع خلال: {format_remaining_time(remaining)}\n"
                           f"💸 التراجع يكلف 20% إضافية من الميزانية"),
-                    buttons=buttons, layout=[1], owner_id=user_id)
+                    buttons=buttons, layout=[1], owner_id=user_id, reply_to=message.message_id)
         else:
             send_reply(msg=message, text="❌ أنت غير منضم لأي دولة.\nاستخدم: <code>انشاء دولة </code>[الاسم]", Shape=False)
         return
@@ -121,12 +121,13 @@ def _send_country_overview(message, user_id, chat_id):
     frozen, rem = is_country_frozen(country_id)
     freeze_line = ""
     if frozen:
-        freeze_line = f"\n🧊 <b>الدولة مجمدة</b> — متبقي: {rem // 3600}س {(rem % 3600) // 60}د"
+        from utils.helpers import format_remaining_time
+        freeze_line = f"\n🧊 <b>الدولة مجمدة</b> — متبقي: {format_remaining_time(rem)}"
 
     stats = _compute_country_stats(country_id)
     text = _country_main_text(country, stats) + freeze_line
     buttons = _country_buttons(country_id, user_id, chat_id, frozen)
-    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id, reply_to=message.message_id)
 
 
 def _get_member_country(user_id: int):
@@ -175,7 +176,8 @@ def _send_member_country_view(message, user_id, chat_id, country):
 
     freeze_line = ""
     if frozen:
-        freeze_line = f"\n🧊 <b>الدولة مجمدة</b> — متبقي: {rem // 3600}س {(rem % 3600) // 60}د"
+        from utils.helpers import format_remaining_time
+        freeze_line = f"\n🧊 <b>الدولة مجمدة</b> — متبقي: {format_remaining_time(rem)}"
 
     stats  = _compute_country_stats(country_id)
     text   = _country_main_text(country, stats)
@@ -189,14 +191,14 @@ def _send_member_country_view(message, user_id, chat_id, country):
     )
 
     buttons = _country_buttons(country_id, user_id, chat_id, frozen)
-    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2, 1], owner_id=user_id, reply_to=message.message_id)
 
 
 def _compute_country_stats(country_id: int) -> dict:
     from database.db_queries.cities_queries import get_cities_by_country
     from database.db_queries.assets_queries import calculate_city_effects, get_country_military_power
     totals = {"economy": 0.0, "health": 0.0, "education": 0.0,
-              "infra": 0.0, "income": 0.0, "maintenance": 0.0}
+              "infrastructure": 0.0, "income": 0.0, "maintenance": 0.0}
     cities = get_cities_by_country(country_id)
     for city in cities:
         fx = calculate_city_effects(city["id"])
@@ -227,7 +229,7 @@ def _country_main_text(country, stats=None):
         f"🏥 الصحة:          {stats.get('health', 0):.1f}\n"
         f"📚 التعليم:         {stats.get('education', 0):.1f}\n"
         f"🪖 القوة العسكرية: {stats.get('military', 0):.1f}\n"
-        f"🛣 البنية التحتية:  {stats.get('infra', 0):.1f}\n"
+        f"🛣 البنية التحتية:  {stats.get('infrastructure', 0):.1f}\n"
         f"{get_lines()}\n"
         f"📈 الدخل: {stats.get('income', 0):.0f} | 🔧 الصيانة: {stats.get('maintenance', 0):.0f}\n"
         f"{influence_line}"
@@ -266,9 +268,10 @@ def handle_frozen_info(call, data):
     country_id = data.get("cid")
     frozen, rem = is_country_frozen(country_id)
     if frozen:
+        from utils.helpers import format_remaining_time
         bot.answer_callback_query(
             call.id,
-            f"🧊 الدولة مجمدة\nالوقت المتبقي: {rem // 3600}س {(rem % 3600) // 60}د",
+            f"🧊 الدولة مجمدة\nالوقت المتبقي: {format_remaining_time(rem)}",
             show_alert=True
         )
     else:
@@ -320,7 +323,7 @@ def handle_country_detail(call, data):
         ),
         "infra": (
             f"🛣 تفاصيل البنية التحتية\n{get_lines()}\n"
-            f"مستوى البنية: {stats.get('infra', 0):.1f}\n\n"
+            f"مستوى البنية: {stats.get('infrastructure', 0):.1f}\n\n"
             f"لتحسينه: شراء بنية تحتية أو محطة طاقة في مدينتك"
         ),
     }

@@ -1000,13 +1000,8 @@ def _progress_bar(pct: int, width: int = 10) -> str:
 
 
 def _fmt_duration(secs: int) -> str:
-    if secs >= 3600:
-        h = secs // 3600
-        m = (secs % 3600) // 60
-        return f"{h}س {m}د" if m else f"{h}س"
-    if secs >= 60:
-        return f"{secs // 60}د"
-    return f"{secs}ث"
+    from utils.helpers import format_remaining_time
+    return format_remaining_time(secs)
 
 
 # ══════════════════════════════════════════

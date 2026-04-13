@@ -8,7 +8,7 @@ import threading
 from database.connection import get_db_conn
 from database.db_queries.advanced_war_queries import (
     create_country_battle, get_battle_by_id,
-    set_battle_in_battle, finish_battle,
+    set_battle_in_battle, finish_battle, finish_fake_battle,
     get_total_support_power, get_spy_units, ensure_spy_units,
     add_spy_operation, get_pending_support_requests,
     update_support_request_status, create_support_request,
@@ -26,7 +26,7 @@ from modules.war.power_calculator import (
     get_country_power, aggregate_country_forces, calc_raw_power
 )
 from modules.war.war_simulator import simulate_battle
-from utils.helpers import get_lines
+from utils.helpers import get_lines, format_remaining_time
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 TRAVEL_TIME  = 20 * 60
@@ -127,7 +127,8 @@ def launch_attack(attacker_user_id, defender_country_id,
 
     frozen, rem = is_country_frozen(attacker_cid)
     if frozen:
-        return False, f"🧊 دولتك مجمدة! متبقي: {rem // 3600}س {(rem % 3600) // 60}د"
+        from utils.helpers import format_remaining_time as _fmt
+        return False, f"🧊 دولتك مجمدة! متبقي: {_fmt(rem)}"
 
     frozen_d, _ = is_country_frozen(defender_country_id)
     if frozen_d:
@@ -141,7 +142,8 @@ def launch_attack(attacker_user_id, defender_country_id,
     from modules.war.war_economy import is_country_in_recovery
     in_recovery, rec_rem = is_country_in_recovery(attacker_cid)
     if in_recovery:
-        return False, f"🔄 دولتك في فترة تعافٍ! متبقي: {rec_rem // 60} دقيقة."
+        from utils.helpers import format_remaining_time as _fmt
+        return False, f"🔄 دولتك في فترة تعافٍ! متبقي: {_fmt(rec_rem)}"
 
     # ─── فحص دين الصيانة ───
     try:
@@ -233,17 +235,41 @@ def launch_attack(attacker_user_id, defender_country_id,
 # ⏱️ جدولة المراحل
 # ══════════════════════════════════════════
 
+# ══════════════════════════════════════════
+# ⏱️ جدولة المراحل
+# ══════════════════════════════════════════
+
 def _schedule_travel_end(battle_id, delay):
+    """
+    ينتظر انتهاء وقت السفر بالاستناد إلى travel_end_time في DB.
+    يتحقق كل ثانية — يستجيب فوراً لأي تسريع يُحدّث DB.
+    """
     def _run():
-        time.sleep(delay)
-        _transition_to_battle(battle_id)
+        while True:
+            time.sleep(1)
+            battle = get_battle_by_id(battle_id)
+            if not battle or battle["status"] != "traveling":
+                return  # انتهت أو تغيرت الحالة
+            if int(time.time()) >= (battle.get("travel_end_time") or 0):
+                _transition_to_battle(battle_id)
+                return
     threading.Thread(target=_run, daemon=True).start()
 
 
 def _schedule_battle_end(battle_id, delay):
+    """
+    ينتظر انتهاء وقت المعركة بالاستناد إلى battle_end_time في DB.
+    يتحقق كل ثانية — يستجيب فوراً لأي تسريع يُحدّث DB.
+    """
     def _run():
-        time.sleep(delay)
-        _resolve_battle(battle_id)
+        while True:
+            time.sleep(1)
+            battle = get_battle_by_id(battle_id)
+            if not battle or battle["status"] != "in_battle":
+                return  # انتهت أو تغيرت الحالة
+            if int(time.time()) >= (battle.get("battle_end_time") or 0):
+                _resolve_battle(battle_id)
+                return
     threading.Thread(target=_run, daemon=True).start()
 
 
@@ -268,8 +294,9 @@ def _transition_to_battle(battle_id):
         return
     if battle["battle_type"] == "fake":
         _notify_fake_attack_end(battle)
-        finish_battle(battle_id, None, 0, 0, 0)
+        finish_fake_battle(battle_id)
         return
+    print(f"[BATTLE_TRANSITION] id={battle_id} traveling → combat")
     set_battle_in_battle(battle_id, BATTLE_TIME)
     _notify_battle_started(battle)
     # ─── تشغيل محرك المعركة الحية ───
@@ -351,7 +378,11 @@ def _resolve_battle(battle_id):
         if cap:
             update_city_resources(cap, loot)
 
-    finish_battle(battle_id, winner_cid, loot, max(0, atk_power), max(0, def_power))
+    committed = finish_battle(battle_id, winner_cid, loot, max(0, atk_power), max(0, def_power))
+    if not committed:
+        print(f"[BATTLE_AUTO_RESOLVE] id={battle_id} reason=already_committed_by_other (in _resolve_battle) — skipped")
+        return
+    print(f"[BATTLE_CLEANUP] id={battle_id} removed_from_active (_resolve_battle)")
     _notify_battle_result(battle, winner_cid, loot, atk_power, def_power, result,
                           attack_penalty=attack_penalty, reward_mult=reward_mult)
     _update_supporter_reputation(battle_id)
@@ -388,13 +419,12 @@ def send_spies(attacker_user_id, target_country_id, extra_card=False):
     can_spy, remaining, cached = get_spy_cooldown(attacker_cid, target_country_id)
 
     if not can_spy and cached:
-        mins = remaining // 60
-        secs = remaining % 60
+        from utils.helpers import format_remaining_time
         cached_icon = {"success": "🎯", "partial": "⚠️", "failed": "❌",
                        "fake": "💀", "detected": "🚨"}.get(cached["result"], "❓")
         return cached["result"], (
             f"⏳ <b>كولداون التجسس</b>\n"
-            f"متبقي: {mins}د {secs}ث\n\n"
+            f"متبقي: {format_remaining_time(remaining)}\n\n"
             f"{cached_icon} <b>آخر نتيجة مخزنة:</b>\n"
             f"{cached['info']}"
         )
@@ -679,19 +709,29 @@ def apply_card_to_battle(user_id, card_name, battle_id):
         cursor.execute("UPDATE country_battles SET travel_end_time = travel_end_time + ? WHERE id = ?",
                        (int(val), battle_id))
         conn.commit()
-        return True, f"⏳ تم تأخير الهجوم بـ {int(val)//60} دقيقة!"
+        return True, f"⏳ تم تأخير الهجوم بـ {format_remaining_time(int(val))}!"
 
     if effect == "reduce_travel" and battle["status"] == "traveling":
-        cursor.execute("UPDATE country_battles SET travel_end_time = MAX(travel_end_time - ?, ?) WHERE id = ?",
-                       (int(val), int(time.time()) + 10, battle_id))
-        conn.commit()
-        return True, f"⚡ تم تقليل وقت السفر بـ {int(val)//60} دقيقة!"
+        now = int(time.time())
+        cursor.execute("SELECT travel_end_time FROM country_battles WHERE id = ?", (battle_id,))
+        row = cursor.fetchone()
+        if row:
+            new_end = max(now + 10, row[0] - int(val))
+            cursor.execute("UPDATE country_battles SET travel_end_time = ? WHERE id = ?",
+                           (new_end, battle_id))
+            conn.commit()
+            print(f"[BATTLE_ACCEL_APPLIED] id={battle_id} new_travel_end_time={new_end}")
+            # إذا انتهى وقت السفر فوراً → انتقل للقتال
+            if new_end <= now:
+                threading.Thread(target=_transition_to_battle, args=(battle_id,), daemon=True).start()
+        return True, f"⚡ تم تقليل وقت السفر بـ {format_remaining_time(int(val))}!"
 
     # ─── بطاقات المعركة الحية ───
     if battle["status"] == "in_battle":
         from modules.war.live_battle_engine import (
             add_battle_effect, check_action_cooldown,
-            set_action_cooldown, notify_card_used, _log_event
+            set_action_cooldown, notify_card_used, _log_event,
+            check_and_update_battle_state,
         )
 
         # تحديد الجانب
@@ -706,6 +746,21 @@ def apply_card_to_battle(user_id, card_name, battle_id):
         can_use, remaining = check_action_cooldown(battle_id, user_id, card_name, 60)
         if not can_use:
             return False, f"⏳ انتظر {remaining} ثانية قبل استخدام هذه البطاقة مجدداً."
+
+        # ─── بطاقة تسريع المعركة (reduce_battle) ───
+        if effect == "reduce_battle":
+            now = int(time.time())
+            cursor.execute("SELECT battle_end_time FROM country_battles WHERE id = ?", (battle_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                new_end = max(now + 5, row[0] - int(val))
+                cursor.execute("UPDATE country_battles SET battle_end_time = ? WHERE id = ?",
+                               (new_end, battle_id))
+                conn.commit()
+                print(f"[BATTLE_ACCEL_APPLIED] id={battle_id} new_battle_end_time={new_end}")
+                set_action_cooldown(battle_id, user_id, card_name)
+                check_and_update_battle_state(battle_id)
+            return True, f"⚡ تم تقليل وقت المعركة بـ {format_remaining_time(int(val))}!"
 
         EFFECT_MAP = {
             "attack_boost":   ("attack_boost",  val,  20),

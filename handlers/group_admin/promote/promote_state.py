@@ -19,17 +19,36 @@ from core.state_manager import StateManager
 
 # ── Permission definitions ──────────────────────────────────────────────────
 PERMISSIONS = [
-    ("can_change_info",       "تغيير معلومات المجموعة"),
-    ("can_delete_messages",   "حذف الرسائل"),
-    ("can_invite_users",      "دعوة المستخدمين"),
-    ("can_restrict_members",  "تقييد الأعضاء"),
-    ("can_pin_messages",      "تثبيت الرسائل"),
-    ("can_promote_members",   "ترقية الأعضاء"),
-    ("can_manage_chat",       "إدارة المحادثة"),
-    ("can_manage_video_chats","إدارة المكالمات"),
+    ("can_change_info",        "تغيير معلومات المجموعة"),
+    ("can_delete_messages",    "حذف الرسائل"),
+    ("can_invite_users",       "دعوة المستخدمين"),
+    ("can_restrict_members",   "تقييد الأعضاء"),
+    ("can_pin_messages",       "تثبيت الرسائل"),
+    ("can_promote_members",    "ترقية الأعضاء"),
+    ("can_manage_chat",        "إدارة المحادثة"),
+    ("can_manage_video_chats", "إدارة المكالمات"),
+    ("can_post_stories",       "نشر القصص"),
+    ("can_edit_stories",       "تعديل القصص"),
+    ("can_delete_stories",     "حذف القصص"),
+    ("can_manage_tags",           "تعديل الوسوم"),
+    ("is_anonymous",           "إخفاء الهوية"),
 ]
 
-DEFAULT_PERMS = {k: False for k, _ in PERMISSIONS}
+DEFAULT_PERMS = {
+    "can_change_info":        False,
+    "can_delete_messages":    True,
+    "can_invite_users":       True,
+    "can_restrict_members":   True,
+    "can_pin_messages":       True,
+    "can_promote_members":    False,
+    "can_manage_chat":        True,
+    "can_manage_video_chats": False,
+    "can_post_stories":       False,
+    "can_edit_stories":       False,
+    "can_delete_stories":     False,
+    "is_anonymous":           False,
+    "can_manage_tags":           False,
+}
 
 STATE_TYPE = "promote"
 

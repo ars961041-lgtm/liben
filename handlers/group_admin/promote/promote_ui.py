@@ -8,7 +8,7 @@ from utils.pagination.buttons import btn, build_keyboard
 from utils.pagination.router import paginate_list
 from .promote_state import PERMISSIONS, get_promote_extra
 
-PER_PAGE = 4   # permissions per page
+PER_PAGE = 14   # permissions per page
 
 
 def _perm_buttons(uid: int, cid: int, perms: dict, page: int) -> tuple[list, list, int]:
@@ -43,7 +43,10 @@ def _perm_buttons(uid: int, cid: int, perms: dict, page: int) -> tuple[list, lis
 
     all_buttons = buttons + (nav if nav else []) + actions
     # layout: one button per row for perms, nav in one row, actions in one row
-    layout = [1] * len(items)
+    layout = [2] * (len(items) // 2)
+    if len(items) % 2 != 0:
+        layout.append(1)
+        
     if nav:
         layout.append(len(nav))
     layout.append(len(actions))

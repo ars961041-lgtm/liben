@@ -19,7 +19,7 @@ from modules.war.services.advanced_war_service import (
     send_support_request_all, send_support_request_targeted,
 )
 
-from utils.helpers import get_lines
+from utils.helpers import get_lines, format_remaining_time, format_time_compact
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
 
 def _back_btn(user_id, chat_id):
@@ -45,35 +45,26 @@ def open_advanced_war_menu(message):
         return
 
     country = dict(country)
-    active = get_active_battles_for_country(country["id"])
-    power = get_country_power(country["id"])
-    status_line = f"⚔️ معارك نشطة: {len(active)}" if active else "☮️ لا توجد معارك نشطة"
+    active  = get_active_battles_for_country(country["id"])
+    power   = get_country_power(country["id"])
 
     from database.db_queries.advanced_war_queries import get_visibility
     vis = get_visibility(country["id"])
     vis_icon = "🌑 مخفية" if vis and vis["visibility_mode"] == "hidden" else "☀️ ظاهرة"
 
-    # مستوى الدولة
-    from modules.war.country_level import get_level_info
-    lvl_info = get_level_info(country["id"])
-
-    # اقتراح ذكي
     suggestion = intelligence.get_suggestion_text(user_id)
 
     from core.personality import typing_delay
     typing_delay(chat_id, 0.5)
 
     buttons = _war_main_buttons(user_id, chat_id)
-    has_alliance = any(b["action"] == "alliance_buy_upgrade" for b in buttons)
-    layout = ([1] if has_alliance else []) + [2, 2, 2, 2, 2, 1]
+    layout  = _war_main_layout(buttons)
+    text    = _render_war_main_text(country, power, active, vis_icon)
+    if suggestion:
+        text += suggestion
 
-    send_ui(chat_id=chat_id,
-            text=(f"⚔️ <b>نظام الحرب المتقدم</b>\n"
-                  f"🏳️ دولتك: <b>{country['name']}</b>\n"
-                  f"🎖 المستوى: {lvl_info['label']} | 💪 القوة: {power:.0f}\n"
-                  f"👁 الرؤية: {vis_icon} | {status_line}"
-                  f"{suggestion}\n\nاختر ما تريد:"),
-            buttons=buttons, layout=layout, owner_id=user_id,
+    send_ui(chat_id=chat_id, text=text, buttons=buttons,
+            layout=layout, owner_id=user_id,
             reply_to=message.message_id)
 
 
@@ -81,31 +72,25 @@ def open_advanced_war_menu(message):
 def back_to_war_main(call, data):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
+
     country = get_country_by_owner(user_id)
     if not country:
         bot.answer_callback_query(call.id, "❌ لا تملك دولة!")
         return
     country = dict(country)
-    active = get_active_battles_for_country(country["id"])
-    power = get_country_power(country["id"])
-    status_line = f"⚔️ معارك نشطة: {len(active)}" if active else "☮️ لا توجد معارك نشطة"
+    active  = get_active_battles_for_country(country["id"])
+    power   = get_country_power(country["id"])
+
     from database.db_queries.advanced_war_queries import get_visibility
     vis = get_visibility(country["id"])
     vis_icon = "🌑 مخفية" if vis and vis["visibility_mode"] == "hidden" else "☀️ ظاهرة"
 
     buttons = _war_main_buttons(user_id, chat_id)
-    has_alliance = any(b["action"] == "alliance_buy_upgrade" for b in buttons)
-    n = len(buttons) - (1 if has_alliance else 0)
-    layout = ([1] if has_alliance else []) + [2] * (n // 2) + ([1] if n % 2 else [])
+    layout  = _war_main_layout(buttons)
+    text    = _render_war_main_text(country, power, active, vis_icon)
 
     bot.answer_callback_query(call.id)
-    edit_ui(call,
-            text=(f"⚔️ <b>نظام الحرب المتقدم</b>\n"
-                  f"🏳️ دولتك: <b>{country['name']}</b>\n"
-                  f"💪 قوتك: {power:.0f} | 👁 الرؤية: {vis_icon}\n"
-                  f"{status_line}\n\nاختر ما تريد:"),
-            buttons=buttons,
-            layout=layout)
+    edit_ui(call, text=text, buttons=buttons, layout=layout)
 
 
 # ══════════════════════════════════════════
@@ -261,7 +246,7 @@ def confirm_attack(call, data):
     edit_ui(call,
             text=(f"✅ <b>تم إطلاق الهجوم!</b>\n\n"
                   f"🗡 النوع: {type_names.get(battle_type, battle_type)}\n"
-                  f"⏱️ وقت الوصول: {travel_sec // 60} دقيقة\n"
+                  f"⏱️ وقت الوصول: {format_time_compact(travel_sec)}\n"
                   f"🆔 رقم المعركة: #{battle_id}\n\nسيتم إشعارك عند بدء القتال."),
             buttons=[_back_btn(user_id, chat_id)], layout=[1])
 
@@ -494,7 +479,7 @@ def show_spy_menu(call, data):
                   f"مستوى الدفاع: {spy_data['defense_level']}\n"
                   f"مستوى التمويه: {spy_data['camouflage_level']}\n\n"
                   f"💸 تكلفة العملية: {spy_cost} {CURRENCY_ARABIC_NAME}\n"
-                  f"⏱️ كولداون: {spy_cd // 60} دقيقة لكل هدف\n\n"
+                  f"⏱️ كولداون: {format_remaining_time(spy_cd)} لكل هدف\n\n"
                   f"🌑 = مخفية | 🏳️ = ظاهرة\n\nاختر دولة للتجسس:"),
             buttons=buttons + nav, layout=layout)
 
@@ -640,19 +625,37 @@ def show_active_battles(call, data):
         bot.answer_callback_query(call.id, "❌ لا تملك دولة!")
         return
     country = dict(country)
+
+    # ─── تنظيف تلقائي: إنهاء أي معركة منتهية الوقت قبل العرض ───
+    from modules.war.live_battle_engine import auto_resolve_expired_battle
+    raw_active = get_active_battles_for_country(country["id"])
+    now = int(_time.time())
+    for b in raw_active:
+        if b["status"] == "in_battle":
+            end_time = b.get("battle_end_time") or 0
+            if end_time > 0 and now >= end_time:
+                auto_resolve_expired_battle(b["id"])
+
+    # إعادة جلب القائمة بعد التنظيف (المعارك المنتهية ستختفي)
     active = get_active_battles_for_country(country["id"])
+    # فلترة أي معركة لا تزال تظهر لكنها منتهية الوقت (التنظيف يعمل في خيط منفصل)
+    active = [b for b in active if not (
+        b["status"] == "in_battle" and
+        (b.get("battle_end_time") or 0) > 0 and
+        now >= (b.get("battle_end_time") or 0)
+    )]
+
     if not active:
         edit_ui(call, text="🔍 <b>المعارك النشطة</b>\n\nلا توجد معارك نشطة.",
                 buttons=[_back_btn(user_id, chat_id)], layout=[1])
         return
-    now = int(_time.time())
     text = "🔍 <b>المعارك النشطة</b>\n\n"
     buttons = []
     for b in active:
         status_ar = "🚶 في الطريق" if b["status"] == "traveling" else "⚔️ في القتال"
         role = "مهاجم" if b["attacker_country_id"] == country["id"] else "مدافع"
         remaining = max(0, b["travel_end_time"] - now) if b["status"] == "traveling" else max(0, (b.get("battle_end_time") or now) - now)
-        text += f"⚔️ معركة #{b['id']} | {role}\n   {status_ar} | متبقي: {remaining // 60} دقيقة\n\n"
+        text += f"⚔️ معركة #{b['id']} | {role}\n   {status_ar} | متبقي: {format_time_compact(remaining)}\n\n"
         buttons.append(btn(f"🃏 بطاقة للمعركة #{b['id']}", "adv_war_use_card_menu",
                            data={"battle_id": b["id"]}, owner=(user_id, chat_id)))
         if b["status"] == "in_battle":
@@ -838,11 +841,24 @@ def show_live_actions(call, data):
 
     from modules.war.live_battle_engine import (
         get_live_battle_state, get_active_effects_for_display,
-        check_action_cooldown
+        check_action_cooldown, auto_resolve_expired_battle
     )
 
     battle = get_battle_by_id(battle_id)
-    if not battle or battle["status"] != "in_battle":
+    if not battle:
+        bot.answer_callback_query(call.id, "❌ المعركة غير موجودة.", show_alert=True)
+        return
+
+    # تنظيف تلقائي إذا انتهى الوقت
+    if battle["status"] == "in_battle":
+        now_check = int(_time.time())
+        end_time = battle.get("battle_end_time") or 0
+        if end_time > 0 and now_check >= end_time:
+            auto_resolve_expired_battle(battle_id)
+            bot.answer_callback_query(call.id, "⚔️ انتهت المعركة للتو! تحقق من نتائجك.", show_alert=True)
+            return
+
+    if battle["status"] != "in_battle":
         bot.answer_callback_query(call.id, "❌ المعركة لم تبدأ بعد أو انتهت.", show_alert=True)
         return
 
@@ -870,7 +886,7 @@ def show_live_actions(call, data):
 
     text = (
         f"⚔️ <b>المعركة الحية #{battle_id}</b>\n"
-        f"⏱️ متبقي: {remaining // 60}د {remaining % 60}ث\n\n"
+        f"⏱️ متبقي: {format_time_compact(remaining)}\n\n"
         f"📊 <b>القوى:</b>\n"
         f"  ⚔️ مهاجم: {atk_p:.0f}\n"
         f"  🛡 مدافع: {def_p:.0f}\n"
@@ -989,11 +1005,13 @@ def do_retreat(call, data):
 
     from modules.war.war_economy import execute_retreat
     ok, msg = execute_retreat(user_id, battle_id)
-    bot.answer_callback_query(call.id, "تم الانسحاب" if ok else "❌ فشل الانسحاب", show_alert=True)
-    try:
-        bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML")
-    except Exception:
-        pass
+    alert_text = "تم الانسحاب" if ok else msg
+    bot.answer_callback_query(call.id, alert_text, show_alert=True)
+    if ok:
+        try:
+            bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        except Exception:
+            pass
 
 
 # ══════════════════════════════════════════
@@ -1025,7 +1043,7 @@ def open_hospital_menu(message):
         now = int(_time.time())
         for inj in injured[:5]:
             rem = max(0, inj["heal_time"] - now)
-            text += f"  {inj['emoji']} {inj['name_ar']}: {inj['quantity']} | يُشفى خلال {rem // 60} دقيقة\n"
+            text += f"  {inj['emoji']} {inj['name_ar']}: {inj['quantity']} | يُشفى خلال {format_remaining_time(rem)}\n"
     else:
         text += "✅ لا يوجد جنود مصابون\n"
 
@@ -1065,6 +1083,57 @@ def repair_all_equipment(call, data):
     bot.answer_callback_query(call.id, msg, show_alert=True)
 
 
+@register_action("adv_war_hospital")
+def show_hospital_menu(call, data):
+    """زر المستشفى من القائمة الرئيسية — يعرض نفس محتوى open_hospital_menu."""
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    country = get_country_by_owner(user_id)
+    if not country:
+        bot.answer_callback_query(call.id, "❌ لا تملك دولة!")
+        return
+    country = dict(country)
+
+    from modules.war.war_economy import get_injured_troops, get_damaged_equipment, heal_ready_troops
+    healed  = heal_ready_troops(country["id"])
+    injured = get_injured_troops(country["id"])
+    damaged = get_damaged_equipment(country["id"])
+
+    text = "🏥 <b>المستشفى والإصلاح</b>\n"
+    if healed > 0:
+        text += f"✅ تم شفاء {healed} جندي!\n"
+    text += f"{get_lines()}\n\n"
+
+    if injured:
+        text += f"🏥 <b>الجنود المصابون ({len(injured)} نوع):</b>\n"
+        now = int(_time.time())
+        for inj in injured[:5]:
+            rem = max(0, inj["heal_time"] - now)
+            text += f"  {inj['emoji']} {inj['name_ar']}: {inj['quantity']} | يُشفى خلال {format_remaining_time(rem)}\n"
+    else:
+        text += "✅ لا يوجد جنود مصابون\n"
+
+    text += "\n"
+    if damaged:
+        total_repair = sum(d["repair_cost"] for d in damaged)
+        text += f"🔧 <b>المعدات التالفة ({len(damaged)} نوع):</b>\n"
+        for d in damaged[:5]:
+            text += f"  {d['emoji']} {d['name_ar']}: {d['quantity']} | تكلفة: {d['repair_cost']:.0f}\n"
+        text += f"\n💰 إجمالي الإصلاح: {total_repair:.0f} {CURRENCY_ARABIC_NAME}"
+    else:
+        text += "✅ لا توجد معدات تالفة"
+
+    buttons = []
+    if damaged:
+        buttons.append(btn("🔧 إصلاح كل المعدات", "adv_war_repair_all",
+                           data={}, owner=(user_id, chat_id), color="su"))
+    buttons.append(_back_btn(user_id, chat_id))
+
+    bot.answer_callback_query(call.id)
+    edit_ui(call, text=text, buttons=buttons, layout=[1] * len(buttons))
+
+
 # ══════════════════════════════════════════
 # 📊 حالة الدولة (تعافٍ + مصابون)
 # ══════════════════════════════════════════
@@ -1100,7 +1169,7 @@ def show_country_status(call, data):
     )
 
     if in_rec:
-        text += f"🔄 <b>فترة التعافي:</b> {rec_rem // 60} دقيقة متبقية\n\n"
+        text += f"🔄 <b>فترة التعافي:</b> {format_remaining_time(rec_rem)} متبقية\n\n"
     else:
         text += "✅ الدولة جاهزة للقتال\n\n"
 
@@ -1415,7 +1484,7 @@ def show_country_status(call, data):
     )
 
     if in_rec:
-        text += f"🔄 <b>فترة التعافي:</b> {rec_rem // 60} دقيقة متبقية\n\n"
+        text += f"🔄 <b>فترة التعافي:</b> {format_remaining_time(rec_rem)} متبقية\n\n"
     else:
         text += "✅ الدولة جاهزة للقتال\n\n"
 
@@ -1630,10 +1699,9 @@ def do_explore(call, data):
     # ── STEP 1: كولداون — أول وأوحد بوابة ──
     can_explore, remaining = get_explore_cooldown(user_id)
     if not can_explore:
-        mins, secs = divmod(remaining, 60)
         bot.answer_callback_query(
             call.id,
-            f"⏳ يمكنك الاستكشاف مجدداً بعد {mins} دقيقة و{secs} ثانية.",
+            f"⏳ يمكنك الاستكشاف مجدداً بعد {format_remaining_time(remaining)}.",
             show_alert=True,
         )
         return
@@ -1689,7 +1757,7 @@ def show_radar(call, data):
                 buttons=[_back_btn(user_id, chat_id)], layout=[1])
         return
 
-    text = "📡 <b>الرادار — أهداف قريبة</b>\n{get_lines()}\n\n"
+    text = f"📡 <b>الرادار — أهداف قريبة</b>\n{get_lines()}\n\n"
     buttons = []
     for t in targets:
         tier_label = TIER_LABELS.get(t["tier"], "🟡")
@@ -1904,6 +1972,36 @@ def _war_main_buttons(user_id, chat_id):
         btn("🔍 معاركي النشطة",   "adv_war_active",         data={},          owner=(user_id, chat_id), color="su"),
         btn("📣 طلبات الدعم",     "adv_war_support_menu",   data={},          owner=(user_id, chat_id), color="su"),
         btn("🤝 إحصائيات الدعم",  "adv_war_support_stats",  data={},          owner=(user_id, chat_id)),
-        btn("🏥 المستشفى",        "adv_war_country_status", data={},          owner=(user_id, chat_id)),
+        btn("🏥 المستشفى",        "adv_war_hospital",       data={},          owner=(user_id, chat_id)),
+        btn("🌍 حالة الدولة",     "adv_war_country_status", data={},          owner=(user_id, chat_id)),
     ]
     return buttons
+
+
+def _war_main_layout(buttons: list) -> list:
+    """
+    يحسب التخطيط الثابت للقائمة الرئيسية للحرب.
+    زر التحالف (إن وجد) يأخذ صفاً كاملاً، الباقي يُوزَّع زرَّين في كل صف.
+    """
+    has_alliance = any(getattr(b, "action", None) == "alliance_buy_upgrade"
+                       or (isinstance(b, dict) and b.get("action") == "alliance_buy_upgrade")
+                       for b in buttons)
+    rest = len(buttons) - (1 if has_alliance else 0)
+    pairs = rest // 2
+    remainder = rest % 2
+    layout = ([1] if has_alliance else []) + [2] * pairs + ([1] if remainder else [])
+    return layout
+
+
+def _render_war_main_text(country: dict, power: float, active: list, vis_icon: str) -> str:
+    """نص القائمة الرئيسية للحرب — مصدر واحد لكل نقاط العرض."""
+    from modules.war.country_level import get_level_info
+    lvl_info = get_level_info(country["id"])
+    status_line = f"⚔️ معارك نشطة: {len(active)}" if active else "☮️ لا توجد معارك نشطة"
+    return (
+        f"⚔️ <b>نظام الحرب المتقدم</b>\n"
+        f"🏳️ دولتك: <b>{country['name']}</b>\n"
+        f"🎖 المستوى: {lvl_info['label']} | 💪 القوة: {power:.0f}\n"
+        f"👁 الرؤية: {vis_icon} | {status_line}\n\n"
+        f"اختر ما تريد:"
+    )

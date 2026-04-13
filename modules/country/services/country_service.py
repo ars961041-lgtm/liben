@@ -35,15 +35,16 @@ class CountryService:
         else:
             return False, "❌ الأمر غير مدعوم"
 
-        if not country_name:
-            return False, "❌ يرجى كتابة اسم الدولة"
-
-        if country_exists(country_name):
-            return False, "❌ اسم الدولة مستخدم"
-
         existing_country = get_country_by_user(user_id)
         if existing_country:
             return False, f"❌ لديك دولة بالفعل: {existing_country['name']}"
+
+        if not country_name:
+            return False, "❌ يرجى كتابة اسم الدولة"
+
+
+        if country_exists(country_name):
+            return False, "❌ اسم الدولة مستخدم"
 
         user_balance = get_user_balance(user_id)
         if user_balance < COUNTRY_CREATION_COST:

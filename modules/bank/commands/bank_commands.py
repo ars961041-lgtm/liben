@@ -86,7 +86,7 @@ def bank_commands(message):
             bot.reply_to(message, "❌ ليس لديك حساب بنكي.\nاكتب '<code>انشاء حساب بنكي</code>' أولاً.", parse_mode='HTML')
             return True
         balance = get_user_balance(user_id)
-        bot.reply_to(message, f"💰 رصيدك الحالي: {balance:.2f} {CURRENCY_ARABIC_NAME}")
+        bot.reply_to(message, f"💰 رصيدك الحالي: {balance:,.2f} {CURRENCY_ARABIC_NAME}")
         return True
 
     # إنشاء حساب بنكي

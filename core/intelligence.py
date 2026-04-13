@@ -79,7 +79,8 @@ def _check_military(user_id: int) -> list[str]:
         from modules.war.war_economy import is_country_in_recovery
         in_rec, rem = is_country_in_recovery(country["id"])
         if in_rec:
-            tips.append(f"🔄 دولتك في تعافٍ — متبقي {rem // 60} دقيقة")
+            from utils.helpers import format_remaining_time
+            tips.append(f"🔄 دولتك في تعافٍ — متبقي {format_remaining_time(rem)}")
     except Exception:
         pass
     return tips

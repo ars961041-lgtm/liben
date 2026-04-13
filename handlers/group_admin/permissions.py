@@ -116,3 +116,7 @@ def can_restrict_members(chat_id) -> bool:
 def can_change_info(chat_id) -> bool:
     m = get_bot_member(chat_id)
     return bool(m and m.can_change_info)
+
+def can_manage_tags(chat_id) -> bool:
+    m = get_bot_member(chat_id)
+    return bool(m and m.can_manage_tags)

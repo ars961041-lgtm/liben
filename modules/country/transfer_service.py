@@ -28,8 +28,8 @@ def transfer_country(from_user_id, to_user_id):
     # التحقق من الكولداون
     on_cd, remaining = get_transfer_cooldown(from_user_id)
     if on_cd:
-        h, m = remaining // 3600, (remaining % 3600) // 60
-        return False, f"⏳ يمكنك النقل مرة واحدة كل 24 ساعة.\nالوقت المتبقي: {h}س {m}د"
+        from utils.helpers import format_remaining_time
+        return False, f"⏳ يمكنك النقل مرة واحدة كل 24 ساعة.\nالوقت المتبقي: {format_remaining_time(remaining)}"
 
     country = get_country_by_owner(from_user_id)
     if not country:
@@ -39,7 +39,8 @@ def transfer_country(from_user_id, to_user_id):
     # التحقق من التجميد
     frozen, rem = is_country_frozen(country["id"])
     if frozen:
-        return False, f"🧊 دولتك مجمدة. الوقت المتبقي: {rem // 3600}س {(rem % 3600) // 60}د"
+        from utils.helpers import format_remaining_time
+        return False, f"🧊 دولتك مجمدة. الوقت المتبقي: {format_remaining_time(rem)}"
 
     # التحقق من المستلم
     if to_user_id == from_user_id:

@@ -148,7 +148,7 @@ def _send_city_overview(message, user_id, chat_id, city_id):
         return
     text = _city_main_text(details)
     buttons = _city_buttons(city_id, user_id, chat_id)
-    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2], owner_id=user_id)
+    send_ui(message.chat.id, text=text, buttons=buttons, layout=[3, 2], owner_id=user_id, reply_to=message.message_id)
 
 
 def _send_economy_summary(message, city_id):

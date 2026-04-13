@@ -21,6 +21,7 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     from handlers.group_admin.restrictions import get_target_user
     from handlers.group_admin.promote import handle_promote_command
     from handlers.group_admin.promote.promote_handler import handle_edit_command
+    from handlers.group_admin.promote.promote_handler import handle_demote_command
     from handlers.games.games_handler import games_command
     from handlers.games.entertainment_games import entertainment_games_command
     from handlers.tops.tops_handler import top_commands
@@ -43,27 +44,6 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
         _send_group_link(message)
         return True
 
-    # ── معلومات المستخدم المُشار إليه ──
-    if normalized_text in ("دولته", "تحالفه", "مدينته"):
-        if not message.reply_to_message or not message.reply_to_message.from_user:
-            bot.reply_to(message, "↩️ رد على رسالة المستخدم أولاً.")
-            return True
-        target_id = message.reply_to_message.from_user.id
-        if normalized_text == "دولته":
-            from database.db_queries.countries_queries import get_user_country_name
-            name = get_user_country_name(target_id)
-            bot.reply_to(message, f"🏳️ الدولة: {name}" if name else "لا يوجد")
-        elif normalized_text == "تحالفه":
-            from database.db_queries.alliances_queries import get_alliance_by_user
-            alliance = get_alliance_by_user(target_id)
-            name = alliance.get("name") if alliance else None
-            bot.reply_to(message, f"🤝 التحالف: {name}" if name else "لا يوجد")
-        elif normalized_text == "مدينته":
-            from database.db_queries.cities_queries import get_user_city
-            city = get_user_city(target_id)
-            name = city["name"] if city else None
-            bot.reply_to(message, f"🏙 المدينة: {name}" if name else "لا يوجد")
-        return True
 
     # ── الصياح ──
     if normalized_text == "صيح":
@@ -137,45 +117,119 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
     from modules.rules import handle_rules_command
     if handle_rules_command(message):
         return True
-        if text.startswith("اضف "):
-            from modules.content_hub.hub_handler import handle_add_content_command
-            if handle_add_content_command(message):
-                return True
+    
+    if text.startswith("اضف "):
+        from modules.content_hub.hub_handler import handle_add_content_command
+        if handle_add_content_command(message):
+            return True
 
     # ── ترقية / تعديل مشرف ──
-    if normalized_text in ["/promote", "رفع مشرف"]:
-        from handlers.group_admin.restrictions import promote_admin
-        promote_admin(message)
+    if normalized_text.startswith("/promote") or normalized_text.startswith("رفع مشرف"):
+        handle_promote_command(message)
         return True
-    if normalized_text in ["/edit_admin", "تعديل مشرف"]:
+
+    if normalized_text.startswith("/edit_admin") or normalized_text.startswith("تعديل مشرف"):
         handle_edit_command(message)
         return True
 
-    # ── البنك ──
+    if normalized_text.startswith("/demote") or normalized_text.startswith("تنزيل مشرف"):
+        handle_demote_command(message)
+        return True
+
+    # ── لوحة الصلاحيات الموحدة ──
+    if normalized_text.startswith("صلاحيات") or normalized_text.startswith("/permissions"):
+        from handlers.group_admin.permissions_panel import handle_permissions_command
+        handle_permissions_command(message)
+        return True
+
+    # ── التنسيق والاستبدال ──
+    from modules.formatting.format_handler import handle_format_command, handle_format_guide
+    from modules.text_tools.replace_handler import handle_replace_command
+    if normalized_text == "تنسيق":
+        handle_format_command(message)
+        return True
+    if normalized_text in ["شرح تنسيق", "دليل التنسيق"]:
+        handle_format_guide(message)
+        return True
+    
+    if text != "تعديل مشرف" and text.startswith("تعديل "):
+        handle_replace_command(message)
+        return True
+    
+    # ── الملف الشخصي ──
+    from handlers.users import send_user_profile
+    if text in ["عني", "ايدي", "معلوماتي"] or text.startswith("ايدي"):
+        send_user_profile(message)
+        return True
+    if normalized_text in ["عنه", "معلوماته"]:
+        send_user_profile(message)
+        return True
+
+
+    # ── دليل المميزات ──
+    from handlers.features_guide import handle_features_command
+    if handle_features_command(message):
+        return True
+
+    # ── مركز المحتوى ──
+    from modules.content_hub.hub_handler import handle_content_command
+    if handle_content_command(message):
+        return True
+
+    # ── إدارة ربط القنوات (مطورون فقط) ──
+    from modules.content_hub.channel_admin import handle_channel_admin_command
+    if handle_channel_admin_command(message):
+        return True
+
+
     if is_feature_enabled(cid, "enable_games"):
+        # ── معلومات المستخدم المُشار إليه ──
+        if normalized_text in ("دولته", "تحالفه", "مدينته"):
+            if not message.reply_to_message or not message.reply_to_message.from_user:
+                bot.reply_to(message, "↩️ رد على رسالة المستخدم أولاً.")
+                return True
+            target_id = message.reply_to_message.from_user.id
+            if normalized_text == "دولته":
+                from database.db_queries.countries_queries import get_user_country_name
+                name = get_user_country_name(target_id)
+                bot.reply_to(message, f"🏳️ الدولة: {name}" if name else "لا يوجد")
+            elif normalized_text == "تحالفه":
+                from database.db_queries.alliances_queries import get_alliance_by_user
+                alliance = get_alliance_by_user(target_id)
+                name = alliance.get("name") if alliance else None
+                bot.reply_to(message, f"🤝 التحالف: {name}" if name else "لا يوجد")
+            elif normalized_text == "مدينته":
+                from database.db_queries.cities_queries import get_user_city
+                city = get_user_city(target_id)
+                name = city["name"] if city else None
+                bot.reply_to(message, f"🏙 المدينة: {name}" if name else "لا يوجد")
+            return True
+        
+        # ── التوبات ──
+        if top_commands(message):
+            return True
+
+        # ── البنك ──
         if bank_commands(message):
             return True
 
-    # ── الإحصائيات والتحليلات ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── الإحصائيات والتحليلات ──
         from handlers.analytics_handler import analytics_commands
         if analytics_commands(message):
             return True
 
-    # ── الألعاب ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── الألعاب ──
         if games_command(message):
             return True
         if entertainment_games_command(message):
             return True
 
-    # ── التوبات ──
-    if is_feature_enabled(cid, "enable_games"):
-        if top_commands(message):
+        
+        # ── المجلة اليومية ──
+        from modules.magazine.magazine_handler import handle_magazine_command
+        if handle_magazine_command(message):
             return True
-
-    # ── الدولة والمدن ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── الدولة والمدن ──
         if country_commands(message):   return True
         if city_commands(message):      return True
         if daily_tasks_commands(message): return True
@@ -194,18 +248,15 @@ def handle_group_commands(message, normalized_text: str, text: str) -> bool:
             handle_government_command(message)
             return True
 
-    # ── التحالفات ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── التحالفات ──
         if alliance_commands(message):
             return True
 
-    # ── الحرب ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── الحرب ──
         if handle_war_text_commands(message):
             return True
 
-    # ── الحرب السياسية ──
-    if is_feature_enabled(cid, "enable_games"):
+        # ── الحرب السياسية ──
         if normalized_text in ("الحرب السياسية", "حرب سياسية", "political war", "/political_war"):
             from modules.war.handlers.political_war_handler import open_political_war_menu
             open_political_war_menu(message)

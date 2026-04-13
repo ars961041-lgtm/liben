@@ -1,6 +1,6 @@
 # database/db_queries/group_punishments_queries.py
 
-from database.connection import get_db_conn
+from database.connection import get_db_conn, db_write
 from database.db_queries.groups_queries import get_internal_group_id
 
 ALLOWED_FIELDS = {"is_muted", "is_banned", "is_restricted"}
@@ -16,12 +16,16 @@ def set_user_status(user_id: int, tg_group_id: int, field: str, value: int):
     internal_id = _resolve(tg_group_id)
     if not internal_id:
         return
-    conn = get_db_conn()
-    conn.execute(
-        f"UPDATE group_members SET {field} = ? WHERE user_id = ? AND group_id = ?",
-        (value, user_id, internal_id)
-    )
-    conn.commit()
+
+    def _write():
+        conn = get_db_conn()
+        conn.execute(
+            f"UPDATE group_members SET {field} = ? WHERE user_id = ? AND group_id = ?",
+            (value, user_id, internal_id)
+        )
+        conn.commit()
+
+    db_write(_write)
 
 
 def is_user_status(user_id: int, tg_group_id: int, field: str) -> bool:
@@ -62,13 +66,17 @@ def log_punishment(tg_group_id: int, user_id: int, action_type: int,
     internal_id = _resolve(tg_group_id)
     if not internal_id:
         return
-    conn = get_db_conn()
-    conn.execute(
-        "INSERT INTO group_punishment_log (group_id, user_id, action_type, executor_id) "
-        "VALUES (?, ?, ?, ?)",
-        (internal_id, user_id, action_type, executor_id)
-    )
-    conn.commit()
+
+    def _write():
+        conn = get_db_conn()
+        conn.execute(
+            "INSERT INTO group_punishment_log (group_id, user_id, action_type, executor_id) "
+            "VALUES (?, ?, ?, ?)",
+            (internal_id, user_id, action_type, executor_id)
+        )
+        conn.commit()
+
+    db_write(_write)
 
 
 def get_user_punishments(tg_group_id: int, user_id: int) -> list:
@@ -120,8 +128,12 @@ def delete_group_punishments(tg_group_id: int):
     internal_id = _resolve(tg_group_id)
     if not internal_id:
         return
-    conn = get_db_conn()
-    conn.execute(
-        "DELETE FROM group_punishment_log WHERE group_id = ?", (internal_id,)
-    )
-    conn.commit()
+
+    def _write():
+        conn = get_db_conn()
+        conn.execute(
+            "DELETE FROM group_punishment_log WHERE group_id = ?", (internal_id,)
+        )
+        conn.commit()
+
+    db_write(_write)

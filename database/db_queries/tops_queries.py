@@ -167,6 +167,64 @@ def get_top_betrayals(limit=10) -> list[dict]:
 # مساعدات (تُستخدم في أماكن أخرى)
 # ══════════════════════════════════════════
 
+def get_top_wars(limit=10) -> list[dict]:
+    """توب الدول بعدد المعارك المنتهية (مهاجماً أو مدافعاً)"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            co.id,
+            co.name,
+            COUNT(cb.id) AS value
+        FROM countries co
+        LEFT JOIN country_battles cb
+            ON (cb.attacker_country_id = co.id OR cb.defender_country_id = co.id)
+            AND cb.status = 'finished'
+        GROUP BY co.id, co.name
+        ORDER BY value DESC
+        LIMIT ?
+    """, (limit,))
+    return [dict(r) for r in cursor.fetchall()]
+
+
+def get_top_war_winners(limit=10) -> list[dict]:
+    """توب الدول بعدد الانتصارات"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            co.id,
+            co.name,
+            COUNT(cb.id) AS value
+        FROM countries co
+        JOIN country_battles cb ON cb.winner_country_id = co.id
+        WHERE cb.status = 'finished'
+        GROUP BY co.id, co.name
+        ORDER BY value DESC
+        LIMIT ?
+    """, (limit,))
+    return [dict(r) for r in cursor.fetchall()]
+
+
+def get_top_war_loot(limit=10) -> list[dict]:
+    """توب الدول بإجمالي الغنائم المكتسبة"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            co.id,
+            co.name,
+            COALESCE(SUM(cb.loot), 0) AS value
+        FROM countries co
+        JOIN country_battles cb ON cb.winner_country_id = co.id
+        WHERE cb.status = 'finished'
+        GROUP BY co.id, co.name
+        ORDER BY value DESC
+        LIMIT ?
+    """, (limit,))
+    return [dict(r) for r in cursor.fetchall()]
+
+
 def get_top_richest(limit=10) -> list[dict]:
     conn = get_db_conn()
     cursor = conn.cursor()

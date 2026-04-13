@@ -3,6 +3,8 @@ War store UI — Troops & Equipment.
 Entry: "🪖 قوات المدينة" button → hub (Troops / Equipment)
 All navigation uses edit_ui. send_ui only on first open from text.
 """
+import logging
+
 from core.bot import bot
 from database.db_queries.war_queries import (
     get_all_troop_types, get_city_troop, get_troop_type_by_id, add_city_troops,
@@ -13,6 +15,38 @@ from database.db_queries.bank_queries import get_user_balance, deduct_user_balan
 from utils.pagination import btn, send_ui, edit_ui, register_action, grid
 from utils.helpers import get_lines
 from modules.bank.utils.constants import CURRENCY_ARABIC_NAME
+
+logger = logging.getLogger(__name__)
+
+
+def _apply_troop_discount(base_cost: float) -> tuple[float, float]:
+    """Returns (discounted_cost, discount_pct). discount_pct=0 if no event active."""
+    try:
+        from modules.progression.global_events import get_event_effect
+        discount = get_event_effect("troop_cost_discount")
+        if discount > 0:
+            logger.info("[EVENT_APPLIED] type=troop_cost_discount, discount=%.0f%%, base=%.0f, final=%.0f",
+                        discount * 100, base_cost, base_cost * (1 - discount))
+            return round(base_cost * (1 - discount), 2), discount
+    except Exception:
+        pass
+    logger.debug("[EVENT_SKIP] troop_cost_discount — no active event or category mismatch")
+    return base_cost, 0.0
+
+
+def _apply_equipment_discount(base_cost: float) -> tuple[float, float]:
+    """Returns (discounted_cost, discount_pct). discount_pct=0 if no event active."""
+    try:
+        from modules.progression.global_events import get_event_effect
+        discount = get_event_effect("equipment_cost_discount")
+        if discount > 0:
+            logger.info("[EVENT_APPLIED] type=equipment_cost_discount, discount=%.0f%%, base=%.0f, final=%.0f",
+                        discount * 100, base_cost, base_cost * (1 - discount))
+            return round(base_cost * (1 - discount), 2), discount
+    except Exception:
+        pass
+    logger.debug("[EVENT_SKIP] equipment_cost_discount — no active event or category mismatch")
+    return base_cost, 0.0
 
 GREEN = "su"
 RED   = "d"
@@ -133,19 +167,26 @@ def handle_troop_item(call, data):
     owned_row = get_city_troop(city_id, troop_id)
     owned_qty = owned_row["quantity"] if owned_row else 0
 
+    effective_cost, discount = _apply_troop_discount(troop_type["base_cost"])
+    price_line = (
+        f"💰 السعر:   ~~{troop_type['base_cost']:.0f}~~ {effective_cost:.0f} {CURRENCY_ARABIC_NAME} / وحدة 🎉"
+        if discount > 0 else
+        f"💰 السعر:   {troop_type['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة"
+    )
+
     text = (
         f"{troop_type['emoji']} {troop_type['name_ar']}\n"
         f"{get_lines()}\n"
         f"⚔️ الهجوم:  {troop_type['attack']}\n"
         f"🛡 الدفاع:  {troop_type['defense']}\n"
         f"❤️ الصحة:   {troop_type['hp']}\n"
-        f"💰 السعر:   {troop_type['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
+        f"{price_line}\n"
         f"🪖 تمتلك:  {owned_qty} وحدة\n"
         f"💰 رصيدك:  {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للشراء:"
     )
     qty_btns = _qty_buttons("troop_buy", {"tid": troop_id, "cid": city_id},
-                             troop_type["base_cost"], balance, owner=owner)
+                             effective_cost, balance, owner=owner)
     back = [btn("رجوع", "open_troop_store", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=text, buttons=qty_btns + back,
             layout=grid(len(qty_btns), 3) + [1])
@@ -164,6 +205,10 @@ def handle_troop_buy(call, data):
         return
 
     total_cost = troop_type["base_cost"] * quantity
+    # ─── apply active event discount ───
+    effective_unit, discount = _apply_troop_discount(troop_type["base_cost"])
+    total_cost = round(effective_unit * quantity)
+    base_cost  = troop_type["base_cost"] * quantity
     balance    = get_user_balance(call.from_user.id)
 
     if total_cost > balance:
@@ -174,12 +219,18 @@ def handle_troop_buy(call, data):
     deduct_user_balance(call.from_user.id, total_cost)
     add_city_troops(city_id, troop_id, quantity)
 
-    remaining = get_user_balance(call.from_user.id)
+    remaining  = get_user_balance(call.from_user.id)
+    event_line = (
+        f"🎯 خصم الحدث: -{discount*100:.0f}% (حملة التجنيد)\n"
+        f"💡 الخصم: -{base_cost - total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+    ) if discount > 0 else ""
     msg = (
         f"✅ تم الشراء بنجاح\n"
         f"📦 العنصر: {troop_type['emoji']} {troop_type['name_ar']}\n"
         f"🔢 الكمية: {quantity}\n"
-        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"🪖 السعر الأصلي: {base_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"{event_line}"
+        f"✔ المدفوع الفعلي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
         f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
     bot.answer_callback_query(call.id)
@@ -247,17 +298,24 @@ def handle_equipment_item(call, data):
         effects.append(f"✨ {eq['special_effect']}")
     effects_text = " | ".join(effects) if effects else "لتأثيرات خاصة"
 
+    effective_cost, discount = _apply_equipment_discount(eq["base_cost"])
+    price_line = (
+        f"💰 السعر:     ~~{eq['base_cost']:.0f}~~ {effective_cost:.0f} {CURRENCY_ARABIC_NAME} / وحدة 🎉"
+        if discount > 0 else
+        f"💰 السعر:     {eq['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة"
+    )
+
     text = (
         f"{eq['emoji']} {eq['name_ar']}\n"
         f"{get_lines()}\n"
         f"📊 التأثيرات: {effects_text}\n"
-        f"💰 السعر:     {eq['base_cost']:.0f} {CURRENCY_ARABIC_NAME} / وحدة\n"
+        f"{price_line}\n"
         f"🛡 تمتلك:    {owned_qty} وحدة\n"
         f"💰 رصيدك:    {balance:.0f} {CURRENCY_ARABIC_NAME}\n\n"
         f"اختر الكمية للشراء:"
     )
     qty_btns = _qty_buttons("equipment_buy", {"eid": eq_id, "cid": city_id},
-                             eq["base_cost"], balance, owner=owner)
+                             effective_cost, balance, owner=owner)
     back = [btn("رجوع", "open_equipment_list", {"cid": city_id}, color=RED, owner=owner)]
     edit_ui(call, text=text, buttons=qty_btns + back,
             layout=grid(len(qty_btns), 3) + [1])
@@ -276,6 +334,10 @@ def handle_equipment_buy(call, data):
         return
 
     total_cost = eq["base_cost"] * quantity
+    # ─── apply active event discount ───
+    effective_unit, discount = _apply_equipment_discount(eq["base_cost"])
+    total_cost = round(effective_unit * quantity)
+    base_cost  = eq["base_cost"] * quantity
     balance    = get_user_balance(call.from_user.id)
 
     if total_cost > balance:
@@ -286,12 +348,18 @@ def handle_equipment_buy(call, data):
     deduct_user_balance(call.from_user.id, total_cost)
     add_city_equipment(city_id, eq_id, quantity)
 
-    remaining = get_user_balance(call.from_user.id)
+    remaining  = get_user_balance(call.from_user.id)
+    event_line = (
+        f"🎯 خصم الحدث: -{discount*100:.0f}% (تخفيضات الأسلحة)\n"
+        f"💡 الخصم: -{base_cost - total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+    ) if discount > 0 else ""
     msg = (
         f"✅ تم الشراء بنجاح\n"
         f"📦 العنصر: {eq['emoji']} {eq['name_ar']}\n"
         f"🔢 الكمية: {quantity}\n"
-        f"💰 السعر الإجمالي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"🪖 السعر الأصلي: {base_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
+        f"{event_line}"
+        f"✔ المدفوع الفعلي: {total_cost:.0f} {CURRENCY_ARABIC_NAME}\n"
         f"💳 الرصيد المتبقي: {remaining:.0f} {CURRENCY_ARABIC_NAME}"
     )
     bot.answer_callback_query(call.id)

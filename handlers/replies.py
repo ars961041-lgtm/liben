@@ -283,6 +283,7 @@ def _handle_input_states(message) -> bool:
     from modules.quran.quran_handler import handle_dev_quran_input
     from modules.content_hub.hub_handler import handle_hub_input
     from handlers.group_admin.promote import handle_promote_input
+    from handlers.group_admin.permissions_panel.handler import handle_permissions_input
     from modules.country.city_management import handle_rename_input
     from modules.tickets.ticket_callbacks import handle_ticket_commands, handle_ticket_media
     from utils.pagination.router import get_state as _gs
@@ -300,8 +301,9 @@ def _handle_input_states(message) -> bool:
     from modules.content_hub.channel_admin import handle_channel_admin_input
     if handle_channel_admin_input(message): return True
 
-    if handle_promote_input(message):   return True
-    if handle_rename_input(message):    return True
+    if handle_promote_input(message):       return True
+    if handle_permissions_input(message):   return True
+    if handle_rename_input(message):        return True
 
     from modules.whispers.whisper_handler import handle_whisper_private_input
     if handle_whisper_private_input(message): return True
