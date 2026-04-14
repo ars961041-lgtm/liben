@@ -161,7 +161,7 @@ def top_commands(message) -> bool:
         unit    = TOP_UNITS.get("richest", "")
         caption = build_top("💰 توب الأغنى", rows, note=unit) if rows else "❌ لا توجد بيانات."
         send_ui(cid, text=caption, buttons=_main_buttons(owner),
-                layout=[3, 2, 2, 3], owner_id=uid)
+                layout=[3, 2, 2, 3], owner_id=uid, reply_to=message.message_id)
     else:
         _send_top(cat, cid, uid, owner)
 
