@@ -3,7 +3,7 @@
 
 Single-panel flow: one message is edited at every step.
 Real preview: edit_message_media (photo) or edit_message_text (text-only).
-Photo input: routed via handle_post_creator_photo() in main.py.
+Photo input: handled directly in handle_post_creator_input().
 
 Button input format (per line):
     نص | https://url          → URL button, default color
@@ -21,7 +21,7 @@ from core.state_manager import StateManager
 from utils.pagination import btn, send_ui, register_action
 from utils.pagination.buttons import build_keyboard
 from utils.helpers import get_lines, build_colored_buttons
-from telebot.types import InlineKeyboardMarkup, InputMediaPhoto
+from telebot.types import InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 
 _STATE    = "post_creator"
 _TTL      = 600          # 10 min
@@ -154,18 +154,26 @@ def on_publish(call, data):
     extra       = StateManager.get_extra(uid, cid)
     post_text   = extra.get("text", "")
     photo       = extra.get("photo")
+    media_type  = extra.get("media_type", "photo")  # Default to photo for backward compatibility
     buttons_raw = extra.get("buttons_raw", [])
     cols        = extra.get("layout", 1)
     target      = extra.get("target", cid)
     post_markup = build_colored_buttons(buttons_raw, cols)
 
+    # Sanitize user-generated post text
+    from utils.html_sanitizer import sanitize_html_tags, safe_send_message
+    safe_post_text = sanitize_html_tags(post_text)
+
     try:
         if photo:
-            bot.send_photo(target, photo, caption=post_text,
-                           parse_mode="HTML", reply_markup=post_markup)
+            if media_type == "video":
+                bot.send_video(target, photo, caption=safe_post_text,
+                              parse_mode="HTML", reply_markup=post_markup)
+            else:  # photo or default
+                bot.send_photo(target, photo, caption=safe_post_text,
+                              parse_mode="HTML", reply_markup=post_markup)
         else:
-            bot.send_message(target, post_text, parse_mode="HTML",
-                             reply_markup=post_markup)
+            safe_send_message(target, safe_post_text, parse_mode="HTML", reply_markup=post_markup)
         bot.answer_callback_query(call.id, "✅ تم النشر بنجاح!", show_alert=True)
         StateManager.clear(uid, cid)
         try:
@@ -303,8 +311,9 @@ def _panel(uid, cid, call=None):
         text = (
             f"📝 <b>إنشاء منشور</b>  ·  الخطوة 1/4\n"
             f"{status}"
-            "📸 <b>أرسل الصورة الآن</b>\n\n"
-            "أرسلها كـ <b>صورة</b> (وليس ملفاً مضغوطاً)."
+            "📸 <b>أرسل الصورة أو الفيديو الآن</b>\n\n"
+            "أرسلها كـ <b>صورة أو فيديو</b> (وليس ملفاً مضغوطاً).\n"
+            "💡 يمكنك إضافة نص مع الصورة/الفيديو كتعليق."
         )
         buttons = [
             btn("🔙 رجوع", "pc_back",   {"s": "await_has_image"}, owner=owner),
@@ -394,15 +403,21 @@ def _panel(uid, cid, call=None):
 def _render_preview(uid, cid, call, extra, mid):
     """
     Real preview: shows the post exactly as it will appear.
-    Uses edit_message_media for photo posts, edit_message_text for text-only.
+    Uses edit_message_media for photo/video posts, edit_message_text for text-only.
     Control buttons are appended below.
     """
+    from utils.html_sanitizer import safe_send_message, sanitize_html_tags
+    
     owner       = (uid, cid)
     post_text   = extra.get("text", "")
     photo       = extra.get("photo")
+    media_type  = extra.get("media_type", "photo")  # Default to photo for backward compatibility
     buttons_raw = extra.get("buttons_raw", [])
     cols        = extra.get("layout", 1)
     target      = extra.get("target", cid)
+
+    # Sanitize user-generated post text
+    safe_post_text = sanitize_html_tags(post_text)
 
     # Build the post's own markup (URL/callback buttons)
     post_markup = build_colored_buttons(buttons_raw, cols)
@@ -411,7 +426,7 @@ def _render_preview(uid, cid, call, extra, mid):
     ctrl = [
         btn("🚀 نشر الآن",      "pc_publish",      {}, owner=owner, color="su"),
         btn("✏️ تعديل النص",    "pc_edit_text",    {}, owner=owner, color="p"),
-        btn("🖼 تغيير الصورة",  "pc_edit_image",   {}, owner=owner, color="p"),
+        btn("🖼 تغيير الوسائط", "pc_edit_image",   {}, owner=owner, color="p"),
         btn("🔘 تعديل الأزرار", "pc_edit_buttons", {}, owner=owner, color="p"),
         btn("🔙 رجوع",          "pc_back",          {"s": "await_has_buttons"}, owner=owner),
         btn("❌ إلغاء",         "pc_cancel",        {}, owner=owner, color="d"),
@@ -419,22 +434,26 @@ def _render_preview(uid, cid, call, extra, mid):
     ctrl_markup = build_keyboard(ctrl, [1, 2, 2, 2], uid)
 
     # ── header shown above the preview ──
+    media_label = "📷 صورة" if media_type == "photo" else "🎥 فيديو" if media_type == "video" else "📄 نص فقط"
     header = (
         f"👁 <b>معاينة المنشور</b>\n{get_lines()}\n"
         f"📍 الهدف: <code>{target}</code>  │  "
-        f"{'📷 صورة' if photo else '📄 نص فقط'}  │  "
+        f"{media_label if photo else '📄 نص فقط'}  │  "
         f"🔘 {len(buttons_raw)} أزرار\n"
         f"{get_lines()}"
     )
 
     if photo and mid:
-        # Replace panel with the actual photo + post markup, then send controls
+        # Replace panel with the actual media + post markup, then send controls
         try:
-            media = InputMediaPhoto(media=photo, caption=post_text, parse_mode="HTML")
+            if media_type == "video":
+                from telebot.types import InputMediaVideo
+                media = InputMediaVideo(media=photo, caption=safe_post_text, parse_mode="HTML")
+            else:  # photo or default
+                media = InputMediaPhoto(media=photo, caption=safe_post_text, parse_mode="HTML")
             bot.edit_message_media(media, cid, mid, reply_markup=post_markup)
             # Send a separate control panel message
-            ctrl_msg = bot.send_message(cid, header, parse_mode="HTML",
-                                        reply_markup=ctrl_markup)
+            ctrl_msg = safe_send_message(cid, header, parse_mode="HTML", reply_markup=ctrl_markup)
             if ctrl_msg:
                 StateManager.set_mid(uid, cid, ctrl_msg.message_id)
             return
@@ -442,7 +461,7 @@ def _render_preview(uid, cid, call, extra, mid):
             pass
 
     # Text-only preview or fallback: edit panel with header + post text + controls
-    combined = f"{header}\n\n{post_text}"
+    combined = f"{header}\n\n{safe_post_text}"
     _edit_or_send_text(cid, mid, combined, ctrl_markup, uid)
 
 
@@ -495,8 +514,41 @@ def handle_post_creator_input(message) -> bool:
         return True
 
     if step == "await_image":
-        _toast(cid, "❌ أرسل <b>صورة</b> وليس نصاً.")
-        return True
+        # Check if message contains a photo or video
+        if message.photo:
+            # Handle photo input
+            file_id = message.photo[-1].file_id  # highest resolution
+            caption = (message.caption or "").strip()
+            _delete(cid, message.message_id)
+            _set_extra(uid, cid, photo=file_id, media_type="photo")
+            if caption:
+                # If photo has caption, use it as the text and skip text input step
+                _set_extra(uid, cid, text=caption)
+                StateManager.update(uid, cid, {"step": "await_has_buttons"})
+            else:
+                # No caption, proceed to text input step
+                StateManager.update(uid, cid, {"step": "await_text"})
+            _panel(uid, cid)
+            return True
+        elif message.video:
+            # Handle video input
+            file_id = message.video.file_id
+            caption = (message.caption or "").strip()
+            _delete(cid, message.message_id)
+            _set_extra(uid, cid, photo=file_id, media_type="video")
+            if caption:
+                # If video has caption, use it as the text and skip text input step
+                _set_extra(uid, cid, text=caption)
+                StateManager.update(uid, cid, {"step": "await_has_buttons"})
+            else:
+                # No caption, proceed to text input step
+                StateManager.update(uid, cid, {"step": "await_text"})
+            _panel(uid, cid)
+            return True
+        else:
+            # Show error only if it's not a photo or video
+            _toast(cid, "❌ أرسل <b>صورة أو فيديو</b> وليس نصاً.")
+            return True
 
     if step == "await_text":
         text = (message.text or "").strip()
@@ -535,25 +587,6 @@ def handle_post_creator_input(message) -> bool:
 
     return False
 
-
-def handle_post_creator_photo(message) -> bool:
-    """Handles photo messages. Registered in main.py."""
-    uid = message.from_user.id
-    cid = message.chat.id
-
-    if not StateManager.is_state(uid, cid, _STATE):
-        return False
-    if not is_any_dev(uid):
-        return False
-    if StateManager.get_step(uid, cid) != "await_image":
-        return False
-
-    file_id = message.photo[-1].file_id  # highest resolution
-    _delete(cid, message.message_id)
-    _set_extra(uid, cid, photo=file_id)
-    StateManager.update(uid, cid, {"step": "await_text"})
-    _panel(uid, cid)
-    return True
 
 
 # ══════════════════════════════════════════
@@ -612,15 +645,14 @@ def _parse_buttons(raw: str, limit: int = _MAX_BTNS):
 
 
 def _edit_or_send_text(cid, mid, text, markup, uid):
-    """Edit existing panel or send new one."""
+    """Edit existing panel or send new one with safe HTML handling."""
+    from utils.html_sanitizer import safe_edit_message_text, safe_send_message
+    
     if mid:
-        try:
-            bot.edit_message_text(text, cid, mid,
-                                  parse_mode="HTML", reply_markup=markup)
+        if safe_edit_message_text(cid, mid, text, parse_mode="HTML", reply_markup=markup):
             return
-        except Exception:
-            pass
-    msg = bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup)
+    
+    msg = safe_send_message(cid, text, parse_mode="HTML", reply_markup=markup)
     if msg:
         StateManager.set_mid(uid, cid, msg.message_id)
 

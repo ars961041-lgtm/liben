@@ -1,5 +1,4 @@
 from modules.post_creator.post_creator import (
     open_post_creator,
     handle_post_creator_input,
-    handle_post_creator_photo,
 )

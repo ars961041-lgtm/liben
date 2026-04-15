@@ -209,6 +209,9 @@ def _dispatch(message):
     if not text:
         return
 
+    from handlers.mention_handler import handle_mention_command
+    if handle_mention_command(message):
+        return
     memory.set_last_command(uid, text)
 
     # ── أوامر مشتركة ──

@@ -278,10 +278,12 @@ def handle_hmrp_start(message, whisper_id_str: str):
     # فحص إذا كانت الحالة محفوظة مسبقاً من on_wsp_reply
     existing = _get_pending(uid)
     if existing and existing.get("type") == "reply":
+        from utils.html_sanitizer import escape_html, safe_send_message
         from_name = existing.get("from_name", "مستخدم")
-        bot.send_message(
+        safe_from_name = escape_html(from_name)
+        safe_send_message(
             uid,
-            f"↩️ <b>رد على همسة من {from_name}</b>\n\n"
+            f"↩️ <b>رد على همسة من {safe_from_name}</b>\n\n"
             f"اكتب ردك على الهمسة الآن\n"
             f"📏 الحد الأقصى: {MAX_WHISPER_LENGTH} حرف",
             parse_mode="HTML",
@@ -314,9 +316,11 @@ def handle_hmrp_start(message, whisper_id_str: str):
         "from_name":   from_name,
     })
 
-    bot.send_message(
+    from utils.html_sanitizer import escape_html, safe_send_message
+    safe_from_name = escape_html(from_name)
+    safe_send_message(
         uid,
-        f"↩️ <b>رد على همسة من {from_name}</b>\n\n"
+        f"↩️ <b>رد على همسة من {safe_from_name}</b>\n\n"
         f"اكتب ردك على الهمسة الآن\n"
         f"📏 الحد الأقصى: {MAX_WHISPER_LENGTH} حرف",
         parse_mode="HTML",

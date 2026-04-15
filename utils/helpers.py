@@ -269,16 +269,23 @@ def get_prev_icon():
 
 # -------------------------------------------------------------- General Functions
 def send_error (fun_name, error):
-  return f"Error in {fun_name} : \n<b>{str(error)}</b>"
+  from utils.html_sanitizer import escape_html
+  safe_error = escape_html(str(error))
+  return f"Error in {fun_name} : \n<b>{safe_error}</b>"
 
 def send_error_reply (msg, text):
   try:
-    bot.reply_to(msg, f'{get_error_icons()} {text}', parse_mode="HTML")
+    from utils.html_sanitizer import safe_reply_to, escape_html
+    safe_text = escape_html(text)
+    safe_reply_to(msg, f'{get_error_icons()} {safe_text}', parse_mode="HTML")
   except Exception as e:
-    bot.reply_to(send_error("send_error_relpy", e), parse_mode="HTML")
+    from utils.html_sanitizer import safe_reply_to
+    safe_reply_to(msg, f"خطأ في النظام {get_error_icons()}", parse_mode="HTML")
 
 def send_reply(msg, text, parse_html=True, buttons=None, Shape=True):
     try:
+        from utils.html_sanitizer import safe_reply_to, escape_html
+        
         markup = None
         if buttons:
             markup = InlineKeyboardMarkup()
@@ -286,9 +293,11 @@ def send_reply(msg, text, parse_html=True, buttons=None, Shape=True):
                 markup.row(*[InlineKeyboardButton(b[0], callback_data=b[1]) for b in row])
 
         prefix = get_section_dividers() if Shape else ""
-        final_text = prefix + f"<b>{text}</b>"
+        # Escape user-provided text to prevent HTML parsing errors
+        safe_text = escape_html(text) if parse_html else text
+        final_text = prefix + f"<b>{safe_text}</b>" if parse_html else prefix + text
 
-        bot.reply_to(
+        safe_reply_to(
             msg,
             final_text,
             parse_mode="HTML" if parse_html else None,
@@ -297,7 +306,8 @@ def send_reply(msg, text, parse_html=True, buttons=None, Shape=True):
 
     except Exception as e:
         try:
-            bot.reply_to(msg, f"{str(e)}  {get_error_icons()}", parse_mode="HTML")
+            from utils.html_sanitizer import safe_reply_to
+            safe_reply_to(msg, f"خطأ في النظام {get_error_icons()}", parse_mode="HTML")
         except Exception:
             pass
 

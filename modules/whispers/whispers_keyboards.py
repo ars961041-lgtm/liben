@@ -67,5 +67,6 @@ def build_whisper_create_button(deep_link: str) -> InlineKeyboardMarkup:
 
 def clickable_name(name: str, user_id: int) -> str:
     """يُنشئ رابط HTML قابل للنقر يفتح ملف المستخدم في تيليغرام."""
-    safe = name.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+    from utils.html_sanitizer import escape_html
+    safe = escape_html(name)
     return f'<a href="tg://user?id={user_id}">{safe}</a>'
